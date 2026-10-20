@@ -19,10 +19,10 @@ Estado de cumplimiento y trazabilidad de las pantallas de la aplicación móvil 
 | **M04** | Onboarding: Intereses | 🟢 Real | 🟢 Real | Almacena en perfiles.intereses para filtros de encuestas. Mínimo 2 intereses. |
 | **M05** | Consentimientos (4 finalidades) | 🟢 Real | 🟢 Real | Persiste en tabla consentimientos. C1 obligatorio, C4 apagado por defecto (Ley 29733). |
 | **M06** | Inicio (Feed resumen) | 🟡 Demo | 🟢 Real | Resumen de encuestas, grupos y avisos. |
-| **M07** | Explorar (Buscador y filtros) | 🟡 Demo | 🟢 Real | Filtrará perfiles y grupos reales de la DB excluyéndose a sí mismo. |
-| **M08** | Perfil de otro alumno + Solicitud | 🟡 Demo | 🟢 Real | Enviar solicitud de mensaje con motivo. |
-| **M09** | Solicitudes recibidas y enviadas | 🟡 Demo | 🟢 Real | Bandeja de solicitudes de contacto. |
-| **M10** | Conversación directa 1 a 1 | 🟡 Demo | 🟢 Real | Debe soportar Realtime, envío optimista y autoscroll. |
+| **M07** | Explorar (Buscador y filtros) | 🟢 Real | 🟢 Real | Filtra perfiles de public.perfiles por carrera, ciclo e interés, excluyendo al usuario y bloqueados. |
+| **M08** | Perfil de otro alumno + Solicitud | 🟢 Real | 🟢 Real | Tarjeta con avatar 48px, interés afín, solicitud con motivo obligatorio (Spec 6.4), reportar y bloquear. |
+| **M09** | Solicitudes recibidas y enviadas | 🟢 Real | 🟢 Real | Bandeja de solicitudes en tabla solicitudes_mensaje con estados pendiente/aceptada/rechazada. |
+| **M10** | Conversación directa 1 a 1 | 🟢 Real | 🟢 Real | Chat WhatsApp en tiempo real con Supabase Realtime, envío optimista, autoscroll y leído/no leído. |
 | **M11** | Grupos: Espacios del alumno | 🟡 Demo | 🟢 Real | Auto-asignación a carrera y ciclo, más talleres. |
 | **M12** | Espacio de carrera (Consultas) | 🟡 Demo | 🟢 Real | Cruce de ciclos 1 al 10 para dudas académicas. |
 | **M13** | Subgrupo de ciclo (Chat cohorte) | 🟡 Demo | 🟢 Real | Chat grupal en tiempo real de la cohorte. |
@@ -45,7 +45,7 @@ Estado de cumplimiento y trazabilidad de las pantallas de la aplicación móvil 
 | **M30** | Detalle de habilidad y meta | 🟢 Real | 🟢 Real | Muestra qué falta para el siguiente nivel y progreso real. |
 | **M31** | Agregar certificado | 🟢 Real | 🟢 Real | Clasificación automática básica/media/avanzada con persistencia en Supabase. |
 | **M32** | Privacidad y revocación de consent. | 🟢 Real | 🟢 Real | Revocación persistente con timestamp en Supabase (Ley 29733). |
-| **M33** | Centro de seguridad (reportar/bloquear) | 🟡 Demo | 🟢 Real | Flujo de reporte de contenido y usuarios. |
+| **M33** | Centro de seguridad (reportar/bloquear) | 🟢 Real | 🟢 Real | Reportar contenido/perfil a tabla reportes y bloqueo recíproco en tabla bloqueos. |
 
 ---
 

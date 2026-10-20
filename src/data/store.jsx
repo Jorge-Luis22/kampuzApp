@@ -557,9 +557,14 @@ export function StoreProvider({ children }) {
 
   // Cerrar sesión real con Supabase y volver a bienvenida
   const cerrarSesion = async () => {
-    await signOut();
+    try {
+      await signOut();
+    } catch (e) {
+      console.warn('Error en signOut:', e);
+    }
     localStorage.removeItem(`${STORAGE_KEY}_user`);
-    setUser(import.meta.env.VITE_MODO_DEMO === 'true' ? USUARIO_DEMO : null);
+    setUser(null);
+    setActiveTab('inicio');
     setCurrentScreen('m01_bienvenida');
   };
 

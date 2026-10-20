@@ -8,8 +8,12 @@ import {
 } from '../data/mockData';
 import {
   isEmailAllowed,
+  signInWithPassword,
+  signUpWithPassword,
   signInWithOtp,
   verifyOtp,
+  requestPasswordReset,
+  confirmPasswordReset,
   getProfile,
   saveProfile
 } from '../lib/auth';
@@ -21,17 +25,19 @@ import {
   ArrowLeft,
   Mail,
   Lock,
+  User,
+  Eye,
+  EyeOff,
   Building,
   GraduationCap,
   Calendar,
   Sparkles,
-  Info,
   AlertCircle,
-  Zap,
   Check,
   Loader2,
   RefreshCw,
   Camera,
+  KeyRound,
   ExternalLink
 } from 'lucide-react';
 
@@ -41,22 +47,44 @@ export default function OnboardingFlow() {
     setCurrentScreen,
     user,
     setUser,
-    toggleConsentimiento,
     loginDirectoDemo
   } = useStore();
 
   const isModoDemo = import.meta.env.VITE_MODO_DEMO === 'true';
 
-  // Mode: 'login' | 'registro'
+  // Modo: 'login' | 'registro' | 'recuperar'
   const [authMode, setAuthMode] = useState('login');
-  const [email, setEmail] = useState('');
-  const [otpCode, setOtpCode] = useState(Array(6).fill(''));
-  const [errorMsg, setErrorMsg] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
 
-  // Reenviar OTP timer
+  // Campos de Login / Registro
+  const [loginIdentifier, setLoginIdentifier] = useState(''); // Usuario o correo
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Campos exclusivos de Registro
+  const [regNombre, setRegNombre] = useState('');
+  const [regApellido, setRegApellido] = useState('');
+  const [regUsuario, setRegUsuario] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regAceptaTerminos, setRegAceptaTerminos] = useState(true);
+
+  // Campos de Recuperación de Contraseña
+  const [resetIdentifier, setResetIdentifier] = useState('');
+  const [resetEmailTarget, setResetEmailTarget] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [isResetFlow, setIsResetFlow] = useState(false);
+
+  // OTP
+  const [otpCode, setOtpCode] = useState(Array(6).fill(''));
   const [resendCooldown, setResendCooldown] = useState(0);
 
+  // Feedback y carga
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Temporizador de reenvío OTP
   useEffect(() => {
     let timer;
     if (resendCooldown > 0) {
@@ -65,30 +93,30 @@ export default function OnboardingFlow() {
     return () => clearTimeout(timer);
   }, [resendCooldown]);
 
-  // Form profile state (M03)
+  // Formulario de Perfil Académico (M03)
   const [formData, setFormData] = useState({
-    nombre: user?.nombre && user?.id !== 'usr_luz' ? user.nombre : '',
-    apellido: user?.apellido && user?.id !== 'usr_luz' ? user.apellido : '',
+    nombre: user?.nombre || '',
+    apellido: user?.apellido || '',
     sede: user?.sede || 'Lima Sur',
-    carrera: user?.carrera || 'Enfermería',
+    carrera: user?.carrera || 'Ingeniería de Sistemas e Informática',
     ciclo: user?.ciclo || 1,
     fechaNacimiento: user?.fechaNacimiento || '2005-01-01'
   });
 
   const [selectedIntereses, setSelectedIntereses] = useState(
-    user?.intereses && user?.id !== 'usr_luz' ? user.intereses : []
+    user?.intereses && user?.id !== 'usr_luz' ? user.intereses : ['Programación', 'Inteligencia Artificial']
   );
 
-  // Foto de perfil opcional durante onboarding (Fase 2 / Fase 3)
   const [avatarUrl, setAvatarUrl] = useState(user?.fotoUrl || null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const avatarInputRef = useRef(null);
 
+  // --- SUBIR FOTO ---
   const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!user?.id) {
-      setErrorMsg('No se detectó sesión para subir foto.');
+      setErrorMsg('Inicia sesión para subir tu foto.');
       return;
     }
     setIsUploadingAvatar(true);
@@ -104,66 +132,157 @@ export default function OnboardingFlow() {
     }
   };
 
-  // Consentimientos locales (M05): 4 apagado por defecto (Ley 29733)
-  const [localConsentimientos, setLocalConsentimientos] = useState({
-    cuenta: true,
-    encuestas: true,
-    metricas: true,
-    perfil_universidad: false
-  });
-
-  const handleEmailSubmit = async (e) => {
+  // --- 1. ACCIÓN: INICIAR SESIÓN CON USUARIO Y CONTRASEÑA ---
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
-    const cleanEmail = email.trim().toLowerCase();
+    setSuccessMsg('');
 
-    if (!cleanEmail) {
-      setErrorMsg('Ingresa tu correo institucional.');
+    if (!loginIdentifier.trim() || !loginPassword) {
+      setErrorMsg('Ingresa tu usuario/correo y tu contraseña.');
       return;
     }
 
     setIsLoading(true);
     try {
-      // 1. Validar si el correo es @utp.edu.pe o invitado
-      const allowed = await isEmailAllowed(cleanEmail);
-      if (!allowed) {
-        setErrorMsg('Solo se aceptan correos institucionales (@utp.edu.pe) o invitados registrados.');
-        setIsLoading(false);
-        return;
-      }
+      const res = await signInWithPassword(loginIdentifier.trim(), loginPassword);
 
-      // 2. Solicitar OTP a Supabase
-      const res = await signInWithOtp(cleanEmail);
       if (!res.success) {
-        setErrorMsg(res.error || 'Error al enviar código de verificación.');
+        if (res.emailNeedsConfirm) {
+          setErrorMsg(res.error);
+          setRegEmail(res.emailNeedsConfirm);
+          setOtpCode(Array(6).fill(''));
+          setIsResetFlow(false);
+          setCurrentScreen('m02_otp');
+          return;
+        }
+        setErrorMsg(res.error || 'Credenciales no válidas.');
         setIsLoading(false);
         return;
       }
 
-      // Éxito: pasar a pantalla de OTP e iniciar cooldown de 30s
-      setResendCooldown(30);
-      setOtpCode(Array(6).fill(''));
-      setCurrentScreen('m02_otp');
+      const authUser = res.user;
+      const perfil = await getProfile(authUser.id);
+
+      if (perfil && perfil.nombre) {
+        setUser({
+          ...perfil,
+          correoInstitucional: authUser.email
+        });
+        setCurrentScreen('app');
+      } else {
+        // Usuario autenticado pero sin perfil completado
+        setUser({
+          id: authUser.id,
+          correoInstitucional: authUser.email,
+          nombre: authUser.user_metadata?.nombre || '',
+          apellido: authUser.user_metadata?.apellido || '',
+          usuario: authUser.user_metadata?.usuario || '',
+          habilidades: HABILIDADES_BASE_NUEVO_ALUMNO
+        });
+        setCurrentScreen('m03_onboarding');
+      }
     } catch (err) {
-      setErrorMsg('No se pudo conectar con el servidor de autenticación.');
+      setErrorMsg('Error de conexión al iniciar sesión.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleResendOtp = async () => {
-    if (resendCooldown > 0 || isLoading) return;
-    setIsLoading(true);
+  // --- 2. ACCIÓN: CREAR CUENTA ---
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
     setErrorMsg('');
-    const res = await signInWithOtp(email);
-    setIsLoading(false);
-    if (!res.success) {
-      setErrorMsg(res.error || 'Error al reenviar el código.');
-    } else {
+    setSuccessMsg('');
+
+    const cleanNombre = regNombre.trim();
+    const cleanApellido = regApellido.trim();
+    const cleanUsuario = regUsuario.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+    const cleanEmail = regEmail.trim().toLowerCase();
+
+    if (!cleanNombre || !cleanApellido) {
+      setErrorMsg('Ingresa tu nombre y apellido completo.');
+      return;
+    }
+    if (!cleanUsuario || cleanUsuario.length < 3) {
+      setErrorMsg('Elige un nombre de usuario de al menos 3 caracteres.');
+      return;
+    }
+    if (!cleanEmail) {
+      setErrorMsg('Ingresa tu correo institucional (@utp.edu.pe).');
+      return;
+    }
+    if (regPassword.length < 6) {
+      setErrorMsg('La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+    if (!regAceptaTerminos) {
+      setErrorMsg('Debes aceptar los Términos y la Política de Privacidad.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await signUpWithPassword({
+        nombre: cleanNombre,
+        apellido: cleanApellido,
+        usuario: cleanUsuario,
+        email: cleanEmail,
+        password: regPassword
+      });
+
+      if (!res.success) {
+        setErrorMsg(res.error || 'Error al crear la cuenta.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Si requiere verificar con código enviado al correo
       setResendCooldown(30);
+      setOtpCode(Array(6).fill(''));
+      setIsResetFlow(false);
+      setSuccessMsg('¡Código enviado! Revisa tu bandeja de correo.');
+      setCurrentScreen('m02_otp');
+    } catch (err) {
+      setErrorMsg('Error al conectar con el servidor.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // --- 3. ACCIÓN: SOLICITAR RECUPERACIÓN DE CONTRASEÑA ---
+  const handleForgotPasswordSubmit = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    if (!resetIdentifier.trim()) {
+      setErrorMsg('Ingresa tu usuario o correo institucional.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await requestPasswordReset(resetIdentifier.trim());
+      if (!res.success) {
+        setErrorMsg(res.error || 'No se pudo enviar el correo de recuperación.');
+        setIsLoading(false);
+        return;
+      }
+
+      setResetEmailTarget(res.email);
+      setResendCooldown(30);
+      setOtpCode(Array(6).fill(''));
+      setIsResetFlow(true);
+      setCurrentScreen('m02_otp');
+    } catch (err) {
+      setErrorMsg('Error al solicitar recuperación.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // --- 4. MANEJO DE OTP: PEGAR Y ESCRIBIR ---
   const handleOtpPaste = (e) => {
     e.preventDefault();
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
@@ -175,6 +294,24 @@ export default function OnboardingFlow() {
     setOtpCode(arr);
   };
 
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0) return;
+    setErrorMsg('');
+    const targetEmail = isResetFlow ? resetEmailTarget : regEmail;
+
+    const res = isResetFlow
+      ? await requestPasswordReset(targetEmail)
+      : await signInWithOtp(targetEmail);
+
+    if (res.success) {
+      setResendCooldown(30);
+      setSuccessMsg('Código reenviado a tu correo.');
+    } else {
+      setErrorMsg(res.error || 'Error al reenviar código.');
+    }
+  };
+
+  // --- 5. ACCIÓN: VERIFICAR OTP (REGISTRO O RECUPERACIÓN) ---
   const handleOtpSubmit = async (e) => {
     if (e) e.preventDefault();
     const entered = otpCode.join('');
@@ -187,113 +324,106 @@ export default function OnboardingFlow() {
     setIsLoading(true);
 
     try {
-      const res = await verifyOtp(email, entered);
+      // Flujo A: Recuperación de contraseña
+      if (isResetFlow) {
+        if (!resetNewPassword || resetNewPassword.length < 6) {
+          setErrorMsg('La nueva contraseña debe tener al menos 6 caracteres.');
+          setIsLoading(false);
+          return;
+        }
+        if (resetNewPassword !== resetConfirmPassword) {
+          setErrorMsg('Las contraseñas no coinciden.');
+          setIsLoading(false);
+          return;
+        }
+
+        const res = await confirmPasswordReset(resetEmailTarget, entered, resetNewPassword);
+        if (!res.success) {
+          setErrorMsg(res.error || 'Código incorrecto o vencido.');
+          setIsLoading(false);
+          return;
+        }
+
+        setSuccessMsg('¡Contraseña cambiada con éxito! Inicia sesión con tu nueva clave.');
+        setAuthMode('login');
+        setLoginIdentifier(resetEmailTarget);
+        setLoginPassword('');
+        setCurrentScreen('m01_bienvenida');
+        setIsLoading(false);
+        return;
+      }
+
+      // Flujo B: Verificación de cuenta nueva
+      const res = await verifyOtp(regEmail, entered, 'signup');
       if (!res.success) {
-        setErrorMsg(res.error || 'Código incorrecto o vencido.');
+        setErrorMsg(res.error || 'Código no válido o expirado.');
         setIsLoading(false);
         return;
       }
 
       const authUser = res.user;
+      setUser({
+        id: authUser.id,
+        correoInstitucional: authUser.email,
+        nombre: regNombre || authUser.user_metadata?.nombre || '',
+        apellido: regApellido || authUser.user_metadata?.apellido || '',
+        usuario: regUsuario || authUser.user_metadata?.usuario || '',
+        habilidades: HABILIDADES_BASE_NUEVO_ALUMNO
+      });
 
-      // Consultar si ya tiene perfil registrado en Supabase
-      const existingProfile = await getProfile(authUser.id);
+      setFormData(prev => ({
+        ...prev,
+        nombre: regNombre || prev.nombre,
+        apellido: regApellido || prev.apellido
+      }));
 
-      if (existingProfile && existingProfile.nombre) {
-        // Usuario recurrente con perfil completo: entrar a la app
-        setUser({
-          ...existingProfile,
-          correoInstitucional: authUser.email,
-          habilidades: existingProfile.habilidades || HABILIDADES_BASE_NUEVO_ALUMNO,
-          certificados: existingProfile.certificados || [],
-          medallas: []
-        });
-        setCurrentScreen('app');
-      } else {
-        // Alumno nuevo: continuar al onboarding de datos académicos
-        setUser(prev => ({
-          ...(prev || {}),
-          id: authUser.id,
-          correoInstitucional: authUser.email
-        }));
-        setCurrentScreen('m03_onboarding');
-      }
+      setCurrentScreen('m03_onboarding');
     } catch (err) {
-      setErrorMsg('Ocurrió un error al verificar el código.');
+      setErrorMsg('Error al procesar la verificación.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleProfileSubmit = (e) => {
+  // --- 6. ACCIÓN: FINALIZAR PERFIL ACADÉMICO ---
+  const handleFinalizarPerfil = async (e) => {
     e.preventDefault();
-    if (!formData.nombre.trim() || !formData.apellido.trim()) {
-      setErrorMsg('Completa tu nombre y apellido.');
-      return;
-    }
-    setErrorMsg('');
-    setCurrentScreen('m04_intereses');
-  };
-
-  const toggleInteres = (interes) => {
-    if (selectedIntereses.includes(interes)) {
-      setSelectedIntereses(selectedIntereses.filter(i => i !== interes));
-    } else {
-      setSelectedIntereses([...selectedIntereses, interes]);
-    }
-  };
-
-  const handleInteresesSubmit = () => {
     if (selectedIntereses.length < 2) {
-      setErrorMsg('Elige al menos 2 intereses para calibrar tu red.');
+      setErrorMsg('Selecciona al menos 2 intereses.');
       return;
     }
-    setErrorMsg('');
-    setCurrentScreen('m05_consentimientos');
-  };
 
-  const handleConsentimientosFinalize = async () => {
     setIsLoading(true);
     setErrorMsg('');
 
     try {
-      const userId = user?.id;
-      if (!userId) {
-        setErrorMsg('Error de sesión: vuelve a ingresar tu código.');
-        setIsLoading(false);
-        return;
-      }
-
-      const profilePayload = {
-        correoInstitucional: email || user.correoInstitucional,
-        nombre: formData.nombre.trim(),
-        apellido: formData.apellido.trim(),
+      const payload = {
+        correoInstitucional: user?.correoInstitucional || regEmail,
+        nombre: formData.nombre || user?.nombre || 'Estudiante',
+        apellido: formData.apellido || user?.apellido || '',
+        usuario: user?.usuario || regUsuario || (user?.correoInstitucional || '').split('@')[0],
+        fotoUrl: avatarUrl,
         sede: formData.sede,
         carrera: formData.carrera,
         ciclo: Number(formData.ciclo),
         fechaNacimiento: formData.fechaNacimiento,
-        intereses: selectedIntereses,
-        fotoUrl: avatarUrl || null,
-        rol: 'alumno'
+        intereses: selectedIntereses
       };
 
-      const res = await saveProfile(userId, profilePayload, localConsentimientos);
-      if (!res.success) {
-        setErrorMsg(res.error || 'No se pudo guardar el perfil.');
-        setIsLoading(false);
-        return;
+      if (user?.id) {
+        const res = await saveProfile(user.id, payload, { perfil_universidad: false });
+        if (!res.success) {
+          setErrorMsg(res.error || 'Error al guardar perfil.');
+          setIsLoading(false);
+          return;
+        }
       }
 
-      // Actualizar el estado global con el perfil real
-      setUser({
-        id: userId,
-        ...profilePayload,
-        fotoUrl: avatarUrl || null,
-        consentimientos: localConsentimientos,
-        habilidades: HABILIDADES_BASE_NUEVO_ALUMNO,
-        certificados: [],
-        medallas: []
-      });
+      setUser(prev => ({
+        ...prev,
+        ...payload,
+        habilidades: prev?.habilidades || HABILIDADES_BASE_NUEVO_ALUMNO
+      }));
 
       setCurrentScreen('app');
     } catch (err) {
@@ -303,585 +433,642 @@ export default function OnboardingFlow() {
     }
   };
 
-  // --- M01: BIENVENIDA Y ACCESO (LOGIN / REGISTRO) ---
+  // =========================================================================
+  // PANTALLA 1: ACCESO (LOGIN / REGISTRO / RECUPERAR)
+  // =========================================================================
   if (currentScreen === 'm01_bienvenida') {
     return (
       <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
         <div className="pt-2">
-          {/* Brand Header */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-11 h-11 rounded-2xl bg-brand-primary text-white flex items-center justify-center font-black text-2xl shadow-md">
-                Z
-              </div>
-              <div>
-                <span className="font-black text-lg tracking-tight text-ink dark:text-ink-light block leading-none">
-                  KAMPUZ
-                </span>
-                <span className="text-xs text-accent font-bold">UTP Sede Lima Sur</span>
-              </div>
+          {/* Logo y Marca */}
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-brand-primary flex items-center justify-center font-black text-white text-2xl tracking-tight shadow-md">
+              Z
             </div>
-
-            <span className="text-xs bg-brand-primary-soft dark:bg-brand-dark text-brand-primary dark:text-teal-300 font-extrabold px-3 py-1 rounded-full border border-brand-primary/20">
-              Red Cerrada
-            </span>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="font-black text-xl tracking-wide text-brand-primary dark:text-teal-300">KAMPUZ</span>
+                <span className="text-[11px] bg-accent/15 text-accent font-extrabold px-2 py-0.5 rounded-md">UTP</span>
+              </div>
+              <p className="text-xs text-ink-soft dark:text-ink-muted font-medium">
+                Comunidad Universitaria de Aprendizaje
+              </p>
+            </div>
           </div>
 
-          {/* Quick Demo Access Bar (Solo visible si VITE_MODO_DEMO=true) */}
-          {isModoDemo && (
-            <button
-              onClick={loginDirectoDemo}
-              className="w-full mb-4 p-3 bg-gradient-to-r from-accent to-teal-700 text-white rounded-2xl shadow-md hover:opacity-95 transition flex items-center justify-between"
-            >
-              <div className="flex items-center space-x-2.5 text-left">
-                <Zap size={18} className="text-amber-300 fill-amber-300 shrink-0" />
-                <div>
-                  <span className="text-xs font-black block leading-tight">Acceso Rápido Presentación Demo</span>
-                  <span className="text-xs text-teal-100 font-medium">Entrar directo como Luz Martínez (Enfermería C5)</span>
-                </div>
-              </div>
-              <ArrowRight size={16} className="shrink-0" />
-            </button>
+          {/* Selector de Pestañas: Iniciar Sesión vs Crear Cuenta */}
+          {authMode !== 'recuperar' ? (
+            <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1 rounded-2xl mb-4 border border-line dark:border-line-dark">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                }}
+                className={`flex-1 py-2 text-xs font-black rounded-xl transition ${
+                  authMode === 'login'
+                    ? 'bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light shadow-sm'
+                    : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
+                }`}
+              >
+                Iniciar Sesión
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('registro');
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                }}
+                className={`flex-1 py-2 text-xs font-black rounded-xl transition ${
+                  authMode === 'registro'
+                    ? 'bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light shadow-sm'
+                    : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
+                }`}
+              >
+                Crear Cuenta
+              </button>
+            </div>
+          ) : (
+            <div className="mb-3">
+              <button
+                onClick={() => {
+                  setAuthMode('login');
+                  setErrorMsg('');
+                }}
+                className="inline-flex items-center space-x-1.5 text-xs text-ink-muted hover:text-ink dark:hover:text-ink-light font-bold"
+              >
+                <ArrowLeft size={14} />
+                <span>Volver a Iniciar Sesión</span>
+              </button>
+            </div>
           )}
 
-          {/* Main Title & Value Prop */}
-          <h1 className="text-xl font-black text-ink dark:text-ink-light tracking-tight mt-2 mb-1">
-            Conecta con tu comunidad universitaria
-          </h1>
-          <p className="text-xs text-ink-soft dark:text-ink-muted leading-relaxed mb-4 font-medium">
-            Identidad real verificada con tu correo UTP. Sin anónimos ni personas ajenas a tu campus.
-          </p>
+          {/* Feedback Messages */}
+          {errorMsg && (
+            <div className="mb-3 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl flex items-start space-x-2 text-xs text-rose-700 dark:text-rose-300">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+          {successMsg && (
+            <div className="mb-3 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-start space-x-2 text-xs text-emerald-800 dark:text-emerald-200">
+              <Check size={16} className="shrink-0 mt-0.5" />
+              <span>{successMsg}</span>
+            </div>
+          )}
 
-          {/* Auth Mode Toggle (Login vs Registro) */}
-          <div className="flex bg-white dark:bg-surface-cardDark p-1.5 rounded-2xl border border-line dark:border-line-dark shadow-sm mb-4">
-            <button
-              type="button"
-              onClick={() => { setAuthMode('login'); setErrorMsg(''); }}
-              className={`flex-1 py-2.5 text-xs font-extrabold rounded-xl transition ${
-                authMode === 'login'
-                  ? 'bg-brand-primary text-white shadow-sm'
-                  : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
-              }`}
-            >
-              Iniciar Sesión
-            </button>
-            <button
-              type="button"
-              onClick={() => { setAuthMode('registro'); setErrorMsg(''); }}
-              className={`flex-1 py-2.5 text-xs font-extrabold rounded-xl transition ${
-                authMode === 'registro'
-                  ? 'bg-brand-primary text-white shadow-sm'
-                  : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
-              }`}
-            >
-              Crear Cuenta
-            </button>
-          </div>
-
-          {/* Form Card */}
-          <div className="k-card p-4 space-y-4 border-2 border-line/80 dark:border-line-dark rounded-2xl shadow-sm">
-            <form onSubmit={handleEmailSubmit} className="space-y-3.5">
+          {/* FORMULARIO: INICIAR SESIÓN */}
+          {authMode === 'login' && (
+            <form onSubmit={handleLoginSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1.5">
-                  Correo Institucional UTP
+                <label className="text-xs font-black text-ink dark:text-ink-light mb-1 block">
+                  Usuario o Correo Institucional
                 </label>
                 <div className="relative">
+                  <User size={16} className="absolute left-3.5 top-3.5 text-ink-muted" />
                   <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="alumno@utp.edu.pe"
-                    className="w-full pl-10 pr-4 py-3 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary dark:focus:border-accent"
+                    type="text"
                     required
-                    disabled={isLoading}
+                    autoFocus
+                    placeholder="ej. jorge_utp o u2320732@utp.edu.pe"
+                    value={loginIdentifier}
+                    onChange={(e) => setLoginIdentifier(e.target.value)}
+                    className="w-full text-xs pl-10 pr-3 py-3 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
                   />
-                  <Mail className="absolute left-3.5 top-3.5 text-ink-muted" size={17} />
                 </div>
-                {errorMsg && (
-                  <p className="text-xs text-semantic-danger mt-1.5 flex items-center space-x-1 font-semibold">
-                    <AlertCircle size={14} className="shrink-0" />
-                    <span>{errorMsg}</span>
-                  </p>
-                )}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-black text-ink dark:text-ink-light">
+                    Contraseña
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('recuperar');
+                      setErrorMsg('');
+                      setSuccessMsg('');
+                    }}
+                    className="text-[11px] text-accent hover:underline font-bold"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
+                <div className="relative">
+                  <Lock size={16} className="absolute left-3.5 top-3.5 text-ink-muted" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    placeholder="Tu contraseña secreta"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    className="w-full text-xs pl-10 pr-10 py-3 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-3.5 text-ink-muted hover:text-ink"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
 
               <button
                 type="submit"
                 disabled={isLoading}
+                className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition mt-2"
+              >
+                {isLoading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <>
+                    <span>Entrar a Kampuz</span>
+                    <ArrowRight size={16} />
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+
+          {/* FORMULARIO: CREAR CUENTA */}
+          {authMode === 'registro' && (
+            <form onSubmit={handleRegisterSubmit} className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
+                    Nombres
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Jorge"
+                    value={regNombre}
+                    onChange={(e) => setRegNombre(e.target.value)}
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
+                    Apellidos
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Zegarra"
+                    value={regApellido}
+                    onChange={(e) => setRegApellido(e.target.value)}
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
+                  Nombre de usuario único
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs font-bold text-ink-muted">@</span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="jorge_utp"
+                    value={regUsuario}
+                    onChange={(e) => setRegUsuario(e.target.value)}
+                    className="w-full text-xs pl-7 pr-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light lowercase"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
+                  Correo Institucional (@utp.edu.pe)
+                </label>
+                <div className="relative">
+                  <Mail size={15} className="absolute left-3 top-3 text-ink-muted" />
+                  <input
+                    type="email"
+                    required
+                    placeholder="u2320732@utp.edu.pe"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    className="w-full text-xs pl-9 pr-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
+                  Crear Contraseña (mínimo 6 caracteres)
+                </label>
+                <div className="relative">
+                  <Lock size={15} className="absolute left-3 top-3 text-ink-muted" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    placeholder="••••••••"
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    className="w-full text-xs pl-9 pr-9 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 text-ink-muted hover:text-ink"
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-1 flex items-start space-x-2">
+                <input
+                  type="checkbox"
+                  id="terminos"
+                  checked={regAceptaTerminos}
+                  onChange={(e) => setRegAceptaTerminos(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 accent-accent rounded cursor-pointer shrink-0"
+                />
+                <label htmlFor="terminos" className="text-[11px] text-ink-soft dark:text-ink-muted leading-tight cursor-pointer">
+                  Acepto los Términos de Servicio y la{' '}
+                  <a href="/privacidad.html" target="_blank" rel="noopener noreferrer" className="text-accent font-bold hover:underline">
+                    Política de Privacidad
+                  </a>.
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading || !regAceptaTerminos}
                 className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
               >
                 {isLoading ? (
                   <Loader2 size={18} className="animate-spin" />
                 ) : (
                   <>
-                    <span>{authMode === 'login' ? 'Continuar con código' : 'Iniciar registro'}</span>
+                    <span>Crear cuenta y verificar</span>
                     <ArrowRight size={16} />
                   </>
                 )}
               </button>
             </form>
+          )}
 
-            <div className="pt-2.5 border-t border-line dark:border-line-dark flex items-center justify-between text-xs text-ink-muted">
-              <span>Piloto Sede Lima Sur</span>
-              <a href="/privacidad.html" target="_blank" rel="noopener noreferrer" className="font-bold text-accent hover:underline">
-                Ley 29733 Perú
-              </a>
+          {/* FORMULARIO: RECUPERAR CONTRASEÑA */}
+          {authMode === 'recuperar' && (
+            <form onSubmit={handleForgotPasswordSubmit} className="space-y-3.5">
+              <div>
+                <h3 className="text-sm font-black text-ink dark:text-ink-light mb-1">
+                  Recuperar tu contraseña
+                </h3>
+                <p className="text-xs text-ink-muted mb-3">
+                  Te enviaremos un código de seguridad de 6 dígitos a tu correo institucional para que elijas una nueva contraseña.
+                </p>
+                <div className="relative">
+                  <Mail size={16} className="absolute left-3.5 top-3.5 text-ink-muted" />
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    placeholder="Tu usuario o correo @utp.edu.pe"
+                    value={resetIdentifier}
+                    onChange={(e) => setResetIdentifier(e.target.value)}
+                    className="w-full text-xs pl-10 pr-3 py-3 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3.5 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
+              >
+                {isLoading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <>
+                    <span>Enviar código de recuperación</span>
+                    <KeyRound size={16} />
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+
+          {/* Acceso Rápido Demo (solo si modo demo está encendido) */}
+          {isModoDemo && (
+            <div className="pt-4 border-t border-line dark:border-line-dark mt-4">
+              <button
+                type="button"
+                onClick={loginDirectoDemo}
+                className="w-full py-2 bg-slate-100 dark:bg-slate-800 text-ink-muted hover:text-ink text-xs font-bold rounded-xl transition flex items-center justify-center space-x-1"
+              >
+                <Sparkles size={14} className="text-amber-500" />
+                <span>Acceder con alumno de prueba (Demo)</span>
+              </button>
             </div>
-          </div>
+          )}
         </div>
 
-        <p className="text-xs text-center text-ink-muted pt-3 pb-1 font-medium">
-          Al continuar confirmas ser estudiante activo de la Universidad Tecnológica del Perú. Lee nuestra{' '}
-          <a href="/privacidad.html" target="_blank" rel="noopener noreferrer" className="text-accent font-bold hover:underline">
-            Política de Privacidad
-          </a>.
-        </p>
+        {/* Pie de pantalla */}
+        <div className="pt-3 text-center">
+          <p className="text-[11px] text-ink-muted font-medium">
+            Comunidad exclusiva para estudiantes de la Universidad Tecnológica del Perú.
+          </p>
+        </div>
       </div>
     );
   }
 
-  // --- M02: CÓDIGO OTP 6 DÍGITOS ---
+  // =========================================================================
+  // PANTALLA 2: VERIFICACIÓN OTP 6 DÍGITOS
+  // =========================================================================
   if (currentScreen === 'm02_otp') {
+    const targetEmail = isResetFlow ? resetEmailTarget : regEmail;
+
     return (
-      <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn">
+      <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
         <div>
           <button
-            onClick={() => setCurrentScreen('m01_bienvenida')}
-            className="p-1 -ml-1 text-ink-muted hover:text-ink mb-4 flex items-center space-x-1 text-xs font-bold"
+            onClick={() => {
+              setCurrentScreen('m01_bienvenida');
+              setErrorMsg('');
+            }}
+            className="p-1 rounded-full text-ink-muted hover:text-ink dark:hover:text-ink-light mb-3 inline-flex items-center space-x-1"
           >
-            <ArrowLeft size={16} />
-            <span>Volver</span>
+            <ArrowLeft size={18} />
+            <span className="text-xs font-bold">Volver</span>
           </button>
 
-          <div className="k-card p-5 space-y-4 border-2 border-line/80 dark:border-line-dark rounded-3xl shadow-sm">
-            <div className="w-12 h-12 rounded-2xl bg-accent-soft text-accent flex items-center justify-center">
-              <Lock size={22} />
-            </div>
+          <h2 className="text-xl font-black text-ink dark:text-ink-light tracking-tight mb-1">
+            {isResetFlow ? 'Nueva Contraseña' : 'Verifica tu Correo'}
+          </h2>
+          <p className="text-xs text-ink-soft dark:text-ink-muted mb-4 leading-relaxed">
+            Ingresa el código de 6 dígitos que enviamos a{' '}
+            <strong className="text-accent">{targetEmail || 'tu correo'}</strong>:
+          </p>
 
-            <div>
-              <h1 className="text-lg font-black text-ink dark:text-ink-light tracking-tight">
-                Código de Verificación
-              </h1>
-              <p className="text-xs text-ink-soft dark:text-ink-muted mt-1 font-medium">
-                Enviamos un código de 6 dígitos a <strong className="text-ink dark:text-ink-light">{email}</strong>
-              </p>
+          {errorMsg && (
+            <div className="mb-3 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl text-xs text-rose-700 dark:text-rose-300">
+              {errorMsg}
             </div>
+          )}
 
-            {/* OTP Digits (6 dígitos con autopegado) */}
-            <div className="flex justify-between gap-1.5 py-1" onPaste={handleOtpPaste}>
-              {otpCode.map((digit, index) => (
+          {/* OTP Digits */}
+          <div className="flex justify-between gap-1.5 py-2" onPaste={handleOtpPaste}>
+            {otpCode.map((digit, index) => (
+              <input
+                key={index}
+                id={`otp-${index}`}
+                type="text"
+                inputMode="numeric"
+                maxLength={1}
+                value={digit}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '');
+                  const newOtp = [...otpCode];
+                  newOtp[index] = val;
+                  setOtpCode(newOtp);
+                  if (val && index < 5) {
+                    document.getElementById(`otp-${index + 1}`)?.focus();
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Backspace' && !otpCode[index] && index > 0) {
+                    document.getElementById(`otp-${index - 1}`)?.focus();
+                  }
+                }}
+                className="w-12 h-14 text-center text-xl font-black rounded-xl border-2 border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:border-accent focus:outline-none text-ink dark:text-ink-light shadow-sm"
+              />
+            ))}
+          </div>
+
+          {/* Si es flujo de recuperación, solicitar la nueva contraseña */}
+          {isResetFlow && (
+            <div className="space-y-3 mt-4 pt-3 border-t border-line dark:border-line-dark">
+              <div>
+                <label className="text-xs font-black text-ink dark:text-ink-light mb-1 block">
+                  Nueva Contraseña
+                </label>
                 <input
-                  key={index}
-                  id={`otp-${index}`}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={digit}
-                  disabled={isLoading}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, '');
-                    const newOtp = [...otpCode];
-                    newOtp[index] = val;
-                    setOtpCode(newOtp);
-                    if (val && index < 5) {
-                      document.getElementById(`otp-${index + 1}`)?.focus();
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Backspace' && !otpCode[index] && index > 0) {
-                      document.getElementById(`otp-${index - 1}`)?.focus();
-                    }
-                  }}
-                  className="w-11 h-14 text-center text-xl font-black bg-white dark:bg-surface-dark border-2 border-line dark:border-line-dark rounded-2xl text-ink dark:text-ink-light focus:outline-none focus:border-accent"
+                  type="password"
+                  required
+                  placeholder="Mínimo 6 caracteres"
+                  value={resetNewPassword}
+                  onChange={(e) => setResetNewPassword(e.target.value)}
+                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
                 />
-              ))}
+              </div>
+              <div>
+                <label className="text-xs font-black text-ink dark:text-ink-light mb-1 block">
+                  Confirmar Nueva Contraseña
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Repite la contraseña"
+                  value={resetConfirmPassword}
+                  onChange={(e) => setResetConfirmPassword(e.target.value)}
+                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                />
+              </div>
             </div>
+          )}
 
-            {errorMsg && (
-              <p className="text-xs text-semantic-danger text-center font-semibold">{errorMsg}</p>
-            )}
-
+          <div className="pt-4">
             <button
               onClick={handleOtpSubmit}
-              disabled={isLoading}
+              disabled={isLoading || otpCode.join('').length < 6}
               className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
             >
               {isLoading ? (
                 <Loader2 size={18} className="animate-spin" />
               ) : (
                 <>
-                  <span>Verificar código</span>
-                  <CheckCircle2 size={16} />
+                  <span>{isResetFlow ? 'Actualizar Contraseña' : 'Verificar y Continuar'}</span>
+                  <ArrowRight size={16} />
                 </>
               )}
             </button>
           </div>
-        </div>
 
-        <button
-          type="button"
-          onClick={handleResendOtp}
-          disabled={resendCooldown > 0 || isLoading}
-          className="text-center text-xs text-ink-muted hover:text-ink py-2 font-medium disabled:opacity-50 flex items-center justify-center space-x-1 mx-auto"
-        >
-          <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
-          <span>
-            {resendCooldown > 0
-              ? `¿No recibiste el correo? Reenviar en ${resendCooldown}s`
-              : 'Reenviar código de 6 dígitos'}
-          </span>
-        </button>
+          <div className="pt-3 text-center">
+            <button
+              onClick={handleResendOtp}
+              disabled={resendCooldown > 0}
+              className="text-xs font-bold text-accent disabled:text-ink-muted hover:underline"
+            >
+              {resendCooldown > 0 ? `Reenviar código en ${resendCooldown}s` : '¿No recibiste el código? Reenviar'}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
 
-  // --- M03: PERFIL DECLARADO ---
-  if (currentScreen === 'm03_onboarding') {
+  // =========================================================================
+  // PANTALLA 3: CONFIGURAR PERFIL ACADÉMICO (DATOS E INTERESES)
+  // =========================================================================
+  if (currentScreen === 'm03_onboarding' || currentScreen === 'm04_intereses' || currentScreen === 'm05_consentimientos') {
     return (
       <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
         <div>
-          <span className="text-xs font-black text-accent uppercase tracking-wider">Paso 1 de 3</span>
-          <h1 className="text-lg font-black text-ink dark:text-ink-light tracking-tight mt-0.5 mb-1">
-            Datos Académicos
-          </h1>
-          <p className="text-xs text-ink-soft dark:text-ink-muted mb-3 font-medium">
-            Identidad real para interactuar con tus compañeros de sede.
-          </p>
+          <div className="mb-4">
+            <span className="text-[11px] font-black text-accent uppercase tracking-wider">Paso Final</span>
+            <h2 className="text-xl font-black text-ink dark:text-ink-light tracking-tight mt-0.5">
+              Tu Perfil en el Campus
+            </h2>
+            <p className="text-xs text-ink-muted">
+              Conéctate con compañeros de tu carrera, ciclo y sede.
+            </p>
+          </div>
 
-          <form id="profile-form" onSubmit={handleProfileSubmit} className="k-card p-4 space-y-3.5 border-2 border-line/80 dark:border-line-dark rounded-2xl shadow-sm">
-            {/* Foto de perfil opcional */}
-            <div className="flex flex-col items-center justify-center pt-1 pb-1">
-              <div
-                onClick={() => avatarInputRef.current?.click()}
-                className="relative w-20 h-20 rounded-full border-2 border-dashed border-accent hover:border-brand-primary bg-accent-soft/40 flex items-center justify-center cursor-pointer overflow-hidden shadow-sm transition group"
-                title="Subir foto de perfil (opcional)"
-              >
+          {errorMsg && (
+            <div className="mb-3 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl text-xs text-rose-700 dark:text-rose-300">
+              {errorMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleFinalizarPerfil} className="space-y-4">
+            {/* Foto de Perfil Opcional */}
+            <div className="flex items-center space-x-3.5 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-line dark:border-line-dark">
+              <div className="relative w-14 h-14 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
                 {avatarUrl ? (
-                  <img src={avatarUrl} alt="Foto de perfil" className="w-full h-full object-cover" />
-                ) : isUploadingAvatar ? (
-                  <Loader2 size={24} className="text-accent animate-spin" />
+                  <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
-                  <div className="flex flex-col items-center text-accent">
-                    <Camera size={22} />
-                    <span className="text-[10px] font-extrabold mt-0.5">Subir foto</span>
+                  <User size={24} className="text-ink-muted" />
+                )}
+                {isUploadingAvatar && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <Loader2 size={16} className="animate-spin text-white" />
                   </div>
                 )}
-                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-                  <Camera size={20} className="text-white" />
-                </div>
               </div>
-              <input
-                ref={avatarInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleAvatarChange}
-                disabled={isUploadingAvatar}
-              />
-              <p className="text-[11px] text-ink-muted mt-1 font-medium">
-                {avatarUrl ? 'Foto lista · Clic para cambiar' : 'Foto de perfil (opcional)'}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">Nombre</label>
+              <div className="flex-1">
                 <input
-                  type="text"
-                  value={formData.nombre}
-                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                  placeholder="Tu nombre real"
-                  className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
-                  required
+                  type="file"
+                  ref={avatarInputRef}
+                  onChange={handleAvatarChange}
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
                 />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">Apellido</label>
-                <input
-                  type="text"
-                  value={formData.apellido}
-                  onChange={(e) => setFormData({ ...formData, apellido: e.target.value })}
-                  placeholder="Tu apellido"
-                  className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
-                  required
-                />
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="px-3 py-1.5 bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark hover:border-accent text-xs font-bold text-ink dark:text-ink-light rounded-xl transition shadow-sm inline-flex items-center space-x-1.5"
+                >
+                  <Camera size={14} className="text-accent" />
+                  <span>{avatarUrl ? 'Cambiar foto' : 'Subir foto (opcional)'}</span>
+                </button>
+                <p className="text-[10px] text-ink-muted mt-1">Se optimiza automáticamente para el campus.</p>
               </div>
             </div>
 
+            {/* Carrera */}
             <div>
-              <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">Sede UTP</label>
-              <select
-                value={formData.sede}
-                onChange={(e) => setFormData({ ...formData, sede: e.target.value })}
-                className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
-              >
-                {SEDES_UTP.map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">Carrera</label>
+              <label className="text-xs font-black text-ink dark:text-ink-light mb-1 block">
+                Carrera Universitaria
+              </label>
               <select
                 value={formData.carrera}
                 onChange={(e) => setFormData({ ...formData, carrera: e.target.value })}
-                className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
+                className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light focus:outline-none focus:ring-2 focus:ring-accent"
               >
-                {CARRERAS_UTP.map(c => (
-                  <option key={c.id} value={c.nombre}>{c.nombre}</option>
+                {CARRERAS_UTP.map((c) => (
+                  <option key={c} value={c}>{c}</option>
                 ))}
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            {/* Ciclo y Sede */}
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">Ciclo</label>
+                <label className="text-xs font-black text-ink dark:text-ink-light mb-1 block">
+                  Ciclo Actual
+                </label>
                 <select
                   value={formData.ciclo}
                   onChange={(e) => setFormData({ ...formData, ciclo: Number(e.target.value) })}
-                  className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
+                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light focus:outline-none focus:ring-2 focus:ring-accent"
                 >
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(c => (
-                    <option key={c} value={c}>{c}.° Ciclo</option>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((c) => (
+                    <option key={c} value={c}>Ciclo {c}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">Fec. Nacimiento</label>
-                <input
-                  type="date"
-                  value={formData.fechaNacimiento}
-                  onChange={(e) => setFormData({ ...formData, fechaNacimiento: e.target.value })}
-                  className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
-                  required
-                />
+                <label className="text-xs font-black text-ink dark:text-ink-light mb-1 block">
+                  Sede UTP
+                </label>
+                <select
+                  value={formData.sede}
+                  onChange={(e) => setFormData({ ...formData, sede: e.target.value })}
+                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  {SEDES_UTP.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
-            <div className="p-2.5 bg-slate-100 dark:bg-surface-dark rounded-xl text-xs text-ink-muted">
-              Datos declarados bajo declaración jurada. Verificados al validar con base institucional UTP.
-            </div>
-
-            {errorMsg && (
-              <p className="text-xs text-semantic-danger font-semibold">{errorMsg}</p>
-            )}
-          </form>
-        </div>
-
-        <div className="pt-3 pb-1">
-          <button
-            type="submit"
-            form="profile-form"
-            className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
-          >
-            <span>Continuar a Intereses</span>
-            <ArrowRight size={16} />
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // --- M04: SELECCIÓN DE INTERESES ---
-  if (currentScreen === 'm04_intereses') {
-    return (
-      <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
-        <div>
-          <button
-            onClick={() => setCurrentScreen('m03_onboarding')}
-            className="p-1 -ml-1 text-ink-muted hover:text-ink mb-3 flex items-center space-x-1 text-xs font-bold"
-          >
-            <ArrowLeft size={16} />
-            <span>Atrás</span>
-          </button>
-
-          <span className="text-xs font-black text-accent uppercase tracking-wider">Paso 2 de 3</span>
-          <h1 className="text-lg font-black text-ink dark:text-ink-light tracking-tight mt-0.5 mb-1">
-            Tus Intereses Académicos
-          </h1>
-          <p className="text-xs text-ink-soft dark:text-ink-muted mb-3 font-medium">
-            Elige temas para recibir encuestas afines y recomendarte talleres oficiales.
-          </p>
-
-          <div className="k-card p-4 mb-3 border-2 border-line/80 dark:border-line-dark rounded-2xl shadow-sm">
-            <div className="flex flex-wrap gap-2">
-              {INTERESES_DISPONIBLES.map((interes) => {
-                const selected = selectedIntereses.includes(interes);
-                return (
-                  <button
-                    key={interes}
-                    type="button"
-                    onClick={() => toggleInteres(interes)}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition ${
-                      selected
-                        ? 'bg-brand-primary text-white border-brand-primary shadow-sm'
-                        : 'bg-surface dark:bg-surface-dark text-ink dark:text-ink-light border-line dark:border-line-dark hover:border-brand-primary/40'
-                    }`}
-                  >
-                    {selected && <Check size={13} className="inline mr-1 stroke-[3]" />}
-                    <span>{interes}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="p-3 bg-white dark:bg-surface-cardDark rounded-xl border border-line dark:border-line-dark text-xs text-ink-muted">
-            <strong className="text-ink dark:text-ink-light">Privacidad:</strong> Los intereses se registran en tu perfil para filtrar encuestas, no dependen de los grupos en los que participes.
-          </div>
-
-          {errorMsg && (
-            <p className="text-xs text-semantic-danger mt-2 font-bold">{errorMsg}</p>
-          )}
-        </div>
-
-        <div className="pt-3 pb-1">
-          <button
-            onClick={handleInteresesSubmit}
-            className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
-          >
-            <span>Continuar a Consentimientos</span>
-            <ArrowRight size={16} />
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // --- M05: CONSENTIMIENTOS LEGALES (LEY 29733) ---
-  if (currentScreen === 'm05_consentimientos') {
-    return (
-      <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
-        <div>
-          <button
-            onClick={() => setCurrentScreen('m04_intereses')}
-            className="p-1 -ml-1 text-ink-muted hover:text-ink mb-2 flex items-center space-x-1 text-xs font-bold"
-          >
-            <ArrowLeft size={16} />
-            <span>Atrás</span>
-          </button>
-
-          <span className="text-xs font-black text-accent uppercase tracking-wider">Paso 3 de 3 — Legal Perú</span>
-          <h1 className="text-lg font-black text-ink dark:text-ink-light tracking-tight mt-0.5 mb-1">
-            Consentimientos Separados (Ley 29733)
-          </h1>
-          <p className="text-xs text-ink-soft dark:text-ink-muted mb-3 font-medium">
-            Cada finalidad requiere tu autorización explícita e independiente.
-          </p>
-
-          <div className="space-y-3">
-            {/* Consentimiento 1: Cuenta (Obligatorio, bloqueado) */}
-            <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
-              <div>
-                <span className="text-xs font-black text-ink dark:text-ink-light block">1. Crear y operar tu cuenta</span>
-                <span className="text-xs text-ink-muted">Identificación con carrera y ciclo institucional</span>
-              </div>
-              <span className="text-xs bg-slate-100 dark:bg-slate-800 text-ink-muted font-bold px-2.5 py-1 rounded-lg">
-                Necesario
-              </span>
-            </div>
-
-            {/* Consentimiento 2: Encuestas (Activo por defecto) */}
-            <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
-              <div>
-                <span className="text-xs font-black text-ink dark:text-ink-light block">2. Recibir encuestas de alumnos</span>
-                <span className="text-xs text-ink-muted">Máx 3 por semana en bandeja (anónimo)</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={localConsentimientos.encuestas}
-                onChange={(e) => setLocalConsentimientos({
-                  ...localConsentimientos,
-                  encuestas: e.target.checked
-                })}
-                className="w-5 h-5 accent-accent rounded cursor-pointer"
-              />
-            </div>
-
-            {/* Consentimiento 3: Métricas (Activo por defecto) */}
-            <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
-              <div>
-                <span className="text-xs font-black text-ink dark:text-ink-light block">3. Métricas agregadas para UTP</span>
-                <span className="text-xs text-ink-muted">Estadísticas anónimas con umbral ≥ 30 personas</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={localConsentimientos.metricas}
-                onChange={(e) => setLocalConsentimientos({
-                  ...localConsentimientos,
-                  metricas: e.target.checked
-                })}
-                className="w-5 h-5 accent-accent rounded cursor-pointer"
-              />
-            </div>
-
-            {/* Consentimiento 4: Compartir perfil con UTP (APAGADO por defecto) */}
-            <div className={`p-4 rounded-2xl border-2 transition ${
-              localConsentimientos.perfil_universidad
-                ? 'bg-accent-soft/40 dark:bg-accent-dark/30 border-accent shadow-sm'
-                : 'bg-white dark:bg-surface-cardDark border-line dark:border-line-dark'
-            }`}>
+            {/* Intereses Estudiantiles */}
+            <div>
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-black text-brand-primary dark:text-teal-300">
-                  4. Que tu universidad vea lo que haces aquí
+                <label className="text-xs font-black text-ink dark:text-ink-light">
+                  Tus Intereses (mínimo 2)
+                </label>
+                <span className="text-[11px] font-bold text-accent">
+                  {selectedIntereses.length} seleccionados
                 </span>
-                <input
-                  type="checkbox"
-                  checked={localConsentimientos.perfil_universidad}
-                  onChange={(e) => setLocalConsentimientos({
-                    ...localConsentimientos,
-                    perfil_universidad: e.target.checked
-                  })}
-                  className="w-5 h-5 accent-accent rounded cursor-pointer"
-                />
               </div>
-
-              <p className="text-xs text-ink-soft dark:text-ink-muted leading-relaxed">
-                La UTP tiene programas como <strong>Impulsa</strong> y <strong>Generación Top</strong>, y hoy solo puede encontrarte por tu promedio. Si activas esto, cuando tu universidad se sume a Kampuz también va a ver lo que construiste aquí: a cuántos compañeros asesoraste, qué grupos creaste, en qué te has venido formando.
-              </p>
-
-              <div className="mt-2.5 pt-2 border-t border-line dark:border-line-dark text-xs text-ink-muted space-y-1">
-                <p><strong>Qué se comparte:</strong> tu nombre, tu carrera, tu ciclo y tu perfil de habilidades con su evidencia.</p>
-                <p><strong>Qué no:</strong> tus mensajes, tus chats, ni qué respondiste en las encuestas.</p>
-                <p className="italic text-accent font-bold">Apagado por defecto. Puedes apagarlo cuando quieras.</p>
+              <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-line dark:border-line-dark">
+                {INTERESES_DISPONIBLES.map((int) => {
+                  const isSelected = selectedIntereses.includes(int);
+                  return (
+                    <button
+                      key={int}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedIntereses(selectedIntereses.filter(i => i !== int));
+                        } else {
+                          setSelectedIntereses([...selectedIntereses, int]);
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center space-x-1 ${
+                        isSelected
+                          ? 'bg-accent text-white shadow-sm'
+                          : 'bg-white dark:bg-surface-cardDark text-ink-soft dark:text-ink-muted border border-line dark:border-line-dark hover:border-accent'
+                      }`}
+                    >
+                      <span>{int}</span>
+                      {isSelected && <Check size={12} />}
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          </div>
 
-          <div className="pt-2 text-center">
-            <a
-              href="/privacidad.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-accent font-bold hover:underline inline-flex items-center space-x-1"
+            <button
+              type="submit"
+              disabled={isLoading || selectedIntereses.length < 2}
+              className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition mt-3"
             >
-              <span>Leer Política de Privacidad de Kampuz (Ley 29733)</span>
-              <ExternalLink size={12} />
-            </a>
-          </div>
-
-          {errorMsg && (
-            <p className="text-xs text-semantic-danger mt-2 font-bold">{errorMsg}</p>
-          )}
-        </div>
-
-        <div className="pt-3 pb-1">
-          <button
-            onClick={handleConsentimientosFinalize}
-            disabled={isLoading}
-            className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
-          >
-            {isLoading ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
-              <>
-                <span>Finalizar y entrar a Kampuz</span>
-                <CheckCircle2 size={16} />
-              </>
-            )}
-          </button>
+              {isLoading ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <>
+                  <span>¡Todo listo! Entrar a Kampuz</span>
+                  <ArrowRight size={16} />
+                </>
+              )}
+            </button>
+          </form>
         </div>
       </div>
     );

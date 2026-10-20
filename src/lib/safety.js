@@ -26,7 +26,7 @@ export const NORMAS_CONVIVENCIA = [
  * Envía un reporte formal a la tabla public.reportes
  */
 export async function enviarReporte({ autorId, tipo, objetoId, motivo, detalle = '' }) {
-  if (!isSupabaseConfigured()) {
+  if (!isSupabaseConfigured) {
     console.log('[Safety Mock] Reporte simulado:', { autorId, tipo, objetoId, motivo, detalle });
     return { success: true };
   }
@@ -57,7 +57,7 @@ export async function enviarReporte({ autorId, tipo, objetoId, motivo, detalle =
  * Bloquea a un usuario de forma recíproca
  */
 export async function bloquearUsuario(bloqueadorId, bloqueadoId) {
-  if (!isSupabaseConfigured()) {
+  if (!isSupabaseConfigured) {
     return { success: true };
   }
 
@@ -86,7 +86,7 @@ export async function bloquearUsuario(bloqueadorId, bloqueadoId) {
  * Desbloquea a un usuario previamente bloqueado
  */
 export async function desbloquearUsuario(bloqueadorId, bloqueadoId) {
-  if (!isSupabaseConfigured()) {
+  if (!isSupabaseConfigured) {
     return { success: true };
   }
 
@@ -109,7 +109,7 @@ export async function desbloquearUsuario(bloqueadorId, bloqueadoId) {
  * Obtiene la lista de usuarios bloqueados por el usuario actual
  */
 export async function fetchUsuariosBloqueados(userId) {
-  if (!isSupabaseConfigured() || !userId) {
+  if (!isSupabaseConfigured || !userId) {
     return [];
   }
 
@@ -137,7 +137,7 @@ export async function fetchUsuariosBloqueados(userId) {
  * Obtiene los reportes abiertos para vista de moderación
  */
 export async function fetchReportesModeracion() {
-  if (!isSupabaseConfigured()) {
+  if (!isSupabaseConfigured) {
     return [];
   }
 
@@ -168,7 +168,7 @@ export async function fetchReportesModeracion() {
  * Actualiza el estado de un reporte (moderadores)
  */
 export async function actualizarEstadoReporte(reporteId, nuevoEstado) {
-  if (!isSupabaseConfigured()) {
+  if (!isSupabaseConfigured) {
     return { success: true };
   }
 

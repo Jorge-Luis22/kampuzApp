@@ -999,12 +999,12 @@ export default function GruposView() {
                       </div>
                       <div className="flex justify-between items-center pt-1">
                         <span className="text-xs text-ink-muted font-medium">
-                          Faltan {Math.max(0, (esp.umbral || 15) - (esp.apoyos || 1))} para visibilidad pública
+                          Faltan {Math.max(0, (esp.umbral || 15) - (esp.apoyos || 1))} firmas para activarse
                         </span>
                         {esp.yaApoye ? (
                           <span className="px-3 py-1.5 bg-emerald-100 text-emerald-800 font-extrabold text-xs rounded-xl flex items-center space-x-1">
                             <CheckCircle2 size={12} />
-                            <span>Apoyado</span>
+                            <span>¡Apoyado!</span>
                           </span>
                         ) : (
                           <button
@@ -1012,10 +1012,10 @@ export default function GruposView() {
                               e.stopPropagation();
                               handleApoyarPropuesta(esp.id);
                             }}
-                            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs rounded-xl flex items-center space-x-1 shadow-sm transition"
+                            className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white font-extrabold text-xs rounded-xl flex items-center space-x-1 shadow-sm transition"
                           >
                             <ThumbsUp size={12} />
-                            <span>Apoyar (+1)</span>
+                            <span>Apoyar</span>
                           </button>
                         )}
                       </div>
@@ -1035,7 +1035,7 @@ export default function GruposView() {
         </div>
       )}
 
-      {/* Modal: Proponer Grupo (M16) */}
+      {/* Modal: Proponer Grupo */}
       {showProponerModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 animate-fadeIn">
@@ -1043,7 +1043,7 @@ export default function GruposView() {
               Proponer una comunidad estudiantil
             </h3>
             <p className="text-xs text-ink-soft dark:text-ink-muted leading-relaxed">
-              Requiere apoyos de tus compañeros (umbral de campus) para convertirse en un espacio público de sede.
+              Crea una iniciativa estudiantil. Al reunir las firmas de apoyo de tus compañeros, se convertirá en un grupo oficial del campus.
             </p>
 
             <form onSubmit={handleProponerSubmit} className="space-y-3">

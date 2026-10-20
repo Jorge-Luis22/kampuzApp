@@ -72,13 +72,14 @@ function AppContent() {
     };
   }, [currentScreen, activeTab, activeEspacioId, activeConsultaId]);
 
-  // If in University Web Panel mode (W01-W06)
+  // If in University Web Panel mode
   if (currentScreen === 'panel_utp') {
     return <PanelUniversidadView />;
   }
 
-  // If in Onboarding / Registration screens (M01-M05)
+  // Si no hay usuario autenticado o está en flujo de acceso / registro
   if (
+    !user ||
     currentScreen === 'm01_bienvenida' ||
     currentScreen === 'm02_otp' ||
     currentScreen === 'm03_onboarding' ||

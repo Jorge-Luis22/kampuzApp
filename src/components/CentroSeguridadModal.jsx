@@ -145,7 +145,6 @@ export default function CentroSeguridadModal({ isOpen, onClose, currentUser }) {
             <div>
               <h3 className="font-extrabold text-sm sm:text-base text-ink dark:text-ink-light flex items-center gap-1.5">
                 <span>Centro de Seguridad</span>
-                <span className="text-[10px] font-bold bg-accent/20 text-accent px-1.5 py-0.5 rounded">M33</span>
               </h3>
               <p className="text-[11px] text-ink-muted">Normas, bloqueos y reportes comunitarios</p>
             </div>

@@ -50,16 +50,16 @@ export default function InicioView() {
       <div className="flex items-center justify-between pt-1 gap-3">
         <div className="flex-1 min-w-0 pr-1">
           <div className="flex items-center space-x-1.5 mb-1 flex-wrap gap-y-1">
-            <span className="text-xs font-semibold text-ink-muted">Bienvenida,</span>
+            <span className="text-xs font-semibold text-ink-muted">Bienvenido(a),</span>
             <span className="text-[11px] bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-300 shrink-0">
-              UTP Sede {user.sede}
+              UTP Sede {user?.sede || 'Lima'}
             </span>
           </div>
           <h1 className="text-xl font-black text-ink dark:text-ink-light tracking-tight truncate leading-tight">
-            {user.nombre} {user.apellido}
+            {user?.nombre || 'Estudiante'} {user?.apellido || ''}
           </h1>
           <p className="text-xs font-bold text-brand-primary dark:text-teal-300 mt-0.5 truncate">
-            {user.carrera} · {user.ciclo}.° Ciclo
+            {user?.carrera || 'UTP'} {user?.ciclo ? `· ${user.ciclo}.° Ciclo` : ''}
           </p>
         </div>
 
@@ -68,12 +68,16 @@ export default function InicioView() {
           className="relative shrink-0 cursor-pointer ring-2 ring-brand-primary/20 dark:ring-accent/40 rounded-2xl p-0.5 hover:scale-105 transition"
           title="Ver mi perfil"
         >
-          <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-sm bg-slate-200 dark:bg-slate-800">
-            <img
-              src={user.fotoUrl}
-              alt={user.nombre}
-              className="w-full h-full object-cover object-center"
-            />
+          <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-sm bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-black text-ink-muted">
+            {user?.fotoUrl ? (
+              <img
+                src={user.fotoUrl}
+                alt={user?.nombre || ''}
+                className="w-full h-full object-cover object-center"
+              />
+            ) : (
+              (user?.nombre || 'U').charAt(0).toUpperCase()
+            )}
           </div>
           <div className="absolute -bottom-1 -right-1 bg-accent text-white p-1 rounded-full shadow-md border-2 border-white dark:border-surface-cardDark">
             <ShieldCheck size={13} />
@@ -259,7 +263,7 @@ export default function InicioView() {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <h2 className="text-sm font-black uppercase tracking-wider text-ink dark:text-ink-light">
-              Dudas en {user.carrera}
+              Dudas en {user?.carrera || 'tu Carrera'}
             </h2>
             <span className="text-xs bg-brand-primary-soft dark:bg-brand-dark text-brand-primary dark:text-teal-300 font-black px-2 py-0.5 rounded-md">
               Ciclo ≥ 5 orienta

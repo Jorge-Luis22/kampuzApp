@@ -423,7 +423,7 @@ export default function EncuestasView() {
           <div className="space-y-3 pt-5">
             <div className="flex items-center space-x-1.5 text-xs text-ink-muted justify-center font-medium">
               <ShieldCheck size={16} className="text-accent" />
-              <span>Respuestas 100% anónimas y agregadas según Ley 29733</span>
+              <span>Tus respuestas son totalmente anónimas y confidenciales</span>
             </div>
 
             <button
@@ -459,31 +459,31 @@ export default function EncuestasView() {
             <span>Ajustar filtro</span>
           </button>
 
-          <div className="k-card p-5 space-y-4 border-2 border-rose-300 dark:border-rose-900/60 rounded-3xl bg-white dark:bg-surface-cardDark shadow-sm">
-            <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-semantic-danger flex items-center justify-center">
+          <div className="k-card p-5 space-y-4 border-2 border-amber-300 dark:border-amber-900/60 rounded-3xl bg-white dark:bg-surface-cardDark shadow-sm">
+            <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
               <AlertTriangle size={28} />
             </div>
 
             <div>
-              <span className="text-xs font-black text-semantic-danger uppercase tracking-wider block">
-                Bloqueo de Seguridad Legal (Umbral &lt; {umbralMinimo})
+              <span className="text-xs font-black text-amber-600 uppercase tracking-wider block">
+                Audiencia insuficiente
               </span>
               <h1 className="text-lg font-black text-ink dark:text-ink-light tracking-tight mt-1">
-                Segmento menor a {umbralMinimo} alumnos
+                Se necesitan al menos {umbralMinimo} compañeros
               </h1>
             </div>
 
-            <div className="p-4 bg-rose-50 dark:bg-rose-950/30 rounded-2xl border border-rose-200 dark:border-rose-900">
-              <div className="text-3xl font-black text-semantic-danger">
-                {alcanceCalculado} alumnos
+            <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-900">
+              <div className="text-3xl font-black text-amber-700 dark:text-amber-300">
+                {alcanceCalculado} alumnos encontrados
               </div>
-              <p className="text-sm text-rose-900 dark:text-rose-200 font-semibold mt-1">
-                "Muy pocos. Con menos de {umbralMinimo} personas alguien podría quedar identificado. Amplía el rango de ciclos o quita un filtro."
+              <p className="text-xs text-amber-900 dark:text-amber-200 font-semibold mt-1.5 leading-relaxed">
+                Para proteger la privacidad de todos y asegurar que ninguna respuesta sea deducible, la audiencia mínima es de {umbralMinimo} estudiantes.
               </p>
             </div>
 
             <p className="text-xs text-ink-soft dark:text-ink-muted leading-relaxed">
-              Bajo la <strong>Ley 29733 de Protección de Datos Personales</strong>, los segmentos deben contar con un mínimo de {umbralMinimo} estudiantes para garantizar el anonimato estadístico estricto.
+              Te recomendamos ampliar los ciclos o incluir otras carreras afines de tu sede para que tu investigación tenga el alcance necesario.
             </p>
           </div>
         </div>
@@ -851,14 +851,14 @@ export default function EncuestasView() {
             </p>
 
             {alcanceCalculado < umbralMinimo ? (
-              <div className="mt-2 p-2 bg-rose-50 dark:bg-rose-950/40 text-semantic-danger rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 border border-rose-200">
+              <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 border border-amber-200">
                 <AlertTriangle size={15} />
-                <span>Bajo el umbral legal (&lt;{umbralMinimo}). Se bloqueará el envío.</span>
+                <span>Pocos compañeros ({alcanceCalculado}/{umbralMinimo}). Amplía el filtro para enviar.</span>
               </div>
             ) : (
-              <div className="mt-2 p-2 bg-emerald-50 dark:bg-emerald-950/40 text-semantic-success rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 border border-emerald-200">
+              <div className="mt-2 p-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 border border-emerald-200">
                 <CheckCircle2 size={15} />
-                <span>Segmento anónimo y válido según Ley 29733 (≥{umbralMinimo})</span>
+                <span>Audiencia suficiente y anónima ({alcanceCalculado} compañeros)</span>
               </div>
             )}
           </div>
@@ -1037,7 +1037,7 @@ export default function EncuestasView() {
           <div className="w-full max-w-sm max-h-[85vh] bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 flex flex-col animate-fadeIn">
             <div className="flex items-center justify-between pb-2 border-b border-line dark:border-line-dark shrink-0">
               <span className="text-xs font-black uppercase text-ink dark:text-ink-light tracking-wider">
-                Resultados Agregados (Ley 29733)
+                Resultados de la Encuesta
               </span>
               <button
                 onClick={() => setEncuestaResultadosSeleccionada(null)}

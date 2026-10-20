@@ -283,7 +283,7 @@ export async function calcularHabilidadesReales(userId) {
  * y luego cierra la sesión y limpia el almacenamiento local.
  */
 export async function eliminarCuentaUsuario() {
-  if (!isSupabaseConfigured()) {
+  if (!isSupabaseConfigured) {
     localStorage.clear();
     return { success: true };
   }

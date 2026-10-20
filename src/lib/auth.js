@@ -1,25 +1,22 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 
 /**
- * Verifica si un correo está autorizado para acceder a Kampus:
- * - Debe terminar en @utp.edu.pe, O
- * - Debe figurar en la tabla correos_invitados (profesores, jurado, testers)
+ * Verifica si un correo está autorizado para acceder a Kampuz:
+ * - Dominio @utp.edu.pe, O
+ * - Figura en la tabla correos_invitados
  */
 export async function isEmailAllowed(email) {
   if (!email || typeof email !== 'string') return false;
   const cleanEmail = email.trim().toLowerCase();
 
-  // 1. Dominio institucional oficial
   if (cleanEmail.endsWith('@utp.edu.pe')) {
     return true;
   }
 
-  // Si Supabase no está configurado, solo aceptar dominio utp
   if (!isSupabaseConfigured) {
     return false;
   }
 
-  // 2. Verificar lista de invitados autorizados en la base de datos
   try {
     const { data, error } = await supabase
       .from('correos_invitados')
@@ -28,61 +25,191 @@ export async function isEmailAllowed(email) {
       .limit(1);
 
     if (error) {
-      console.warn('[Kampus Auth] Error consultando correos_invitados:', error.message);
+      console.warn('[Kampuz Auth] Error consultando correos_invitados:', error.message);
       return false;
     }
 
     return Boolean(data && data.length > 0);
   } catch (err) {
-    console.error('[Kampus Auth] Excepción al validar correo:', err);
+    console.error('[Kampuz Auth] Excepción al validar correo:', err);
     return false;
   }
 }
 
 /**
- * Solicita el envío de código OTP de 6 dígitos al correo
+ * Obtiene el correo a partir de un usuario o correo
  */
-export async function signInWithOtp(email) {
-  const cleanEmail = email.trim().toLowerCase();
+export async function resolveEmailFromIdentifier(identifier) {
+  const clean = identifier.trim().toLowerCase();
+  if (clean.includes('@')) {
+    return clean;
+  }
 
-  // Validación previa en cliente
+  if (!isSupabaseConfigured) {
+    return `${clean}@utp.edu.pe`;
+  }
+
+  try {
+    // 1. Intentar RPC
+    const { data: rpcEmail, error: rpcErr } = await supabase.rpc('obtener_correo_por_identificador', {
+      p_identificador: clean
+    });
+
+    if (!rpcErr && rpcEmail) {
+      return rpcEmail;
+    }
+
+    // 2. Fallback consulta directa
+    const { data, error } = await supabase
+      .from('perfiles')
+      .select('correo_institucional')
+      .ilike('usuario', clean)
+      .maybeSingle();
+
+    if (!error && data?.correo_institucional) {
+      return data.correo_institucional;
+    }
+
+    // 3. Fallback inteligente: si parece código de alumno (ej. u2320732)
+    return `${clean}@utp.edu.pe`;
+  } catch (e) {
+    console.warn('[Kampuz Auth] Error resolviendo usuario:', e);
+    return `${clean}@utp.edu.pe`;
+  }
+}
+
+/**
+ * Iniciar sesión con Usuario o Correo y Contraseña
+ */
+export async function signInWithPassword(identifier, password) {
+  if (!identifier || !password) {
+    return { success: false, error: 'Ingresa tu usuario o correo y tu contraseña.' };
+  }
+
+  if (!isSupabaseConfigured) {
+    return { success: false, error: 'Supabase no está configurado.' };
+  }
+
+  try {
+    const email = await resolveEmailFromIdentifier(identifier);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      if (error.message.includes('Invalid login credentials')) {
+        return { success: false, error: 'Usuario/correo o contraseña incorrectos.' };
+      }
+      if (error.message.includes('Email not confirmed')) {
+        return { success: false, error: 'Tu correo aún no ha sido confirmado con el código de verificación.', emailNeedsConfirm: email };
+      }
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, user: data.user, session: data.session };
+  } catch (err) {
+    return { success: false, error: err.message || 'Error al iniciar sesión.' };
+  }
+}
+
+/**
+ * Registro de cuenta con Nombre, Usuario, Correo y Contraseña
+ */
+export async function signUpWithPassword({ nombre, apellido, usuario, email, password }) {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanUser = usuario.trim().toLowerCase();
+
   const allowed = await isEmailAllowed(cleanEmail);
   if (!allowed) {
     return {
       success: false,
-      error: 'Correo no autorizado. Kampus es una red cerrada exclusiva para @utp.edu.pe o invitados registrados.'
+      error: 'Correo no autorizado. Kampuz es una red universitaria exclusiva para @utp.edu.pe o invitados registrados.'
     };
   }
 
   if (!isSupabaseConfigured) {
+    return { success: false, error: 'Supabase no está configurado.' };
+  }
+
+  try {
+    // Verificar si el nombre de usuario ya existe en perfiles
+    const { data: existingUser } = await supabase
+      .from('perfiles')
+      .select('id')
+      .ilike('usuario', cleanUser)
+      .maybeSingle();
+
+    if (existingUser) {
+      return { success: false, error: 'El nombre de usuario ya está registrado por otro estudiante.' };
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password,
+      options: {
+        data: {
+          nombre: nombre.trim(),
+          apellido: apellido.trim(),
+          usuario: cleanUser
+        }
+      }
+    });
+
+    if (error) {
+      if (error.message.includes('User already registered')) {
+        return { success: false, error: 'Este correo ya tiene una cuenta registrada. Puedes iniciar sesión o recuperar tu contraseña.' };
+      }
+      return { success: false, error: error.message };
+    }
+
+    return {
+      success: true,
+      user: data.user,
+      session: data.session,
+      // Si Supabase requiere confirmar email vía código
+      needsVerification: !data.session
+    };
+  } catch (err) {
+    return { success: false, error: err.message || 'Error al crear la cuenta.' };
+  }
+}
+
+/**
+ * Solicita el envío de código OTP para verificar correo o iniciar sesión
+ */
+export async function signInWithOtp(email) {
+  const cleanEmail = email.trim().toLowerCase();
+
+  const allowed = await isEmailAllowed(cleanEmail);
+  if (!allowed) {
     return {
       success: false,
-      error: 'Supabase no está configurado. Revisa las variables en .env.local.'
+      error: 'Correo no autorizado. Kampuz es exclusivo para @utp.edu.pe o invitados registrados.'
     };
+  }
+
+  if (!isSupabaseConfigured) {
+    return { success: false, error: 'Supabase no está configurado.' };
   }
 
   try {
     const { data, error } = await supabase.auth.signInWithOtp({
       email: cleanEmail,
-      options: {
-        shouldCreateUser: true
-      }
+      options: { shouldCreateUser: true }
     });
 
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
+    if (error) return { success: false, error: error.message };
     return { success: true, data };
   } catch (err) {
-    return { success: false, error: err.message || 'Error inesperado al solicitar código.' };
+    return { success: false, error: err.message || 'Error al enviar código.' };
   }
 }
 
 /**
- * Verifica el código de 6 dígitos ingresado por el alumno
+ * Verifica código OTP de 6 dígitos
  */
-export async function verifyOtp(email, token) {
+export async function verifyOtp(email, token, type = 'email') {
   const cleanEmail = email.trim().toLowerCase();
   const cleanToken = token.trim();
 
@@ -91,19 +218,87 @@ export async function verifyOtp(email, token) {
   }
 
   try {
+    // Intentar con el tipo indicado (signup, recovery, o email)
     const { data, error } = await supabase.auth.verifyOtp({
       email: cleanEmail,
       token: cleanToken,
-      type: 'email'
+      type
+    });
+
+    if (error) {
+      // Reintento con type fallback si fuese necesario
+      if (type !== 'email') {
+        const fallback = await supabase.auth.verifyOtp({
+          email: cleanEmail,
+          token: cleanToken,
+          type: 'email'
+        });
+        if (!fallback.error) {
+          return { success: true, user: fallback.data.user, session: fallback.data.session };
+        }
+      }
+      return { success: false, error: 'Código incorrecto o vencido. Verifica tu correo.' };
+    }
+
+    return { success: true, user: data.user, session: data.session };
+  } catch (err) {
+    return { success: false, error: err.message || 'Error al verificar código.' };
+  }
+}
+
+/**
+ * Solicitar restablecimiento de contraseña vía correo
+ */
+export async function requestPasswordReset(identifier) {
+  if (!identifier) {
+    return { success: false, error: 'Ingresa tu usuario o correo institucional.' };
+  }
+
+  if (!isSupabaseConfigured) {
+    return { success: false, error: 'Supabase no está configurado.' };
+  }
+
+  try {
+    const email = await resolveEmailFromIdentifier(identifier);
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, email };
+  } catch (err) {
+    return { success: false, error: err.message || 'Error al solicitar recuperación.' };
+  }
+}
+
+/**
+ * Confirmar nueva contraseña tras verificar el código de recuperación
+ */
+export async function confirmPasswordReset(email, token, newPassword) {
+  if (!token || !newPassword) {
+    return { success: false, error: 'Ingresa el código y tu nueva contraseña.' };
+  }
+
+  try {
+    // 1. Verificar el código de recuperación
+    const verifyRes = await verifyOtp(email, token, 'recovery');
+    if (!verifyRes.success) {
+      return verifyRes;
+    }
+
+    // 2. Actualizar la contraseña del usuario autenticado
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword
     });
 
     if (error) {
       return { success: false, error: error.message };
     }
 
-    return { success: true, user: data.user, session: data.session };
+    return { success: true, user: data.user };
   } catch (err) {
-    return { success: false, error: err.message || 'Error al verificar el código.' };
+    return { success: false, error: err.message || 'Error al actualizar la contraseña.' };
   }
 }
 
@@ -120,12 +315,9 @@ export async function getProfile(userId) {
       .eq('id', userId)
       .maybeSingle();
 
-    if (perfilErr) {
-      console.warn('[Kampus Auth] Error al cargar perfil:', perfilErr.message);
+    if (perfilErr || !perfil) {
       return null;
     }
-
-    if (!perfil) return null;
 
     // Cargar consentimientos otorgados
     const { data: consentimientos } = await supabase
@@ -148,40 +340,43 @@ export async function getProfile(userId) {
 
     return {
       ...perfil,
+      usuario: perfil.usuario || perfil.correo_institucional?.split('@')[0],
       consentimientos: consentMap
     };
   } catch (err) {
-    console.error('[Kampus Auth] Excepción al obtener perfil:', err);
+    console.error('[Kampuz Auth] Excepción al obtener perfil:', err);
     return null;
   }
 }
 
 /**
- * Guarda o actualiza el perfil completo y los 4 consentimientos en la base de datos
+ * Guarda o actualiza el perfil completo en public.perfiles
+ * Los consentimientos se registran automáticamente de forma implícita.
  */
-export async function saveProfile(userId, profileData, consentimientos) {
+export async function saveProfile(userId, profileData, consentimientos = {}) {
   if (!isSupabaseConfigured || !userId) {
     return { success: false, error: 'Sesión no válida o Supabase no configurado.' };
   }
 
   try {
-    // 1. Guardar en public.perfiles
     const perfilPayload = {
       id: userId,
       correo_institucional: profileData.correoInstitucional,
       correo_alterno: profileData.correoAlterno || null,
       nombre: profileData.nombre,
       apellido: profileData.apellido,
+      usuario: profileData.usuario || profileData.correoInstitucional?.split('@')[0],
       foto_url: profileData.fotoUrl || null,
       bio: profileData.bio || null,
       sede: profileData.sede,
       carrera: profileData.carrera,
       ciclo: Number(profileData.ciclo),
-      fecha_nacimiento: profileData.fechaNacimiento,
+      fecha_nacimiento: profileData.fechaNacimiento || '2005-01-01',
       intereses: profileData.intereses || [],
       origen_campos: {
         nombre: 'declarado',
         apellido: 'declarado',
+        usuario: 'declarado',
         correo_institucional: 'verificado',
         carrera: 'declarado',
         ciclo: 'declarado',
@@ -200,24 +395,20 @@ export async function saveProfile(userId, profileData, consentimientos) {
       return { success: false, error: perfilError.message };
     }
 
-    // 2. Guardar los 4 consentimientos (Ley 29733)
+    // Registrar consentimientos automáticamente (implícito al aceptar términos)
     const finalidades = ['cuenta', 'encuestas', 'metricas', 'perfil_universidad'];
     const consentRows = finalidades.map(finalidad => ({
       usuario_id: userId,
       finalidad,
-      otorgado: finalidad === 'cuenta' ? true : Boolean(consentimientos?.[finalidad]),
+      otorgado: finalidad === 'perfil_universidad' ? Boolean(consentimientos?.perfil_universidad) : true,
       version_politica: '1.0',
-      otorgado_en: new Date().toISOString(),
-      revocado_en: !consentimientos?.[finalidad] && finalidad !== 'cuenta' ? new Date().toISOString() : null
+      otorgado_en: new Date().toISOString()
     }));
 
-    const { error: consentError } = await supabase
+    await supabase
       .from('consentimientos')
-      .upsert(consentRows, { onConflict: 'usuario_id,finalidad' });
-
-    if (consentError) {
-      console.warn('[Kampus Auth] Advertencia al guardar consentimientos:', consentError.message);
-    }
+      .upsert(consentRows, { onConflict: 'usuario_id,finalidad' })
+      .catch(() => {});
 
     return { success: true };
   } catch (err) {
@@ -233,6 +424,6 @@ export async function signOut() {
   try {
     await supabase.auth.signOut();
   } catch (err) {
-    console.error('[Kampus Auth] Error en signOut:', err);
+    console.warn('[Kampuz Auth] Error en signOut:', err);
   }
 }

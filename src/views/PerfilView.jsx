@@ -576,10 +576,10 @@ export default function PerfilView() {
         </div>
       )}
 
-      {/* SUBTAB 3: PRIVACIDAD Y CONSENTIMIENTOS REVOCABLES (M32 - Ley 29733) */}
+      {/* SUBTAB 3: CONFIGURACIÓN Y PRIVACIDAD */}
       {activeTabSub === 'privacidad' && (
         <div className="space-y-3.5 text-sm">
-          {/* ACCESO A CENTRO DE SEGURIDAD (M33) */}
+          {/* ACCESO A CENTRO DE SEGURIDAD */}
           <button
             onClick={() => setShowCentroSeguridad(true)}
             className="w-full p-3.5 bg-gradient-to-r from-accent/10 to-primary-light/10 dark:from-accent/20 dark:to-primary-dark/20 border-2 border-accent/40 rounded-2xl flex items-center justify-between text-left hover:border-accent transition group shadow-sm"
@@ -589,92 +589,71 @@ export default function PerfilView() {
                 <Shield size={20} />
               </div>
               <div>
-                <div className="flex items-center gap-1.5">
-                  <h4 className="text-xs font-black text-ink dark:text-ink-light">Centro de Seguridad y Convivencia</h4>
-                  <span className="text-[10px] font-extrabold bg-accent/20 text-accent px-1.5 py-0.5 rounded">M33</span>
-                </div>
-                <p className="text-[11px] text-ink-muted">Normas del campus, bloquear compañeros y moderación</p>
+                <h4 className="text-xs font-black text-ink dark:text-ink-light">Centro de Seguridad y Convivencia</h4>
+                <p className="text-[11px] text-ink-muted">Normas de la comunidad, moderación y compañeros bloqueados</p>
               </div>
             </div>
             <ChevronRight size={18} className="text-accent group-hover:translate-x-0.5 transition-transform shrink-0" />
           </button>
 
-          <div className="p-3 bg-brand-primary-soft/50 dark:bg-brand-primary-dark/30 rounded-2xl border border-brand-primary/20">
-            <h3 className="text-xs font-black uppercase text-brand-primary dark:text-teal-300 flex items-center space-x-1.5">
-              <ShieldCheck size={16} />
-              <span>Protección de Datos Personales (Ley 29733)</span>
-            </h3>
-            <p className="text-xs text-ink-muted mt-1 leading-relaxed">
-              En Kampus tienes control absoluto de tus finalidades. Cada consentimiento es revocable individualmente en cualquier momento.
-            </p>
-          </div>
+          {/* Preferencias de cuenta */}
+          <div className="space-y-2">
+            <h4 className="text-xs font-black text-ink dark:text-ink-light px-1">
+              Preferencias y Privacidad
+            </h4>
 
-          {/* Consentimiento 1: Cuenta */}
-          <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
-            <div>
-              <span className="font-extrabold text-ink dark:text-ink-light block text-sm">1. Cuenta y Perfil Académico</span>
-              <span className="text-xs text-ink-muted block">Identificación por carrera, ciclo y sede</span>
-              <span className="text-[11px] text-emerald-600 font-semibold">{consentTimestamps.cuenta}</span>
-            </div>
-            <span className="text-xs bg-slate-100 dark:bg-slate-800 text-ink-muted font-bold px-2.5 py-1 rounded-lg">
-              Requerido
-            </span>
-          </div>
-
-          {/* Consentimiento 2: Encuestas */}
-          <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
-            <div>
-              <span className="font-extrabold text-ink dark:text-ink-light block text-sm">2. Recibir encuestas de investigación</span>
-              <span className="text-xs text-ink-muted block">Máx 3 invitaciones por semana en tu bandeja</span>
-              <span className="text-[11px] text-accent font-semibold">{consentTimestamps.encuestas}</span>
-            </div>
-            <input
-              type="checkbox"
-              checked={user.consentimientos?.encuestas ?? true}
-              onChange={() => handleToggleConsentimientoReal('encuestas')}
-              className="w-5 h-5 accent-accent rounded cursor-pointer"
-            />
-          </div>
-
-          {/* Consentimiento 3: Métricas */}
-          <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
-            <div>
-              <span className="font-extrabold text-ink dark:text-ink-light block text-sm">3. Métricas agregadas para la UTP</span>
-              <span className="text-xs text-ink-muted block">Solo estadísticas anónimas (umbral mínimo ≥ 30 alumnos)</span>
-              <span className="text-[11px] text-accent font-semibold">{consentTimestamps.metricas}</span>
-            </div>
-            <input
-              type="checkbox"
-              checked={user.consentimientos?.metricas ?? true}
-              onChange={() => handleToggleConsentimientoReal('metricas')}
-              className="w-5 h-5 accent-accent rounded cursor-pointer"
-            />
-          </div>
-
-          {/* Consentimiento 4: Convocatorias UTP (Apagado por defecto) */}
-          <div className={`p-4 rounded-2xl border-2 transition ${
-            user.consentimientos?.perfil_universidad
-              ? 'bg-accent-soft/40 dark:bg-accent-dark/30 border-accent shadow-sm'
-              : 'bg-white dark:bg-surface-cardDark border-line dark:border-line-dark'
-          }`}>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="font-extrabold text-sm text-brand-primary dark:text-teal-300">
-                4. Que tu universidad vea lo que haces aquí
-              </span>
+            {/* Preferencia 1: Encuestas */}
+            <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
+              <div className="pr-2">
+                <span className="font-extrabold text-ink dark:text-ink-light block text-xs">
+                  Invitaciones a encuestas estudiantiles
+                </span>
+                <span className="text-[11px] text-ink-muted block">
+                  Recibe hasta 3 encuestas semanales de compañeros de tu sede
+                </span>
+              </div>
               <input
                 type="checkbox"
-                checked={user.consentimientos?.perfil_universidad ?? false}
-                onChange={() => handleToggleConsentimientoReal('perfil_universidad')}
-                className="w-5 h-5 accent-accent rounded cursor-pointer"
+                checked={user?.consentimientos?.encuestas ?? true}
+                onChange={() => handleToggleConsentimientoReal('encuestas')}
+                className="w-5 h-5 accent-accent rounded cursor-pointer shrink-0"
               />
             </div>
-            <p className="text-xs text-ink-soft dark:text-ink-muted leading-relaxed">
-              La UTP tiene programas como <strong>Impulsa</strong> y <strong>Generación Top</strong>, y hoy solo puede encontrarte por tu promedio. Si activas esto, cuando tu universidad se sume a Kampuz también va a ver lo que construiste aquí: a cuántos compañeros asesoraste, qué grupos creaste y en qué te has venido formando.
-            </p>
-            <div className="mt-2 pt-2 border-t border-line dark:border-line-dark text-xs text-ink-muted space-y-1">
-              <p><strong>Qué se comparte:</strong> nombre, carrera, ciclo y perfil de habilidades.</p>
-              <p><strong>Qué no:</strong> tus mensajes, chats, ni qué respondiste en encuestas.</p>
-              <span className="text-[11px] text-accent font-semibold block">{consentTimestamps.perfil_universidad}</span>
+
+            {/* Preferencia 2: Métricas */}
+            <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
+              <div className="pr-2">
+                <span className="font-extrabold text-ink dark:text-ink-light block text-xs">
+                  Colaborar con estadísticas anónimas de sede
+                </span>
+                <span className="text-[11px] text-ink-muted block">
+                  Aporta a métricas grupales protegidas para mejorar la universidad
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={user?.consentimientos?.metricas ?? true}
+                onChange={() => handleToggleConsentimientoReal('metricas')}
+                className="w-5 h-5 accent-accent rounded cursor-pointer shrink-0"
+              />
+            </div>
+
+            {/* Preferencia 3: Convocatorias UTP */}
+            <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
+              <div className="pr-2">
+                <span className="font-extrabold text-ink dark:text-ink-light block text-xs">
+                  Visible para programas de mérito UTP
+                </span>
+                <span className="text-[11px] text-ink-muted block">
+                  Permite conocer tus asesorías y talleres para Impulsa o Generación Top
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={user?.consentimientos?.perfil_universidad ?? false}
+                onChange={() => handleToggleConsentimientoReal('perfil_universidad')}
+                className="w-5 h-5 accent-accent rounded cursor-pointer shrink-0"
+              />
             </div>
           </div>
 
@@ -685,19 +664,19 @@ export default function PerfilView() {
               rel="noopener noreferrer"
               className="text-xs text-accent font-bold hover:underline inline-flex items-center space-x-1"
             >
-              <span>Leer Política de Privacidad de Kampuz (Ley 29733)</span>
+              <span>Ver Términos y Política de Privacidad</span>
               <ExternalLink size={12} />
             </a>
           </div>
 
-          {/* ZONA DE PELIGRO: ELIMINAR MI CUENTA (Google Play Store Mandatory) */}
+          {/* ZONA DE PELIGRO: ELIMINAR MI CUENTA */}
           <div className="p-4 bg-rose-50/70 dark:bg-rose-950/20 border-2 border-rose-200 dark:border-rose-900/60 rounded-2xl space-y-2.5">
             <div className="flex items-center space-x-2 text-rose-700 dark:text-rose-400">
               <AlertOctagon size={18} className="shrink-0" />
-              <h4 className="text-xs font-black">Zona de eliminación irreversible</h4>
+              <h4 className="text-xs font-black">Zona de eliminación de cuenta</h4>
             </div>
             <p className="text-xs text-rose-900/80 dark:text-rose-200/80 leading-relaxed">
-              De acuerdo a las normativas de Google Play Store y la Ley 29733, puedes solicitar la eliminación total de tus datos personales, fotos, mensajes, membresías y cuenta de acceso en cualquier momento.
+              Puedes solicitar la eliminación permanente de tu cuenta, perfil, fotos, mensajes y credenciales en cualquier momento.
             </p>
             <button
               onClick={() => {

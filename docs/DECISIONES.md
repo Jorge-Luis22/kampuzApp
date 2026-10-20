@@ -58,3 +58,9 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
   - Páginas públicas web conformes a Ley 29733: `public/privacidad.html` y `public/eliminar-cuenta.html`.
   - M33 Centro de Seguridad con normas de convivencia, bloqueo de compañeros y panel de reportes para moderadores.
   - Guía completa de publicación `docs/PLAY_STORE.md` con comandos `keytool`, respuestas a la Declaración de Seguridad de los Datos (Data Safety) y checklist para el desarrollador.
+- **2026-10-20 (Ajuste UX/UI & Autenticación):**
+  - **Cierre de sesión robusto:** Corrección de referencia a usuario nulo en `PhoneShell.jsx`, `App.jsx` y consistencia de llamada a `isSupabaseConfigured` como booleano en `auth.js` y `safety.js`.
+  - **Nuevo flujo de autenticación:** Login con Nombre de Usuario o Correo y Contraseña. Registro con username único, correo `@utp.edu.pe`, contraseña y código de verificación OTP.
+  - **Recuperación de contraseña:** Flujo guiado por correo institucional con código de seguridad OTP y actualización de contraseña.
+  - **Privacidad implícita:** Eliminación de la sobrecarga de avisos de "Ley 29733" en pantallas de usuario. La aceptación legal se traslada de forma limpia a un checkbox de Términos y Privacidad en el registro y opciones directas en Perfil.
+  - **Limpieza de UX estudiantil:** Reemplazo de jerga técnica y matemática (`>30`, fórmulas de umbral, prefijos de pantalla `M01-M33`) por microcopy empático y centrado en la experiencia de campus.

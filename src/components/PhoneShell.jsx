@@ -50,11 +50,14 @@ export default function PhoneShell({ children }) {
           <div>
             <div className="flex items-center space-x-2">
               <span className="font-black text-sm tracking-wide">KAMPUZ</span>
-              <span className="text-[10px] bg-white/20 text-white font-bold px-1.5 py-0.2 rounded">UTP Lima Sur</span>
-              <span className="text-[10px] bg-teal-500/30 text-teal-200 font-bold px-1.5 py-0.2 rounded">MVP</span>
+              <span className="text-[10px] bg-white/20 text-white font-bold px-1.5 py-0.5 rounded">UTP Lima Sur</span>
             </div>
             <p className="text-[11px] text-indigo-200 font-medium">
-              Demo: <strong className="text-white">{user.nombre} {user.apellido}</strong> ({user.carrera})
+              {user ? (
+                <span>Estudiante: <strong className="text-white">{user.nombre || ''} {user.apellido || ''}</strong> ({user.carrera || 'UTP'})</span>
+              ) : (
+                <span className="text-indigo-300">Sesión no iniciada</span>
+              )}
             </p>
           </div>
         </div>
@@ -66,79 +69,59 @@ export default function PhoneShell({ children }) {
             <button
               onClick={() => setMenuOpen(!menuOpen)}
               className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold transition"
-              title="Atajos de pantallas para sustentación"
+              title="Atajos de navegación"
             >
               <Layers size={14} />
-              <span className="hidden sm:inline">Pantallas (M01-M33)</span>
+              <span className="hidden sm:inline">Vistas rápidas</span>
             </button>
 
             {menuOpen && (
               <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light rounded-2xl shadow-modal border border-line dark:border-line-dark p-2 text-xs z-50 max-h-[80vh] overflow-y-auto">
                 <div className="px-2 py-1.5 font-bold text-ink-muted border-b border-line dark:border-line-dark flex justify-between items-center">
-                  <span>ATAJOS DEL MVP</span>
-                  <span className="text-[10px] bg-accent-soft text-accent font-bold px-1.5 py-0.2 rounded">Piloto</span>
+                  <span>NAVEGACIÓN RÁPIDA</span>
+                  <span className="text-[10px] bg-accent-soft text-accent font-bold px-1.5 py-0.5 rounded">App</span>
                 </div>
 
                 <div className="py-1">
-                  <div className="text-[10px] font-bold text-accent uppercase tracking-wider px-2 pt-2">Flujo de Entrada</div>
+                  <div className="text-[10px] font-bold text-accent uppercase tracking-wider px-2 pt-2">Acceso y Cuenta</div>
                   <button onClick={() => jumpTo('m01_bienvenida')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
-                    <span>M01 Bienvenida e inicio de sesión</span>
-                    <span className="text-ink-muted">@utp.edu.pe</span>
-                  </button>
-                  <button onClick={() => jumpTo('m02_otp')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
-                    <span>M02 Verificación OTP 6 dígitos</span>
-                    <span className="text-ink-muted">Código</span>
+                    <span>Iniciar sesión / Registro</span>
+                    <span className="text-ink-muted">Cuenta</span>
                   </button>
                   <button onClick={() => jumpTo('m03_onboarding')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
-                    <span>M03 Perfil académico declarado</span>
+                    <span>Perfil académico</span>
                     <span className="text-ink-muted">Datos</span>
                   </button>
-                  <button onClick={() => jumpTo('m04_intereses')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
-                    <span>M04 Intereses de campus</span>
-                    <span className="text-ink-muted">Chips</span>
-                  </button>
-                  <button onClick={() => jumpTo('m05_consentimientos')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
-                    <span>M05 Consentimientos Legales (4)</span>
-                    <span className="text-ink-muted">Ley 29733</span>
-                  </button>
                 </div>
 
                 <div className="py-1 border-t border-line dark:border-line-dark">
-                  <div className="text-[10px] font-bold text-accent uppercase tracking-wider px-2 pt-1">Núcleo y Espacios</div>
+                  <div className="text-[10px] font-bold text-accent uppercase tracking-wider px-2 pt-1">Espacios del Campus</div>
                   <button onClick={() => jumpTo('app', 'inicio')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
-                    <span>M06 Inicio (Feed & recordatorios)</span>
-                    <span className="text-ink-muted">Tab 1</span>
-                  </button>
-                  <button onClick={() => jumpTo('app', 'grupos')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
-                    <span>M11-M15 Los 3 Espacios Distintos</span>
-                    <span className="text-ink-muted">Tab 3</span>
+                    <span>Inicio (Feed y avisos)</span>
+                    <span className="text-ink-muted">Feed</span>
                   </button>
                   <button onClick={() => jumpTo('app', 'explorar')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
-                    <span>M07-M10 Explorar compañeros & solicitud</span>
-                    <span className="text-ink-muted">Tab 2</span>
+                    <span>Explorar compañeros y chats</span>
+                    <span className="text-ink-muted">Comunidad</span>
                   </button>
-                </div>
-
-                <div className="py-1 border-t border-line dark:border-line-dark">
-                  <div className="text-[10px] font-bold text-accent uppercase tracking-wider px-2 pt-1">Flujos Clave</div>
                   <button onClick={() => jumpTo('app', 'grupos')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
-                    <span>M19-M22 Consultas Agrupadas & Moderación</span>
-                    <span className="text-ink-muted">Flujo 1</span>
+                    <span>Espacios de carrera y talleres</span>
+                    <span className="text-ink-muted">Grupos</span>
                   </button>
                   <button onClick={() => jumpTo('app', 'encuestas')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
-                    <span>M23-M28 Encuestas & Bloqueo &lt;30</span>
-                    <span className="text-ink-muted">Flujo 3</span>
+                    <span>Encuestas estudiantiles</span>
+                    <span className="text-ink-muted">Encuestas</span>
                   </button>
                   <button onClick={() => jumpTo('app', 'perfil')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
-                    <span>M29-M33 Perfil Habilidades 0-3</span>
-                    <span className="text-ink-muted">Flujo 4</span>
+                    <span>Mi Perfil y Habilidades</span>
+                    <span className="text-ink-muted">Perfil</span>
                   </button>
                 </div>
 
                 <div className="py-1 border-t border-line dark:border-line-dark">
-                  <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider px-2 pt-1">Universidad</div>
+                  <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider px-2 pt-1">Portal Universitario</div>
                   <button onClick={() => jumpTo('panel_utp')} className="w-full text-left px-2 py-1.5 hover:bg-brand-primary-soft dark:hover:bg-brand-dark rounded-lg flex justify-between font-bold text-brand-primary dark:text-teal-300">
-                    <span>W01-W06 Panel Web UTP (Dashboard)</span>
+                    <span>Panel de Sede (Universidad)</span>
                     <ExternalLink size={12} />
                   </button>
                 </div>

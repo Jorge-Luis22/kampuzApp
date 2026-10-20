@@ -81,3 +81,9 @@ Estado de cumplimiento y trazabilidad de las pantallas de la aplicación móvil 
   - Centro de Seguridad (M33) con bloqueo recíproco y reporte de moderación.
   - Ficha de tienda completa, formulario de Data Safety y checklist en `docs/PLAY_STORE.md`.
   - Gráficos oficiales de tienda en `docs/play-store/icon-512.png` y `docs/play-store/feature-graphic-1024x500.png`.
+- **Pulido UX/UI & Sistema de Autenticación con Usuario, Contraseña y Recuperación:** 🟢 Completado.
+  - Soporte de Login con Usuario o Correo institucional + Contraseña.
+  - Flujo de creación de cuenta con username único, correo, contraseña y verificación OTP de 6 dígitos.
+  - Recuperación y cambio de contraseña por correo institucional con código OTP de seguridad.
+  - Ley 29733 y consentimientos integrados de forma implícita (checkbox estándar de Términos y Privacidad, sin sobrecargar la interfaz).
+  - Corrección de cierre de sesión (sin excepciones por usuario nulo) y limpieza de textos técnicos (`>30`, fórmulas matemáticas, códigos de pantallas de desarrollo).

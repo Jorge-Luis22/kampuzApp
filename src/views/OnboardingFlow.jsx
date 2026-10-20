@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../data/store';
 import {
   SEDES_UTP,
@@ -13,6 +13,7 @@ import {
   getProfile,
   saveProfile
 } from '../lib/auth';
+import { uploadAvatar } from '../lib/profile';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -29,7 +30,8 @@ import {
   Zap,
   Check,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Camera
 } from 'lucide-react';
 
 export default function OnboardingFlow() {
@@ -47,8 +49,7 @@ export default function OnboardingFlow() {
   // Mode: 'login' | 'registro'
   const [authMode, setAuthMode] = useState('login');
   const [email, setEmail] = useState('');
-  const [otpLength, setOtpLength] = useState(8);
-  const [otpCode, setOtpCode] = useState(Array(8).fill(''));
+  const [otpCode, setOtpCode] = useState(Array(6).fill(''));
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -76,6 +77,31 @@ export default function OnboardingFlow() {
   const [selectedIntereses, setSelectedIntereses] = useState(
     user?.intereses && user?.id !== 'usr_luz' ? user.intereses : []
   );
+
+  // Foto de perfil opcional durante onboarding (Fase 2 / Fase 3)
+  const [avatarUrl, setAvatarUrl] = useState(user?.fotoUrl || null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef(null);
+
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!user?.id) {
+      setErrorMsg('No se detectó sesión para subir foto.');
+      return;
+    }
+    setIsUploadingAvatar(true);
+    setErrorMsg('');
+    try {
+      const publicUrl = await uploadAvatar(user.id, file);
+      setAvatarUrl(publicUrl);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('Error al procesar la foto: ' + (err.message || ''));
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   // Consentimientos locales (M05): 4 apagado por defecto (Ley 29733)
   const [localConsentimientos, setLocalConsentimientos] = useState({
@@ -115,7 +141,7 @@ export default function OnboardingFlow() {
 
       // Éxito: pasar a pantalla de OTP e iniciar cooldown de 30s
       setResendCooldown(30);
-      setOtpCode(Array(otpLength).fill(''));
+      setOtpCode(Array(6).fill(''));
       setCurrentScreen('m02_otp');
     } catch (err) {
       setErrorMsg('No se pudo conectar con el servidor de autenticación.');
@@ -139,28 +165,20 @@ export default function OnboardingFlow() {
 
   const handleOtpPaste = (e) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '');
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
     if (!pasted) return;
-    if (pasted.length === 6) {
-      setOtpLength(6);
-      setOtpCode(pasted.split(''));
-    } else if (pasted.length >= 8) {
-      setOtpLength(8);
-      setOtpCode(pasted.slice(0, 8).split(''));
-    } else {
-      const arr = Array(otpLength).fill('');
-      for (let i = 0; i < Math.min(pasted.length, otpLength); i++) {
-        arr[i] = pasted[i];
-      }
-      setOtpCode(arr);
+    const arr = Array(6).fill('');
+    for (let i = 0; i < pasted.length; i++) {
+      arr[i] = pasted[i];
     }
+    setOtpCode(arr);
   };
 
   const handleOtpSubmit = async (e) => {
     if (e) e.preventDefault();
     const entered = otpCode.join('');
     if (entered.length < 6) {
-      setErrorMsg('Ingresa el código completo recibido.');
+      setErrorMsg('Ingresa el código completo de 6 dígitos.');
       return;
     }
 
@@ -254,6 +272,7 @@ export default function OnboardingFlow() {
         ciclo: Number(formData.ciclo),
         fechaNacimiento: formData.fechaNacimiento,
         intereses: selectedIntereses,
+        fotoUrl: avatarUrl || null,
         rol: 'alumno'
       };
 
@@ -268,6 +287,7 @@ export default function OnboardingFlow() {
       setUser({
         id: userId,
         ...profilePayload,
+        fotoUrl: avatarUrl || null,
         consentimientos: localConsentimientos,
         habilidades: HABILIDADES_BASE_NUEVO_ALUMNO,
         certificados: [],
@@ -437,27 +457,12 @@ export default function OnboardingFlow() {
                 Código de Verificación
               </h1>
               <p className="text-xs text-ink-soft dark:text-ink-muted mt-1 font-medium">
-                Enviamos un código a <strong className="text-ink dark:text-ink-light">{email}</strong>
+                Enviamos un código de 6 dígitos a <strong className="text-ink dark:text-ink-light">{email}</strong>
               </p>
             </div>
 
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-ink-muted font-medium">Formato ({otpLength} dígitos):</span>
-              <button
-                type="button"
-                onClick={() => {
-                  const next = otpLength === 6 ? 8 : 6;
-                  setOtpLength(next);
-                  setOtpCode(Array(next).fill(''));
-                }}
-                className="text-[11px] text-accent font-bold hover:underline"
-              >
-                Cambiar a {otpLength === 6 ? '8 dígitos' : '6 dígitos'}
-              </button>
-            </div>
-
-            {/* OTP Digits (Admite 6 u 8 dígitos y pegar directo) */}
-            <div className="flex justify-between gap-1 py-1" onPaste={handleOtpPaste}>
+            {/* OTP Digits (6 dígitos con autopegado) */}
+            <div className="flex justify-between gap-1.5 py-1" onPaste={handleOtpPaste}>
               {otpCode.map((digit, index) => (
                 <input
                   key={index}
@@ -472,7 +477,7 @@ export default function OnboardingFlow() {
                     const newOtp = [...otpCode];
                     newOtp[index] = val;
                     setOtpCode(newOtp);
-                    if (val && index < otpLength - 1) {
+                    if (val && index < 5) {
                       document.getElementById(`otp-${index + 1}`)?.focus();
                     }
                   }}
@@ -481,9 +486,7 @@ export default function OnboardingFlow() {
                       document.getElementById(`otp-${index - 1}`)?.focus();
                     }
                   }}
-                  className={`${
-                    otpLength === 8 ? 'w-8 h-12 text-lg' : 'w-11 h-14 text-xl'
-                  } text-center font-black bg-white dark:bg-surface-dark border-2 border-line dark:border-line-dark rounded-xl text-ink dark:text-ink-light focus:outline-none focus:border-accent`}
+                  className="w-11 h-14 text-center text-xl font-black bg-white dark:bg-surface-dark border-2 border-line dark:border-line-dark rounded-2xl text-ink dark:text-ink-light focus:outline-none focus:border-accent"
                 />
               ))}
             </div>
@@ -540,6 +543,40 @@ export default function OnboardingFlow() {
           </p>
 
           <form id="profile-form" onSubmit={handleProfileSubmit} className="k-card p-4 space-y-3.5 border-2 border-line/80 dark:border-line-dark rounded-2xl shadow-sm">
+            {/* Foto de perfil opcional */}
+            <div className="flex flex-col items-center justify-center pt-1 pb-1">
+              <div
+                onClick={() => avatarInputRef.current?.click()}
+                className="relative w-20 h-20 rounded-full border-2 border-dashed border-accent hover:border-brand-primary bg-accent-soft/40 flex items-center justify-center cursor-pointer overflow-hidden shadow-sm transition group"
+                title="Subir foto de perfil (opcional)"
+              >
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Foto de perfil" className="w-full h-full object-cover" />
+                ) : isUploadingAvatar ? (
+                  <Loader2 size={24} className="text-accent animate-spin" />
+                ) : (
+                  <div className="flex flex-col items-center text-accent">
+                    <Camera size={22} />
+                    <span className="text-[10px] font-extrabold mt-0.5">Subir foto</span>
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                  <Camera size={20} className="text-white" />
+                </div>
+              </div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarChange}
+                disabled={isUploadingAvatar}
+              />
+              <p className="text-[11px] text-ink-muted mt-1 font-medium">
+                {avatarUrl ? 'Foto lista · Clic para cambiar' : 'Foto de perfil (opcional)'}
+              </p>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">Nombre</label>

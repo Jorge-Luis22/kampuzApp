@@ -41,10 +41,10 @@ Estado de cumplimiento y trazabilidad de las pantallas de la aplicación móvil 
 | **M26** | Redactar preguntas de encuesta | 🟡 Demo | 🟢 Real | Creación de preguntas tipo única/múltiple/abierta. |
 | **M27** | Responder encuesta (1 pregunta/pantalla)| 🟡 Demo | 🟢 Real | Flujo paso a paso para responder. Alimenta Apoyo Inv. |
 | **M28** | Resultados agregados de encuesta | 🟡 Demo | 🟢 Real | Vistas agregadas vía RPC sin exponer identidad de votantes. |
-| **M29** | Mi perfil (Habilidades y hechos) | 🟡 Demo | 🟢 Real | Cálculo derivado de hechos; no vacío para alumnos nuevos. |
-| **M30** | Detalle de habilidad y meta | 🟡 Demo | 🟢 Real | Muestra qué falta para el siguiente nivel. |
-| **M31** | Agregar certificado | 🟡 Demo | 🟢 Real | Clasificación automática básica/media/avanzada. |
-| **M32** | Privacidad y revocación de consent. | 🟡 Demo | 🟢 Real | Revocación persistente de cada finalidad. |
+| **M29** | Mi perfil (Habilidades y hechos) | 🟢 Real | 🟢 Real | Cálculo derivado de hechos; estado amigable para alumnos nuevos; edición de perfil y foto recortada (<300KB). |
+| **M30** | Detalle de habilidad y meta | 🟢 Real | 🟢 Real | Muestra qué falta para el siguiente nivel y progreso real. |
+| **M31** | Agregar certificado | 🟢 Real | 🟢 Real | Clasificación automática básica/media/avanzada con persistencia en Supabase. |
+| **M32** | Privacidad y revocación de consent. | 🟢 Real | 🟢 Real | Revocación persistente con timestamp en Supabase (Ley 29733). |
 | **M33** | Centro de seguridad (reportar/bloquear) | 🟡 Demo | 🟢 Real | Flujo de reporte de contenido y usuarios. |
 
 ---

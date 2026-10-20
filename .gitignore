@@ -1,0 +1,5 @@
+.vercel
+.env*
+node_modules
+dist
+_respaldo_antes_de_arreglos

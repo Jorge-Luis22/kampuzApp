@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-primary: #241E5C;
+  --brand-primary-soft: #EEECF8;
+  --accent: #009E8C;
+  --accent-soft: #E2F7F4;
+  --ink: #0F172A;
+  --ink-soft: #334155;
+  --ink-muted: #64748B;
+  --line: #D6DCE7;
+  --surface: #EFF3F8;
+  --card: #FFFFFF;
+}
+
+.dark {
+  --brand-primary: #383082;
+  --brand-primary-soft: #1A1642;
+  --accent: #00BFA5;
+  --accent-soft: #054B43;
+  --ink: #F8FAFC;
+  --ink-soft: #CBD5E1;
+  --ink-muted: #94A3B8;
+  --line: #263143;
+  --surface: #0A0E17;
+  --card: #131A26;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  background-color: var(--surface);
+  color: var(--ink);
+}
+
+/* Crisp card component */
+.k-card {
+  background-color: #FFFFFF;
+  border: 1px solid #D6DCE7;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.dark .k-card {
+  background-color: #131A26;
+  border: 1px solid #263143;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 999px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

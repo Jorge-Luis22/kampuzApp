@@ -75,7 +75,8 @@ select id, 'Base de Datos Avanzada', 5 from public.carreras where codigo = 'sis'
 union all
 select id, 'Investigación de Operaciones I', 5 from public.carreras where codigo = 'ind'
 union all
-select id, 'Procesos Industriales', 4 from public.carreras where codigo = 'ind';
+select id, 'Procesos Industriales', 4 from public.carreras where codigo = 'ind'
+on conflict (carrera_id, nombre) do nothing;
 
 -- 6. CATÁLOGO DE INTERESES
 insert into public.intereses_catalogo (nombre, categoria)
@@ -97,119 +98,44 @@ values
 on conflict (nombre) do nothing;
 
 -- 7. TALLERES OFICIALES ESPEJADOS CON HORARIO REAL (Sección 4 & 7.2)
-insert into public.espacios (
-    tipo, nombre, descripcion, portada_url, sede, horario, oficial, estado, link_inscripcion
-)
-values
-    (
-        'taller',
-        'Taller de Lettering y Caligrafía',
-        'Taller formativo de expresión gráfica y caligrafía. Registro oficial UTP para actividades de bienestar estudiantil.',
-        '/grupos/lettering.jpg',
-        'Lima Sur',
-        'Sábados 10:00 - 12:00 (Aula 302)',
-        true,
-        'visible',
-        'https://portal.utp.edu.pe/talleres/lettering-2026'
-    ),
-    (
-        'taller',
-        'Taller de Futsal UTP Lima Sur',
-        'Entrenamientos semanales y preparación para los torneos interfacultades de la universidad.',
-        '/grupos/futsal.jpg',
-        'Lima Sur',
-        'Martes y Jueves 17:00 - 19:00 (Cancha Central)',
-        true,
-        'visible',
-        'https://portal.utp.edu.pe/talleres/futsal-2026'
-    ),
-    (
-        'taller',
-        'Taller de Karate Básico',
-        'Defensa personal y disciplina tradicional. Actividad deportiva extracurricular oficial.',
-        '/grupos/karate.jpg',
-        'Lima Sur',
-        'Lunes y Miércoles 18:00 - 19:30 (Sala Multiusos)',
-        true,
-        'visible',
-        'https://portal.utp.edu.pe/talleres/karate-2026'
-    ),
-    (
-        'taller',
-        'Taller de IA Aplicada a la Universidad',
-        'Uso ético y práctico de modelos generativos, automatización de resúmenes y asistencia en investigación.',
-        '/grupos/ia.jpg',
-        'Lima Sur',
-        'Viernes 19:00 - 21:00 (Lab 401)',
-        true,
-        'visible',
-        'https://portal.utp.edu.pe/talleres/ia-2026'
-    );
+insert into public.espacios (tipo, nombre, descripcion, portada_url, sede, horario, oficial, estado, link_inscripcion)
+select 'taller', 'Taller de Lettering y Caligrafía', 'Taller formativo de expresión gráfica y caligrafía. Registro oficial UTP para actividades de bienestar estudiantil.', '/grupos/lettering.jpg', 'Lima Sur', 'Sábados 10:00 - 12:00 (Aula 302)', true, 'visible', 'https://portal.utp.edu.pe/talleres/lettering-2026'
+where not exists (select 1 from public.espacios where nombre = 'Taller de Lettering y Caligrafía');
 
--- 8. ESPACIOS DE CARRERA INICIALES (Cruzan ciclos 1 al 10 - Dónde viven las consultas agrupadas)
+insert into public.espacios (tipo, nombre, descripcion, portada_url, sede, horario, oficial, estado, link_inscripcion)
+select 'taller', 'Taller de Futsal UTP Lima Sur', 'Entrenamientos semanales y preparación para los torneos interfacultades de la universidad.', '/grupos/futsal.jpg', 'Lima Sur', 'Martes y Jueves 17:00 - 19:00 (Cancha Central)', true, 'visible', 'https://portal.utp.edu.pe/talleres/futsal-2026'
+where not exists (select 1 from public.espacios where nombre = 'Taller de Futsal UTP Lima Sur');
+
+insert into public.espacios (tipo, nombre, descripcion, portada_url, sede, horario, oficial, estado, link_inscripcion)
+select 'taller', 'Taller de Karate Básico', 'Defensa personal y disciplina tradicional. Actividad deportiva extracurricular oficial.', '/grupos/karate.jpg', 'Lima Sur', 'Lunes y Miércoles 18:00 - 19:30 (Sala Multiusos)', true, 'visible', 'https://portal.utp.edu.pe/talleres/karate-2026'
+where not exists (select 1 from public.espacios where nombre = 'Taller de Karate Básico');
+
+insert into public.espacios (tipo, nombre, descripcion, portada_url, sede, horario, oficial, estado, link_inscripcion)
+select 'taller', 'Taller de IA Aplicada a la Universidad', 'Uso ético y práctico de modelos generativos, automatización de resúmenes y asistencia en investigación.', '/grupos/ia.jpg', 'Lima Sur', 'Viernes 19:00 - 21:00 (Lab 401)', true, 'visible', 'https://portal.utp.edu.pe/talleres/ia-2026'
+where not exists (select 1 from public.espacios where nombre = 'Taller de IA Aplicada a la Universidad');
+
+-- 8. ESPACIOS DE CARRERA INICIALES
 insert into public.espacios (tipo, nombre, descripcion, portada_url, carrera, sede, oficial, estado)
-values
-    (
-        'carrera',
-        'Comunidad de Enfermería UTP',
-        'Espacio general para todos los ciclos (1.° al 10.°) de Enfermería Lima Sur. Consultas de cursos, bancos de preguntas, orientación para prácticas e internado.',
-        '/grupos/enfermeria.jpg',
-        'Enfermería',
-        'Lima Sur',
-        false,
-        'visible'
-    ),
-    (
-        'carrera',
-        'Comunidad de Psicología UTP',
-        'Consultas de cursos teóricos y clínicos, orientación de casos formativos y eventos de salud mental.',
-        '/grupos/carrera_default.jpg',
-        'Psicología',
-        'Lima Sur',
-        false,
-        'visible'
-    ),
-    (
-        'carrera',
-        'Comunidad de Ingeniería de Sistemas UTP',
-        'Dudas de programación, algoritmos, arquitectura de software, bases de datos y hackathons.',
-        '/grupos/carrera_default.jpg',
-        'Ingeniería de Sistemas e Informática',
-        'Lima Sur',
-        false,
-        'visible'
-    ),
-    (
-        'carrera',
-        'Comunidad de Ingeniería Industrial UTP',
-        'Consultas sobre optimización de procesos, investigación operativa, calidad y seguridad industrial.',
-        '/grupos/carrera_default.jpg',
-        'Ingeniería Industrial',
-        'Lima Sur',
-        false,
-        'visible'
-    );
+select 'carrera', 'Comunidad de Enfermería UTP', 'Espacio general para todos los ciclos (1.° al 10.°) de Enfermería Lima Sur. Consultas de cursos, bancos de preguntas, orientación para prácticas e internado.', '/grupos/enfermeria.jpg', 'Enfermería', 'Lima Sur', false, 'visible'
+where not exists (select 1 from public.espacios where nombre = 'Comunidad de Enfermería UTP');
 
--- 9. GRUPOS DE INTERÉS Y COMUNIDADES INICIALES (Cruzan carreras)
+insert into public.espacios (tipo, nombre, descripcion, portada_url, carrera, sede, oficial, estado)
+select 'carrera', 'Comunidad de Psicología UTP', 'Consultas de cursos teóricos y clínicos, orientación de casos formativos y eventos de salud mental.', '/grupos/carrera_default.jpg', 'Psicología', 'Lima Sur', false, 'visible'
+where not exists (select 1 from public.espacios where nombre = 'Comunidad de Psicología UTP');
+
+insert into public.espacios (tipo, nombre, descripcion, portada_url, carrera, sede, oficial, estado)
+select 'carrera', 'Comunidad de Ingeniería de Sistemas UTP', 'Dudas de programación, algoritmos, arquitectura de software, bases de datos y hackathons.', '/grupos/carrera_default.jpg', 'Ingeniería de Sistemas e Informática', 'Lima Sur', false, 'visible'
+where not exists (select 1 from public.espacios where nombre = 'Comunidad de Ingeniería de Sistemas UTP');
+
+insert into public.espacios (tipo, nombre, descripcion, portada_url, carrera, sede, oficial, estado)
+select 'carrera', 'Comunidad de Ingeniería Industrial UTP', 'Consultas sobre optimización de procesos, investigación operativa, calidad y seguridad industrial.', '/grupos/carrera_default.jpg', 'Ingeniería Industrial', 'Lima Sur', false, 'visible'
+where not exists (select 1 from public.espacios where nombre = 'Comunidad de Ingeniería Industrial UTP');
+
+-- 9. GRUPOS DE INTERÉS Y COMUNIDADES INICIALES
 insert into public.espacios (tipo, nombre, descripcion, portada_url, sede, oficial, estado, umbral_apoyos)
-values
-    (
-        'interes',
-        'Startups & Emprendimiento UTP',
-        'Espacio para founders estudiantiles, validación de ideas de negocio, búsqueda de co-founders y preparación para incubadoras.',
-        '/grupos/startup.png',
-        'Lima Sur',
-        false,
-        'visible',
-        15
-    ),
-    (
-        'interes',
-        'Cinéfilos y Debate UTP',
-        'Charlas semanales, ciclos de cine clásico y contemporáneo, y análisis crítico audiovisual.',
-        '/grupos/cinefilos.jpg',
-        'Lima Sur',
-        false,
-        'visible',
-        15
-    );
+select 'interes', 'Startups & Emprendimiento UTP', 'Espacio para founders estudiantiles, validación de ideas de negocio, búsqueda de co-founders y preparación para incubadoras.', '/grupos/startup.png', 'Lima Sur', false, 'visible', 15
+where not exists (select 1 from public.espacios where nombre = 'Startups & Emprendimiento UTP');
+
+insert into public.espacios (tipo, nombre, descripcion, portada_url, sede, oficial, estado, umbral_apoyos)
+select 'interes', 'Cinéfilos y Debate UTP', 'Charlas semanales, ciclos de cine clásico y contemporáneo, y análisis crítico audiovisual.', '/grupos/cinefilos.jpg', 'Lima Sur', false, 'visible', 15
+where not exists (select 1 from public.espacios where nombre = 'Cinéfilos y Debate UTP');

@@ -7,8 +7,11 @@ import {
   ENCUESTAS_BANDEJA_INICIALES,
   ENCUESTA_PROPIA_DEMO,
   BASE_ALUMNOS_SIMULADA,
-  METRICAS_PANEL_UTP
+  METRICAS_PANEL_UTP,
+  HABILIDADES_BASE_NUEVO_ALUMNO
 } from './mockData';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getProfile, signOut } from '../lib/auth';
 
 const StoreContext = createContext(null);
 
@@ -98,6 +101,58 @@ export function StoreProvider({ children }) {
       document.documentElement.classList.remove('dark');
     }
   }, [darkMode]);
+
+  // Sincronización y persistencia de sesión real con Supabase Auth (Fase 2)
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const perfil = await getProfile(session.user.id);
+        if (perfil && perfil.nombre) {
+          setUser({
+            ...perfil,
+            correoInstitucional: session.user.email,
+            habilidades: perfil.habilidades || HABILIDADES_BASE_NUEVO_ALUMNO,
+            certificados: perfil.certificados || [],
+            medallas: []
+          });
+          setCurrentScreen('app');
+        } else {
+          setUser(prev => ({
+            ...(prev || {}),
+            id: session.user.id,
+            correoInstitucional: session.user.email
+          }));
+          setCurrentScreen('m03_onboarding');
+        }
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        localStorage.removeItem(`${STORAGE_KEY}_user`);
+        setUser(import.meta.env.VITE_MODO_DEMO === 'true' ? USUARIO_DEMO : null);
+        setCurrentScreen('m01_bienvenida');
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        const perfil = await getProfile(session.user.id);
+        if (perfil && perfil.nombre) {
+          setUser({
+            ...perfil,
+            correoInstitucional: session.user.email,
+            habilidades: perfil.habilidades || HABILIDADES_BASE_NUEVO_ALUMNO,
+            certificados: perfil.certificados || [],
+            medallas: []
+          });
+          setCurrentScreen('app');
+        }
+      }
+    });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
 
   // Business Logic Helpers (Non-negotiable rules from Spec)
 
@@ -500,8 +555,11 @@ export function StoreProvider({ children }) {
     setCurrentScreen('app');
   };
 
-  // Cerrar sesión para volver a presentar el flujo de inicio / registro
-  const cerrarSesion = () => {
+  // Cerrar sesión real con Supabase y volver a bienvenida
+  const cerrarSesion = async () => {
+    await signOut();
+    localStorage.removeItem(`${STORAGE_KEY}_user`);
+    setUser(import.meta.env.VITE_MODO_DEMO === 'true' ? USUARIO_DEMO : null);
     setCurrentScreen('m01_bienvenida');
   };
 

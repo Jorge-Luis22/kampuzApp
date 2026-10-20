@@ -240,6 +240,54 @@ export const USUARIO_DEMO = {
   ]
 };
 
+// Habilidades iniciales vacías para nuevos alumnos registrados (Spec 5.1 & 6.7: arranca en cero)
+export const HABILIDADES_BASE_NUEVO_ALUMNO = {
+  apoyo_investigacion: {
+    id: "apoyo_investigacion",
+    nombre: "Apoyo a la investigación",
+    tipo: "blanda",
+    nivel: 0,
+    estrellas: 0,
+    origen: "verificada",
+    hechos: [],
+    siguienteNivelMeta: 1,
+    progresoActual: 0
+  },
+  predisposicion_ayudar: {
+    id: "predisposicion_ayudar",
+    nombre: "Predisposición a ayudar",
+    tipo: "blanda",
+    nivel: 0,
+    estrellas: 0,
+    origen: "verificada",
+    hechos: [],
+    siguienteNivelMeta: 1,
+    progresoActual: 0
+  },
+  constancia: {
+    id: "constancia",
+    nombre: "Constancia",
+    tipo: "blanda",
+    nivel: 0,
+    estrellas: 0,
+    origen: "verificada",
+    hechos: [],
+    siguienteNivelMeta: 1,
+    progresoActual: 0
+  },
+  liderazgo: {
+    id: "liderazgo",
+    nombre: "Liderazgo",
+    tipo: "blanda",
+    nivel: 0,
+    estrellas: 0,
+    origen: "verificada",
+    hechos: [],
+    siguienteNivelMeta: 1,
+    progresoActual: 0
+  }
+};
+
 // Generador de base simulada de alumnos para cálculos exactos de filtro en UTP Lima Sur
 export const BASE_ALUMNOS_SIMULADA = [
   // Enfermería

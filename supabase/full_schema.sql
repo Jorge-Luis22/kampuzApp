@@ -3,7 +3,6 @@
 -- Basado en KAMPUS-spec-antigravity.md (Sección 8) y PROMPT_ANTIGRAVITY_MVP.md
 -- ==============================================================================
 
--- Extensión para generación de UUIDs si no está habilitada
 create extension if not exists "uuid-ossp";
 
 -- ------------------------------------------------------------------------------
@@ -16,7 +15,6 @@ create table if not exists public.config (
     actualizado_en timestamp with time zone default now()
 );
 
--- Correos externos autorizados (profesor, jurados, testers sin correo @utp.edu.pe)
 create table if not exists public.correos_invitados (
     id uuid primary key default uuid_generate_v4(),
     correo text unique not null,
@@ -37,7 +35,7 @@ create table if not exists public.sedes (
 
 create table if not exists public.carreras (
     id uuid primary key default uuid_generate_v4(),
-    codigo text unique not null, -- ej: 'enf', 'psi', 'ind', 'sis'
+    codigo text unique not null,
     nombre text not null,
     facultad text not null,
     activo boolean default true
@@ -48,7 +46,8 @@ create table if not exists public.cursos (
     carrera_id uuid references public.carreras(id) on delete cascade,
     nombre text not null,
     ciclo_sugerido integer check (ciclo_sugerido between 1 and 10),
-    activo boolean default true
+    activo boolean default true,
+    constraint cursos_carrera_nombre_key unique (carrera_id, nombre)
 );
 
 create table if not exists public.intereses_catalogo (
@@ -68,8 +67,8 @@ create table if not exists public.perfiles (
     apellido text not null,
     foto_url text,
     bio text,
-    sede text not null, -- Sede UTP declarada (ej: 'Lima Sur')
-    carrera text not null, -- Carrera UTP declarada (ej: 'Enfermería')
+    sede text not null,
+    carrera text not null,
     carrera_id uuid references public.carreras(id) on delete set null,
     ciclo integer not null check (ciclo between 1 and 10),
     fecha_nacimiento date not null,
@@ -88,7 +87,6 @@ create table if not exists public.perfiles (
     actualizado_en timestamp with time zone default now()
 );
 
--- Cuatro consentimientos explícitos bajo Ley 29733 (Sección 6.8 de la spec)
 create table if not exists public.consentimientos (
     id uuid primary key default uuid_generate_v4(),
     usuario_id uuid references public.perfiles(id) on delete cascade,
@@ -101,13 +99,8 @@ create table if not exists public.consentimientos (
 );
 
 -- ------------------------------------------------------------------------------
--- 4. ESPACIOS, MEMBRESÍAS Y APOYOS (Sección 4 de la spec)
+-- 4. ESPACIOS, MEMBRESÍAS Y APOYOS
 -- ------------------------------------------------------------------------------
--- Tipos de espacio:
---   - carrera_ciclo: Cohorte salón (ej: Enfermería Ciclo 5)
---   - carrera: Toda la carrera ciclos 1 al 10 (donde viven las consultas agrupadas)
---   - taller: Talleres oficiales espejados con horario real
---   - interes: Comunidades propuestas por alumnos
 create table if not exists public.espacios (
     id uuid primary key default uuid_generate_v4(),
     tipo text not null check (tipo in ('carrera_ciclo', 'carrera', 'taller', 'interes')),
@@ -117,7 +110,7 @@ create table if not exists public.espacios (
     carrera text,
     ciclo integer check (ciclo between 1 and 10),
     sede text not null default 'Lima Sur',
-    horario text, -- Horario real visible para talleres (ej: 'Sábados 10:00 - 12:00')
+    horario text,
     oficial boolean default false,
     creador_id uuid references public.perfiles(id) on delete set null,
     estado text default 'visible' check (estado in ('visible', 'oculto')),
@@ -144,7 +137,7 @@ create table if not exists public.apoyos_propuesta (
 );
 
 -- ------------------------------------------------------------------------------
--- 5. MENSAJERÍA Y CHAT (GRUPAL Y DIRECTO 1 A 1)
+-- 5. MENSAJERÍA Y CHAT
 -- ------------------------------------------------------------------------------
 create table if not exists public.mensajes (
     id uuid primary key default uuid_generate_v4(),
@@ -155,7 +148,6 @@ create table if not exists public.mensajes (
     editado_en timestamp with time zone
 );
 
--- Solicitudes de contacto 1 a 1 (No hay chat directo libre - Sección 6.4)
 create table if not exists public.solicitudes_mensaje (
     id uuid primary key default uuid_generate_v4(),
     de_id uuid references public.perfiles(id) on delete cascade,
@@ -188,7 +180,7 @@ create table if not exists public.mensajes_directos (
 );
 
 -- ------------------------------------------------------------------------------
--- 6. CONSULTAS AGRUPADAS Y ASESORÍAS (Flujo 1 - Sección 7.1)
+-- 6. CONSULTAS Y ASESORÍAS
 -- ------------------------------------------------------------------------------
 create table if not exists public.grupos_consulta (
     id uuid primary key default uuid_generate_v4(),
@@ -238,14 +230,14 @@ create table if not exists public.valoraciones_asesoria (
 );
 
 -- ------------------------------------------------------------------------------
--- 7. ENCUESTAS CON FILTRO Y TOPE SEMANAL (Flujo 3 y Núcleo - Sección 6.5 y 7.4)
+-- 7. ENCUESTAS CON FILTRO
 -- ------------------------------------------------------------------------------
 create table if not exists public.encuestas (
     id uuid primary key default uuid_generate_v4(),
     autor_id uuid references public.perfiles(id) on delete cascade,
     titulo text not null,
     descripcion text,
-    filtro jsonb not null default '{}'::jsonb, -- {carrera, cicloMin, cicloMax, edadMin, edadMax, intereses: []}
+    filtro jsonb not null default '{}'::jsonb,
     alcance_calculado integer default 0,
     alcance_enviado integer default 0,
     estado text default 'borrador' check (estado in ('borrador', 'enviada', 'cerrada')),
@@ -258,7 +250,7 @@ create table if not exists public.preguntas (
     orden integer not null,
     texto text not null,
     tipo text not null check (tipo in ('unica', 'multiple', 'abierta')),
-    opciones jsonb default '[]'::jsonb -- ['Opción 1', 'Opción 2', ...]
+    opciones jsonb default '[]'::jsonb
 );
 
 create table if not exists public.envios_encuesta (
@@ -276,12 +268,12 @@ create table if not exists public.respuestas (
     envio_id uuid references public.envios_encuesta(id) on delete cascade,
     encuesta_id uuid references public.encuestas(id) on delete cascade,
     pregunta_id uuid references public.preguntas(id) on delete cascade,
-    valor jsonb not null, -- texto o arreglo de respuestas seleccionadas
+    valor jsonb not null,
     creado_en timestamp with time zone default now()
 );
 
 -- ------------------------------------------------------------------------------
--- 8. CERTIFICADOS, HABILIDADES Y REPORTES (Sección 5 y 10)
+-- 8. CERTIFICADOS, REPORTES Y BLOQUEOS
 -- ------------------------------------------------------------------------------
 create table if not exists public.certificados (
     id uuid primary key default uuid_generate_v4(),
@@ -318,7 +310,7 @@ create table if not exists public.bloqueos (
 );
 
 -- ------------------------------------------------------------------------------
--- 9. ÍNDICES DE RENDIMIENTO CLAVE
+-- 9. ÍNDICES DE RENDIMIENTO
 -- ------------------------------------------------------------------------------
 create index if not exists idx_perfiles_filtro on public.perfiles(carrera, ciclo, sede);
 create index if not exists idx_perfiles_intereses on public.perfiles using gin(intereses);
@@ -365,34 +357,37 @@ alter table public.bloqueos enable row level security;
 -- ------------------------------------------------------------------------------
 -- 2. POLÍTICAS RLS: CATÁLOGOS Y CONFIGURACIÓN PÚBLICA / AUTENTICADA
 -- ------------------------------------------------------------------------------
--- Configuración: Lectura para usuarios autenticados
+drop policy if exists "Configuracion visible para autenticados" on public.config;
 create policy "Configuracion visible para autenticados"
     on public.config for select
     to authenticated
     using (true);
 
--- Correos invitados: Solo lectura para verificación durante registro/auth
+drop policy if exists "Correos invitados visible durante auth" on public.correos_invitados;
 create policy "Correos invitados visible durante auth"
     on public.correos_invitados for select
     to anon, authenticated
     using (true);
 
--- Catálogos institucionales: Lectura libre
+drop policy if exists "Sedes son públicas" on public.sedes;
 create policy "Sedes son públicas"
     on public.sedes for select
     to anon, authenticated
     using (activo = true);
 
+drop policy if exists "Carreras son públicas" on public.carreras;
 create policy "Carreras son públicas"
     on public.carreras for select
     to anon, authenticated
     using (activo = true);
 
+drop policy if exists "Cursos son públicos" on public.cursos;
 create policy "Cursos son públicos"
     on public.cursos for select
     to anon, authenticated
     using (activo = true);
 
+drop policy if exists "Intereses catálogo son públicos" on public.intereses_catalogo;
 create policy "Intereses catálogo son públicos"
     on public.intereses_catalogo for select
     to anon, authenticated
@@ -401,35 +396,38 @@ create policy "Intereses catálogo son públicos"
 -- ------------------------------------------------------------------------------
 -- 3. POLÍTICAS RLS: PERFILES Y CONSENTIMIENTOS
 -- ------------------------------------------------------------------------------
--- Perfiles: Lectura para cualquier alumno autenticado (Explorar, nombres en chat)
+drop policy if exists "Perfiles visibles para alumnos autenticados" on public.perfiles;
 create policy "Perfiles visibles para alumnos autenticados"
     on public.perfiles for select
     to authenticated
     using (true);
 
--- Perfiles: Inserción y actualización solo de su propio perfil
+drop policy if exists "Usuarios pueden insertar su propio perfil" on public.perfiles;
 create policy "Usuarios pueden insertar su propio perfil"
     on public.perfiles for insert
     to authenticated
     with check (auth.uid() = id);
 
+drop policy if exists "Usuarios pueden actualizar su propio perfil" on public.perfiles;
 create policy "Usuarios pueden actualizar su propio perfil"
     on public.perfiles for update
     to authenticated
     using (auth.uid() = id)
     with check (auth.uid() = id);
 
--- Consentimientos: Estrictamente privados por usuario
+drop policy if exists "Usuarios gestionan sus propios consentimientos" on public.consentimientos;
 create policy "Usuarios gestionan sus propios consentimientos"
     on public.consentimientos for select
     to authenticated
     using (auth.uid() = usuario_id);
 
+drop policy if exists "Usuarios insertan sus propios consentimientos" on public.consentimientos;
 create policy "Usuarios insertan sus propios consentimientos"
     on public.consentimientos for insert
     to authenticated
     with check (auth.uid() = usuario_id);
 
+drop policy if exists "Usuarios actualizan sus propios consentimientos" on public.consentimientos;
 create policy "Usuarios actualizan sus propios consentimientos"
     on public.consentimientos for update
     to authenticated
@@ -439,7 +437,7 @@ create policy "Usuarios actualizan sus propios consentimientos"
 -- ------------------------------------------------------------------------------
 -- 4. POLÍTICAS RLS: ESPACIOS, MEMBRESÍAS Y APOYOS
 -- ------------------------------------------------------------------------------
--- Espacios: Visibles si estado es 'visible' o si el usuario es el creador o miembro
+drop policy if exists "Espacios visibles para autenticados" on public.espacios;
 create policy "Espacios visibles para autenticados"
     on public.espacios for select
     to authenticated
@@ -452,38 +450,43 @@ create policy "Espacios visibles para autenticados"
         )
     );
 
+drop policy if exists "Alumnos pueden proponer espacios" on public.espacios;
 create policy "Alumnos pueden proponer espacios"
     on public.espacios for insert
     to authenticated
     with check (auth.uid() = creador_id);
 
+drop policy if exists "Creador puede actualizar su espacio propuesto" on public.espacios;
 create policy "Creador puede actualizar su espacio propuesto"
     on public.espacios for update
     to authenticated
     using (auth.uid() = creador_id);
 
--- Membresías: Lectura de miembros del espacio
+drop policy if exists "Membresias visibles para autenticados" on public.membresias;
 create policy "Membresias visibles para autenticados"
     on public.membresias for select
     to authenticated
     using (true);
 
+drop policy if exists "Usuarios pueden unirse a espacios" on public.membresias;
 create policy "Usuarios pueden unirse a espacios"
     on public.membresias for insert
     to authenticated
     with check (auth.uid() = usuario_id);
 
+drop policy if exists "Usuarios pueden salirse de espacios" on public.membresias;
 create policy "Usuarios pueden salirse de espacios"
     on public.membresias for delete
     to authenticated
     using (auth.uid() = usuario_id);
 
--- Apoyos a propuestas: Ver apoyos y dar un solo apoyo
+drop policy if exists "Apoyos visibles para autenticados" on public.apoyos_propuesta;
 create policy "Apoyos visibles para autenticados"
     on public.apoyos_propuesta for select
     to authenticated
     using (true);
 
+drop policy if exists "Usuarios pueden apoyar propuestas" on public.apoyos_propuesta;
 create policy "Usuarios pueden apoyar propuestas"
     on public.apoyos_propuesta for insert
     to authenticated
@@ -492,7 +495,7 @@ create policy "Usuarios pueden apoyar propuestas"
 -- ------------------------------------------------------------------------------
 -- 5. POLÍTICAS RLS: MENSAJES Y CHAT
 -- ------------------------------------------------------------------------------
--- Mensajes de espacios: Solo miembros del espacio leen y escriben
+drop policy if exists "Miembros leen mensajes del espacio" on public.mensajes;
 create policy "Miembros leen mensajes del espacio"
     on public.mensajes for select
     to authenticated
@@ -503,6 +506,7 @@ create policy "Miembros leen mensajes del espacio"
         )
     );
 
+drop policy if exists "Miembros escriben mensajes en el espacio" on public.mensajes;
 create policy "Miembros escriben mensajes en el espacio"
     on public.mensajes for insert
     to authenticated
@@ -514,34 +518,37 @@ create policy "Miembros escriben mensajes en el espacio"
         )
     );
 
--- Solicitudes de mensaje 1 a 1: Solo emisor y receptor
+drop policy if exists "Participantes ven sus solicitudes de mensaje" on public.solicitudes_mensaje;
 create policy "Participantes ven sus solicitudes de mensaje"
     on public.solicitudes_mensaje for select
     to authenticated
     using (auth.uid() = de_id or auth.uid() = a_id);
 
+drop policy if exists "Emisor crea solicitud de mensaje" on public.solicitudes_mensaje;
 create policy "Emisor crea solicitud de mensaje"
     on public.solicitudes_mensaje for insert
     to authenticated
     with check (auth.uid() = de_id);
 
+drop policy if exists "Receptor actualiza solicitud de mensaje" on public.solicitudes_mensaje;
 create policy "Receptor actualiza solicitud de mensaje"
     on public.solicitudes_mensaje for update
     to authenticated
     using (auth.uid() = a_id);
 
--- Conversaciones 1 a 1: Solo los dos interlocutores
+drop policy if exists "Interlocutores ven su conversacion" on public.conversaciones;
 create policy "Interlocutores ven su conversacion"
     on public.conversaciones for select
     to authenticated
     using (auth.uid() = usuario_a_id or auth.uid() = usuario_b_id);
 
+drop policy if exists "Creacion de conversacion por participantes" on public.conversaciones;
 create policy "Creacion de conversacion por participantes"
     on public.conversaciones for insert
     to authenticated
     with check (auth.uid() = usuario_a_id or auth.uid() = usuario_b_id);
 
--- Mensajes directos: Solo participantes de la conversación
+drop policy if exists "Interlocutores leen mensajes directos" on public.mensajes_directos;
 create policy "Interlocutores leen mensajes directos"
     on public.mensajes_directos for select
     to authenticated
@@ -553,6 +560,7 @@ create policy "Interlocutores leen mensajes directos"
         )
     );
 
+drop policy if exists "Interlocutores envian mensajes directos" on public.mensajes_directos;
 create policy "Interlocutores envian mensajes directos"
     on public.mensajes_directos for insert
     to authenticated
@@ -565,6 +573,7 @@ create policy "Interlocutores envian mensajes directos"
         )
     );
 
+drop policy if exists "Receptor actualiza leido en mensaje directo" on public.mensajes_directos;
 create policy "Receptor actualiza leido en mensaje directo"
     on public.mensajes_directos for update
     to authenticated
@@ -580,44 +589,52 @@ create policy "Receptor actualiza leido en mensaje directo"
 -- ------------------------------------------------------------------------------
 -- 6. POLÍTICAS RLS: CONSULTAS Y ASESORÍAS
 -- ------------------------------------------------------------------------------
+drop policy if exists "Consultas visibles para autenticados" on public.consultas;
 create policy "Consultas visibles para autenticados"
     on public.consultas for select
     to authenticated
     using (true);
 
+drop policy if exists "Alumnos crean sus propias consultas" on public.consultas;
 create policy "Alumnos crean sus propias consultas"
     on public.consultas for insert
     to authenticated
     with check (auth.uid() = autor_id);
 
+drop policy if exists "Grupos de consulta son visibles para autenticados" on public.grupos_consulta;
 create policy "Grupos de consulta son visibles para autenticados"
     on public.grupos_consulta for select
     to authenticated
     using (true);
 
+drop policy if exists "Asesorias visibles para participantes" on public.asesorias;
 create policy "Asesorias visibles para participantes"
     on public.asesorias for select
     to authenticated
     using (true);
 
+drop policy if exists "Asesor inserta su orientacion" on public.asesorias;
 create policy "Asesor inserta su orientacion"
     on public.asesorias for insert
     to authenticated
     with check (auth.uid() = asesor_id);
 
+drop policy if exists "Valoraciones visibles para autenticados" on public.valoraciones_asesoria;
 create policy "Valoraciones visibles para autenticados"
     on public.valoraciones_asesoria for select
     to authenticated
     using (true);
 
+drop policy if exists "Autores de la consulta valoran la asesoria" on public.valoraciones_asesoria;
 create policy "Autores de la consulta valoran la asesoria"
     on public.valoraciones_asesoria for insert
     to authenticated
     with check (auth.uid() = usuario_id);
 
 -- ------------------------------------------------------------------------------
--- 7. POLÍTICAS RLS: ENCUESTAS Y PROTECCIÓN DE DATOS (Anonimato)
+-- 7. POLÍTICAS RLS: ENCUESTAS Y PROTECCIÓN DE DATOS
 -- ------------------------------------------------------------------------------
+drop policy if exists "Encuestas visibles para creador y destinatarios asignados" on public.encuestas;
 create policy "Encuestas visibles para creador y destinatarios asignados"
     on public.encuestas for select
     to authenticated
@@ -629,11 +646,13 @@ create policy "Encuestas visibles para creador y destinatarios asignados"
         )
     );
 
+drop policy if exists "Autores crean encuestas" on public.encuestas;
 create policy "Autores crean encuestas"
     on public.encuestas for insert
     to authenticated
     with check (auth.uid() = autor_id);
 
+drop policy if exists "Preguntas visibles para autor y destinatarios" on public.preguntas;
 create policy "Preguntas visibles para autor y destinatarios"
     on public.preguntas for select
     to authenticated
@@ -651,6 +670,7 @@ create policy "Preguntas visibles para autor y destinatarios"
         )
     );
 
+drop policy if exists "Autores insertan preguntas en sus encuestas" on public.preguntas;
 create policy "Autores insertan preguntas en sus encuestas"
     on public.preguntas for insert
     to authenticated
@@ -661,7 +681,7 @@ create policy "Autores insertan preguntas en sus encuestas"
         )
     );
 
--- Envíos de encuesta: El destinatario solo ve sus encuestas asignadas
+drop policy if exists "Destinatarios ven sus envios asignados" on public.envios_encuesta;
 create policy "Destinatarios ven sus envios asignados"
     on public.envios_encuesta for select
     to authenticated
@@ -669,13 +689,13 @@ create policy "Destinatarios ven sus envios asignados"
         select 1 from public.encuestas enc where enc.id = envios_encuesta.encuesta_id and enc.autor_id = auth.uid()
     ));
 
+drop policy if exists "Destinatario actualiza su estado de envio" on public.envios_encuesta;
 create policy "Destinatario actualiza su estado de envio"
     on public.envios_encuesta for update
     to authenticated
     using (destinatario_id = auth.uid());
 
--- Respuestas: PROTECCIÓN ESTRICTA. El emisor NUNCA puede consultar respuestas directas.
--- Solo el usuario que responde puede insertar sus respuestas a través de su envío asignado.
+drop policy if exists "Destinatario inserta sus respuestas" on public.respuestas;
 create policy "Destinatario inserta sus respuestas"
     on public.respuestas for insert
     to authenticated
@@ -686,7 +706,7 @@ create policy "Destinatario inserta sus respuestas"
         )
     );
 
--- Nadie lee respuestas individuales de otros. Solo mediante RPC agregada.
+drop policy if exists "Nadie lee respuestas individuales ajenas directamente" on public.respuestas;
 create policy "Nadie lee respuestas individuales ajenas directamente"
     on public.respuestas for select
     to authenticated
@@ -700,22 +720,26 @@ create policy "Nadie lee respuestas individuales ajenas directamente"
 -- ------------------------------------------------------------------------------
 -- 8. POLÍTICAS RLS: CERTIFICADOS, REPORTES Y BLOQUEOS
 -- ------------------------------------------------------------------------------
+drop policy if exists "Certificados visibles para todos los autenticados" on public.certificados;
 create policy "Certificados visibles para todos los autenticados"
     on public.certificados for select
     to authenticated
     using (true);
 
+drop policy if exists "Usuarios gestionan sus propios certificados" on public.certificados;
 create policy "Usuarios gestionan sus propios certificados"
     on public.certificados for all
     to authenticated
     using (auth.uid() = usuario_id)
     with check (auth.uid() = usuario_id);
 
+drop policy if exists "Usuarios pueden enviar reportes" on public.reportes;
 create policy "Usuarios pueden enviar reportes"
     on public.reportes for insert
     to authenticated
     with check (auth.uid() = autor_id);
 
+drop policy if exists "Reportes solo visibles por moderador o creador" on public.reportes;
 create policy "Reportes solo visibles por moderador o creador"
     on public.reportes for select
     to authenticated
@@ -725,6 +749,7 @@ create policy "Reportes solo visibles por moderador o creador"
         )
     );
 
+drop policy if exists "Usuarios gestionan sus propios bloqueos" on public.bloqueos;
 create policy "Usuarios gestionan sus propios bloqueos"
     on public.bloqueos for all
     to authenticated
@@ -734,24 +759,32 @@ create policy "Usuarios gestionan sus propios bloqueos"
 -- ------------------------------------------------------------------------------
 -- 9. CONFIGURACIÓN DE SUPABASE REALTIME
 -- ------------------------------------------------------------------------------
--- Habilitar replicación Realtime en mensajes de grupos y mensajes directos
-alter publication supabase_realtime add table public.mensajes;
-alter publication supabase_realtime add table public.mensajes_directos;
+do $$
+begin
+    begin
+        alter publication supabase_realtime add table public.mensajes;
+    exception when others then null;
+    end;
+    begin
+        alter publication supabase_realtime add table public.mensajes_directos;
+    exception when others then null;
+    end;
+end $$;
 
 -- ------------------------------------------------------------------------------
 -- 10. BUCKET DE STORAGE: AVATARES
 -- ------------------------------------------------------------------------------
--- Crear bucket de avatares público para lectura y con RLS
 insert into storage.buckets (id, name, public)
 values ('avatares', 'avatares', true)
 on conflict (id) do update set public = true;
 
--- Políticas de Storage en storage.objects
+drop policy if exists "Avatares son publicos para lectura" on storage.objects;
 create policy "Avatares son publicos para lectura"
     on storage.objects for select
     to public
     using (bucket_id = 'avatares');
 
+drop policy if exists "Usuarios suben avatar en su propia carpeta" on storage.objects;
 create policy "Usuarios suben avatar en su propia carpeta"
     on storage.objects for insert
     to authenticated
@@ -760,6 +793,7 @@ create policy "Usuarios suben avatar en su propia carpeta"
         and (storage.foldername(name))[1] = auth.uid()::text
     );
 
+drop policy if exists "Usuarios actualizan avatar en su propia carpeta" on storage.objects;
 create policy "Usuarios actualizan avatar en su propia carpeta"
     on storage.objects for update
     to authenticated
@@ -768,6 +802,7 @@ create policy "Usuarios actualizan avatar en su propia carpeta"
         and (storage.foldername(name))[1] = auth.uid()::text
     );
 
+drop policy if exists "Usuarios eliminan avatar en su propia carpeta" on storage.objects;
 create policy "Usuarios eliminan avatar en su propia carpeta"
     on storage.objects for delete
     to authenticated
@@ -1231,7 +1266,8 @@ select id, 'Base de Datos Avanzada', 5 from public.carreras where codigo = 'sis'
 union all
 select id, 'Investigación de Operaciones I', 5 from public.carreras where codigo = 'ind'
 union all
-select id, 'Procesos Industriales', 4 from public.carreras where codigo = 'ind';
+select id, 'Procesos Industriales', 4 from public.carreras where codigo = 'ind'
+on conflict (carrera_id, nombre) do nothing;
 
 -- 6. CATÁLOGO DE INTERESES
 insert into public.intereses_catalogo (nombre, categoria)
@@ -1253,119 +1289,44 @@ values
 on conflict (nombre) do nothing;
 
 -- 7. TALLERES OFICIALES ESPEJADOS CON HORARIO REAL (Sección 4 & 7.2)
-insert into public.espacios (
-    tipo, nombre, descripcion, portada_url, sede, horario, oficial, estado, link_inscripcion
-)
-values
-    (
-        'taller',
-        'Taller de Lettering y Caligrafía',
-        'Taller formativo de expresión gráfica y caligrafía. Registro oficial UTP para actividades de bienestar estudiantil.',
-        '/grupos/lettering.jpg',
-        'Lima Sur',
-        'Sábados 10:00 - 12:00 (Aula 302)',
-        true,
-        'visible',
-        'https://portal.utp.edu.pe/talleres/lettering-2026'
-    ),
-    (
-        'taller',
-        'Taller de Futsal UTP Lima Sur',
-        'Entrenamientos semanales y preparación para los torneos interfacultades de la universidad.',
-        '/grupos/futsal.jpg',
-        'Lima Sur',
-        'Martes y Jueves 17:00 - 19:00 (Cancha Central)',
-        true,
-        'visible',
-        'https://portal.utp.edu.pe/talleres/futsal-2026'
-    ),
-    (
-        'taller',
-        'Taller de Karate Básico',
-        'Defensa personal y disciplina tradicional. Actividad deportiva extracurricular oficial.',
-        '/grupos/karate.jpg',
-        'Lima Sur',
-        'Lunes y Miércoles 18:00 - 19:30 (Sala Multiusos)',
-        true,
-        'visible',
-        'https://portal.utp.edu.pe/talleres/karate-2026'
-    ),
-    (
-        'taller',
-        'Taller de IA Aplicada a la Universidad',
-        'Uso ético y práctico de modelos generativos, automatización de resúmenes y asistencia en investigación.',
-        '/grupos/ia.jpg',
-        'Lima Sur',
-        'Viernes 19:00 - 21:00 (Lab 401)',
-        true,
-        'visible',
-        'https://portal.utp.edu.pe/talleres/ia-2026'
-    );
+insert into public.espacios (tipo, nombre, descripcion, portada_url, sede, horario, oficial, estado, link_inscripcion)
+select 'taller', 'Taller de Lettering y Caligrafía', 'Taller formativo de expresión gráfica y caligrafía. Registro oficial UTP para actividades de bienestar estudiantil.', '/grupos/lettering.jpg', 'Lima Sur', 'Sábados 10:00 - 12:00 (Aula 302)', true, 'visible', 'https://portal.utp.edu.pe/talleres/lettering-2026'
+where not exists (select 1 from public.espacios where nombre = 'Taller de Lettering y Caligrafía');
 
--- 8. ESPACIOS DE CARRERA INICIALES (Cruzan ciclos 1 al 10 - Dónde viven las consultas agrupadas)
+insert into public.espacios (tipo, nombre, descripcion, portada_url, sede, horario, oficial, estado, link_inscripcion)
+select 'taller', 'Taller de Futsal UTP Lima Sur', 'Entrenamientos semanales y preparación para los torneos interfacultades de la universidad.', '/grupos/futsal.jpg', 'Lima Sur', 'Martes y Jueves 17:00 - 19:00 (Cancha Central)', true, 'visible', 'https://portal.utp.edu.pe/talleres/futsal-2026'
+where not exists (select 1 from public.espacios where nombre = 'Taller de Futsal UTP Lima Sur');
+
+insert into public.espacios (tipo, nombre, descripcion, portada_url, sede, horario, oficial, estado, link_inscripcion)
+select 'taller', 'Taller de Karate Básico', 'Defensa personal y disciplina tradicional. Actividad deportiva extracurricular oficial.', '/grupos/karate.jpg', 'Lima Sur', 'Lunes y Miércoles 18:00 - 19:30 (Sala Multiusos)', true, 'visible', 'https://portal.utp.edu.pe/talleres/karate-2026'
+where not exists (select 1 from public.espacios where nombre = 'Taller de Karate Básico');
+
+insert into public.espacios (tipo, nombre, descripcion, portada_url, sede, horario, oficial, estado, link_inscripcion)
+select 'taller', 'Taller de IA Aplicada a la Universidad', 'Uso ético y práctico de modelos generativos, automatización de resúmenes y asistencia en investigación.', '/grupos/ia.jpg', 'Lima Sur', 'Viernes 19:00 - 21:00 (Lab 401)', true, 'visible', 'https://portal.utp.edu.pe/talleres/ia-2026'
+where not exists (select 1 from public.espacios where nombre = 'Taller de IA Aplicada a la Universidad');
+
+-- 8. ESPACIOS DE CARRERA INICIALES
 insert into public.espacios (tipo, nombre, descripcion, portada_url, carrera, sede, oficial, estado)
-values
-    (
-        'carrera',
-        'Comunidad de Enfermería UTP',
-        'Espacio general para todos los ciclos (1.° al 10.°) de Enfermería Lima Sur. Consultas de cursos, bancos de preguntas, orientación para prácticas e internado.',
-        '/grupos/enfermeria.jpg',
-        'Enfermería',
-        'Lima Sur',
-        false,
-        'visible'
-    ),
-    (
-        'carrera',
-        'Comunidad de Psicología UTP',
-        'Consultas de cursos teóricos y clínicos, orientación de casos formativos y eventos de salud mental.',
-        '/grupos/carrera_default.jpg',
-        'Psicología',
-        'Lima Sur',
-        false,
-        'visible'
-    ),
-    (
-        'carrera',
-        'Comunidad de Ingeniería de Sistemas UTP',
-        'Dudas de programación, algoritmos, arquitectura de software, bases de datos y hackathons.',
-        '/grupos/carrera_default.jpg',
-        'Ingeniería de Sistemas e Informática',
-        'Lima Sur',
-        false,
-        'visible'
-    ),
-    (
-        'carrera',
-        'Comunidad de Ingeniería Industrial UTP',
-        'Consultas sobre optimización de procesos, investigación operativa, calidad y seguridad industrial.',
-        '/grupos/carrera_default.jpg',
-        'Ingeniería Industrial',
-        'Lima Sur',
-        false,
-        'visible'
-    );
+select 'carrera', 'Comunidad de Enfermería UTP', 'Espacio general para todos los ciclos (1.° al 10.°) de Enfermería Lima Sur. Consultas de cursos, bancos de preguntas, orientación para prácticas e internado.', '/grupos/enfermeria.jpg', 'Enfermería', 'Lima Sur', false, 'visible'
+where not exists (select 1 from public.espacios where nombre = 'Comunidad de Enfermería UTP');
 
--- 9. GRUPOS DE INTERÉS Y COMUNIDADES INICIALES (Cruzan carreras)
+insert into public.espacios (tipo, nombre, descripcion, portada_url, carrera, sede, oficial, estado)
+select 'carrera', 'Comunidad de Psicología UTP', 'Consultas de cursos teóricos y clínicos, orientación de casos formativos y eventos de salud mental.', '/grupos/carrera_default.jpg', 'Psicología', 'Lima Sur', false, 'visible'
+where not exists (select 1 from public.espacios where nombre = 'Comunidad de Psicología UTP');
+
+insert into public.espacios (tipo, nombre, descripcion, portada_url, carrera, sede, oficial, estado)
+select 'carrera', 'Comunidad de Ingeniería de Sistemas UTP', 'Dudas de programación, algoritmos, arquitectura de software, bases de datos y hackathons.', '/grupos/carrera_default.jpg', 'Ingeniería de Sistemas e Informática', 'Lima Sur', false, 'visible'
+where not exists (select 1 from public.espacios where nombre = 'Comunidad de Ingeniería de Sistemas UTP');
+
+insert into public.espacios (tipo, nombre, descripcion, portada_url, carrera, sede, oficial, estado)
+select 'carrera', 'Comunidad de Ingeniería Industrial UTP', 'Consultas sobre optimización de procesos, investigación operativa, calidad y seguridad industrial.', '/grupos/carrera_default.jpg', 'Ingeniería Industrial', 'Lima Sur', false, 'visible'
+where not exists (select 1 from public.espacios where nombre = 'Comunidad de Ingeniería Industrial UTP');
+
+-- 9. GRUPOS DE INTERÉS Y COMUNIDADES INICIALES
 insert into public.espacios (tipo, nombre, descripcion, portada_url, sede, oficial, estado, umbral_apoyos)
-values
-    (
-        'interes',
-        'Startups & Emprendimiento UTP',
-        'Espacio para founders estudiantiles, validación de ideas de negocio, búsqueda de co-founders y preparación para incubadoras.',
-        '/grupos/startup.png',
-        'Lima Sur',
-        false,
-        'visible',
-        15
-    ),
-    (
-        'interes',
-        'Cinéfilos y Debate UTP',
-        'Charlas semanales, ciclos de cine clásico y contemporáneo, y análisis crítico audiovisual.',
-        '/grupos/cinefilos.jpg',
-        'Lima Sur',
-        false,
-        'visible',
-        15
-    );
+select 'interes', 'Startups & Emprendimiento UTP', 'Espacio para founders estudiantiles, validación de ideas de negocio, búsqueda de co-founders y preparación para incubadoras.', '/grupos/startup.png', 'Lima Sur', false, 'visible', 15
+where not exists (select 1 from public.espacios where nombre = 'Startups & Emprendimiento UTP');
+
+insert into public.espacios (tipo, nombre, descripcion, portada_url, sede, oficial, estado, umbral_apoyos)
+select 'interes', 'Cinéfilos y Debate UTP', 'Charlas semanales, ciclos de cine clásico y contemporáneo, y análisis crítico audiovisual.', '/grupos/cinefilos.jpg', 'Lima Sur', false, 'visible', 15
+where not exists (select 1 from public.espacios where nombre = 'Cinéfilos y Debate UTP');

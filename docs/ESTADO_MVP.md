@@ -13,11 +13,11 @@ Estado de cumplimiento y trazabilidad de las pantallas de la aplicación móvil 
 
 | ID | Nombre de Pantalla | Estado Inicial (Fase 0) | Estado Objetivo MVP | Observaciones |
 |---|---|:---:|:---:|---|
-| **M01** | Bienvenida y acceso con correo | 🟡 Demo | 🟢 Real | Código fijo en demo. Migrará a OTP Supabase con validación de dominio. |
-| **M02** | Verificación código OTP 6 dígitos | 🟡 Demo | 🟢 Real | Simula código `482910`. Debe conectar a `verifyOtp`. |
-| **M03** | Onboarding: Perfil declarado | 🟡 Demo | 🟢 Real | Guarda en localStorage. Pasará a tabla `perfiles`. |
-| **M04** | Onboarding: Intereses | 🟡 Demo | 🟢 Real | Chips locales. Pasará a `perfiles.intereses` / catálogos. |
-| **M05** | Consentimientos (4 finalidades) | 🟡 Demo | 🟢 Real | 4 casillas. C1 bloqueado, C4 apagado por defecto. Irá a `consentimientos`. |
+| **M01** | Bienvenida y acceso con correo | 🟢 Real | 🟢 Real | Validación de dominio @utp.edu.pe y correos_invitados. Envío OTP real. Botón demo oculto en prod. |
+| **M02** | Verificación código OTP 6 dígitos | 🟢 Real | 🟢 Real | Código fijo 482910 eliminado. Integrado con verifyOtp y reenvío con temporizador. |
+| **M03** | Onboarding: Perfil declarado | 🟢 Real | 🟢 Real | Persiste en tabla perfiles con origen_campos declarado y auto-asignación a espacios. |
+| **M04** | Onboarding: Intereses | 🟢 Real | 🟢 Real | Almacena en perfiles.intereses para filtros de encuestas. Mínimo 2 intereses. |
+| **M05** | Consentimientos (4 finalidades) | 🟢 Real | 🟢 Real | Persiste en tabla consentimientos. C1 obligatorio, C4 apagado por defecto (Ley 29733). |
 | **M06** | Inicio (Feed resumen) | 🟡 Demo | 🟢 Real | Resumen de encuestas, grupos y avisos. |
 | **M07** | Explorar (Buscador y filtros) | 🟡 Demo | 🟢 Real | Filtrará perfiles y grupos reales de la DB excluyéndose a sí mismo. |
 | **M08** | Perfil de otro alumno + Solicitud | 🟡 Demo | 🟢 Real | Enviar solicitud de mensaje con motivo. |

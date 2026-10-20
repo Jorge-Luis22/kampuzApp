@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../data/store';
 import {
   SEDES_UTP,
   CARRERAS_UTP,
-  INTERESES_DISPONIBLES
+  INTERESES_DISPONIBLES,
+  HABILIDADES_BASE_NUEVO_ALUMNO
 } from '../data/mockData';
+import {
+  isEmailAllowed,
+  signInWithOtp,
+  verifyOtp,
+  getProfile,
+  saveProfile
+} from '../lib/auth';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -19,7 +27,9 @@ import {
   Info,
   AlertCircle,
   Zap,
-  Check
+  Check,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 
 export default function OnboardingFlow() {
@@ -32,56 +42,157 @@ export default function OnboardingFlow() {
     loginDirectoDemo
   } = useStore();
 
+  const isModoDemo = import.meta.env.VITE_MODO_DEMO === 'true';
+
   // Mode: 'login' | 'registro'
   const [authMode, setAuthMode] = useState('login');
-  const [email, setEmail] = useState('luz.martinez@utp.edu.pe');
-  const [otpCode, setOtpCode] = useState(['4', '8', '2', '9', '1', '0']);
+  const [email, setEmail] = useState('');
+  const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Form profile state
+  // Reenviar OTP timer
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    let timer;
+    if (resendCooldown > 0) {
+      timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  // Form profile state (M03)
   const [formData, setFormData] = useState({
-    nombre: user.nombre || 'Luz',
-    apellido: user.apellido || 'Martínez',
-    sede: user.sede || 'Lima Sur',
-    carrera: user.carrera || 'Enfermería',
-    ciclo: user.ciclo || 5,
-    fechaNacimiento: user.fechaNacimiento || '2005-03-14'
+    nombre: user?.nombre && user?.id !== 'usr_luz' ? user.nombre : '',
+    apellido: user?.apellido && user?.id !== 'usr_luz' ? user.apellido : '',
+    sede: user?.sede || 'Lima Sur',
+    carrera: user?.carrera || 'Enfermería',
+    ciclo: user?.ciclo || 1,
+    fechaNacimiento: user?.fechaNacimiento || '2005-01-01'
   });
 
-  const [selectedIntereses, setSelectedIntereses] = useState(user.intereses || []);
+  const [selectedIntereses, setSelectedIntereses] = useState(
+    user?.intereses && user?.id !== 'usr_luz' ? user.intereses : []
+  );
 
-  const handleEmailSubmit = (e) => {
+  // Consentimientos locales (M05): 4 apagado por defecto (Ley 29733)
+  const [localConsentimientos, setLocalConsentimientos] = useState({
+    cuenta: true,
+    encuestas: true,
+    metricas: true,
+    perfil_universidad: false
+  });
+
+  const handleEmailSubmit = async (e) => {
     e.preventDefault();
-    if (!email.toLowerCase().endsWith('@utp.edu.pe')) {
-      setErrorMsg('Ingresa tu correo institucional (@utp.edu.pe)');
+    setErrorMsg('');
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      setErrorMsg('Ingresa tu correo institucional.');
       return;
     }
-    setErrorMsg('');
-    setCurrentScreen('m02_otp');
+
+    setIsLoading(true);
+    try {
+      // 1. Validar si el correo es @utp.edu.pe o invitado
+      const allowed = await isEmailAllowed(cleanEmail);
+      if (!allowed) {
+        setErrorMsg('Solo se aceptan correos institucionales (@utp.edu.pe) o invitados registrados.');
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Solicitar OTP a Supabase
+      const res = await signInWithOtp(cleanEmail);
+      if (!res.success) {
+        setErrorMsg(res.error || 'Error al enviar código de verificación.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Éxito: pasar a pantalla de OTP e iniciar cooldown de 30s
+      setResendCooldown(30);
+      setOtpCode(['', '', '', '', '', '']);
+      setCurrentScreen('m02_otp');
+    } catch (err) {
+      setErrorMsg('No se pudo conectar con el servidor de autenticación.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleOtpSubmit = (e) => {
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0 || isLoading) return;
+    setIsLoading(true);
+    setErrorMsg('');
+    const res = await signInWithOtp(email);
+    setIsLoading(false);
+    if (!res.success) {
+      setErrorMsg(res.error || 'Error al reenviar el código.');
+    } else {
+      setResendCooldown(30);
+    }
+  };
+
+  const handleOtpSubmit = async (e) => {
     e.preventDefault();
     const entered = otpCode.join('');
     if (entered.length < 6) {
-      setErrorMsg('Ingresa el código completo de 6 dígitos');
+      setErrorMsg('Ingresa el código completo de 6 dígitos.');
       return;
     }
+
     setErrorMsg('');
-    if (authMode === 'login') {
-      loginDirectoDemo();
-    } else {
-      setCurrentScreen('m03_onboarding');
+    setIsLoading(true);
+
+    try {
+      const res = await verifyOtp(email, entered);
+      if (!res.success) {
+        setErrorMsg(res.error || 'Código incorrecto o vencido.');
+        setIsLoading(false);
+        return;
+      }
+
+      const authUser = res.user;
+
+      // Consultar si ya tiene perfil registrado en Supabase
+      const existingProfile = await getProfile(authUser.id);
+
+      if (existingProfile && existingProfile.nombre) {
+        // Usuario recurrente con perfil completo: entrar a la app
+        setUser({
+          ...existingProfile,
+          correoInstitucional: authUser.email,
+          habilidades: existingProfile.habilidades || HABILIDADES_BASE_NUEVO_ALUMNO,
+          certificados: existingProfile.certificados || [],
+          medallas: []
+        });
+        setCurrentScreen('app');
+      } else {
+        // Alumno nuevo: continuar al onboarding de datos académicos
+        setUser(prev => ({
+          ...(prev || {}),
+          id: authUser.id,
+          correoInstitucional: authUser.email
+        }));
+        setCurrentScreen('m03_onboarding');
+      }
+    } catch (err) {
+      setErrorMsg('Ocurrió un error al verificar el código.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleProfileSubmit = (e) => {
     e.preventDefault();
-    setUser(prev => ({
-      ...prev,
-      ...formData,
-      edad: 21
-    }));
+    if (!formData.nombre.trim() || !formData.apellido.trim()) {
+      setErrorMsg('Completa tu nombre y apellido.');
+      return;
+    }
+    setErrorMsg('');
     setCurrentScreen('m04_intereses');
   };
 
@@ -95,19 +206,60 @@ export default function OnboardingFlow() {
 
   const handleInteresesSubmit = () => {
     if (selectedIntereses.length < 2) {
-      setErrorMsg('Elige al menos 2 intereses');
+      setErrorMsg('Elige al menos 2 intereses para calibrar tu red.');
       return;
     }
     setErrorMsg('');
-    setUser(prev => ({
-      ...prev,
-      intereses: selectedIntereses
-    }));
     setCurrentScreen('m05_consentimientos');
   };
 
-  const handleConsentimientosFinalize = () => {
-    setCurrentScreen('app');
+  const handleConsentimientosFinalize = async () => {
+    setIsLoading(true);
+    setErrorMsg('');
+
+    try {
+      const userId = user?.id;
+      if (!userId) {
+        setErrorMsg('Error de sesión: vuelve a ingresar tu código.');
+        setIsLoading(false);
+        return;
+      }
+
+      const profilePayload = {
+        correoInstitucional: email || user.correoInstitucional,
+        nombre: formData.nombre.trim(),
+        apellido: formData.apellido.trim(),
+        sede: formData.sede,
+        carrera: formData.carrera,
+        ciclo: Number(formData.ciclo),
+        fechaNacimiento: formData.fechaNacimiento,
+        intereses: selectedIntereses,
+        rol: 'alumno'
+      };
+
+      const res = await saveProfile(userId, profilePayload, localConsentimientos);
+      if (!res.success) {
+        setErrorMsg(res.error || 'No se pudo guardar el perfil.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Actualizar el estado global con el perfil real
+      setUser({
+        id: userId,
+        ...profilePayload,
+        consentimientos: localConsentimientos,
+        habilidades: HABILIDADES_BASE_NUEVO_ALUMNO,
+        certificados: [],
+        medallas: []
+      });
+
+      setCurrentScreen('app');
+    } catch (err) {
+      setErrorMsg('Error al finalizar el registro.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // --- M01: BIENVENIDA Y ACCESO (LOGIN / REGISTRO) ---
@@ -134,20 +286,22 @@ export default function OnboardingFlow() {
             </span>
           </div>
 
-          {/* Quick Demo Access Bar */}
-          <button
-            onClick={loginDirectoDemo}
-            className="w-full mb-4 p-3 bg-gradient-to-r from-accent to-teal-700 text-white rounded-2xl shadow-md hover:opacity-95 transition flex items-center justify-between"
-          >
-            <div className="flex items-center space-x-2.5 text-left">
-              <Zap size={18} className="text-amber-300 fill-amber-300 shrink-0" />
-              <div>
-                <span className="text-xs font-black block leading-tight">Acceso Rápido Presentación Demo</span>
-                <span className="text-xs text-teal-100 font-medium">Entrar directo como Luz Martínez (Enfermería C5)</span>
+          {/* Quick Demo Access Bar (Solo visible si VITE_MODO_DEMO=true) */}
+          {isModoDemo && (
+            <button
+              onClick={loginDirectoDemo}
+              className="w-full mb-4 p-3 bg-gradient-to-r from-accent to-teal-700 text-white rounded-2xl shadow-md hover:opacity-95 transition flex items-center justify-between"
+            >
+              <div className="flex items-center space-x-2.5 text-left">
+                <Zap size={18} className="text-amber-300 fill-amber-300 shrink-0" />
+                <div>
+                  <span className="text-xs font-black block leading-tight">Acceso Rápido Presentación Demo</span>
+                  <span className="text-xs text-teal-100 font-medium">Entrar directo como Luz Martínez (Enfermería C5)</span>
+                </div>
               </div>
-            </div>
-            <ArrowRight size={16} className="shrink-0" />
-          </button>
+              <ArrowRight size={16} className="shrink-0" />
+            </button>
+          )}
 
           {/* Main Title & Value Prop */}
           <h1 className="text-xl font-black text-ink dark:text-ink-light tracking-tight mt-2 mb-1">
@@ -198,12 +352,13 @@ export default function OnboardingFlow() {
                     placeholder="alumno@utp.edu.pe"
                     className="w-full pl-10 pr-4 py-3 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary dark:focus:border-accent"
                     required
+                    disabled={isLoading}
                   />
                   <Mail className="absolute left-3.5 top-3.5 text-ink-muted" size={17} />
                 </div>
                 {errorMsg && (
                   <p className="text-xs text-semantic-danger mt-1.5 flex items-center space-x-1 font-semibold">
-                    <AlertCircle size={14} />
+                    <AlertCircle size={14} className="shrink-0" />
                     <span>{errorMsg}</span>
                   </p>
                 )}
@@ -211,10 +366,17 @@ export default function OnboardingFlow() {
 
               <button
                 type="submit"
-                className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
+                disabled={isLoading}
+                className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
               >
-                <span>{authMode === 'login' ? 'Continuar con código' : 'Iniciar registro'}</span>
-                <ArrowRight size={16} />
+                {isLoading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <>
+                    <span>{authMode === 'login' ? 'Continuar con código' : 'Iniciar registro'}</span>
+                    <ArrowRight size={16} />
+                  </>
+                )}
               </button>
             </form>
 
@@ -255,21 +417,23 @@ export default function OnboardingFlow() {
                 Código de Verificación
               </h1>
               <p className="text-xs text-ink-soft dark:text-ink-muted mt-1 font-medium">
-                Enviado a <strong className="text-ink dark:text-ink-light">{email}</strong>
+                Enviamos un código de 6 dígitos a <strong className="text-ink dark:text-ink-light">{email}</strong>
               </p>
             </div>
 
-            {/* OTP Digits */}
+            {/* OTP Digits (Sin código precargado fijo) */}
             <div className="flex justify-between gap-1.5 py-1">
               {otpCode.map((digit, index) => (
                 <input
                   key={index}
                   id={`otp-${index}`}
                   type="text"
+                  inputMode="numeric"
                   maxLength={1}
                   value={digit}
+                  disabled={isLoading}
                   onChange={(e) => {
-                    const val = e.target.value;
+                    const val = e.target.value.replace(/\D/g, '');
                     const newOtp = [...otpCode];
                     newOtp[index] = val;
                     setOtpCode(newOtp);
@@ -277,15 +441,14 @@ export default function OnboardingFlow() {
                       document.getElementById(`otp-${index + 1}`)?.focus();
                     }
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Backspace' && !otpCode[index] && index > 0) {
+                      document.getElementById(`otp-${index - 1}`)?.focus();
+                    }
+                  }}
                   className="w-11 h-14 text-center text-xl font-black bg-white dark:bg-surface-dark border-2 border-line dark:border-line-dark rounded-2xl text-ink dark:text-ink-light focus:outline-none focus:border-accent"
                 />
               ))}
-            </div>
-
-            <div className="p-2.5 bg-accent-soft/60 dark:bg-accent-dark/40 rounded-xl text-center border border-accent/20">
-              <span className="text-xs text-accent dark:text-teal-200 font-bold">
-                Código de prueba precargado: 482910
-              </span>
             </div>
 
             {errorMsg && (
@@ -294,19 +457,33 @@ export default function OnboardingFlow() {
 
             <button
               onClick={handleOtpSubmit}
-              className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
+              disabled={isLoading}
+              className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
             >
-              <span>Verificar código</span>
-              <CheckCircle2 size={16} />
+              {isLoading ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <>
+                  <span>Verificar código</span>
+                  <CheckCircle2 size={16} />
+                </>
+              )}
             </button>
           </div>
         </div>
 
         <button
           type="button"
-          className="text-center text-xs text-ink-muted hover:text-ink py-2 font-medium"
+          onClick={handleResendOtp}
+          disabled={resendCooldown > 0 || isLoading}
+          className="text-center text-xs text-ink-muted hover:text-ink py-2 font-medium disabled:opacity-50 flex items-center justify-center space-x-1 mx-auto"
         >
-          ¿No recibiste el correo? Reenviar en 30s
+          <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
+          <span>
+            {resendCooldown > 0
+              ? `¿No recibiste el correo? Reenviar en ${resendCooldown}s`
+              : 'Reenviar código de 6 dígitos'}
+          </span>
         </button>
       </div>
     );
@@ -333,6 +510,7 @@ export default function OnboardingFlow() {
                   type="text"
                   value={formData.nombre}
                   onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                  placeholder="Tu nombre real"
                   className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
                   required
                 />
@@ -343,6 +521,7 @@ export default function OnboardingFlow() {
                   type="text"
                   value={formData.apellido}
                   onChange={(e) => setFormData({ ...formData, apellido: e.target.value })}
+                  placeholder="Tu apellido"
                   className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
                   required
                 />
@@ -396,6 +575,7 @@ export default function OnboardingFlow() {
                   value={formData.fechaNacimiento}
                   onChange={(e) => setFormData({ ...formData, fechaNacimiento: e.target.value })}
                   className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
+                  required
                 />
               </div>
             </div>
@@ -403,6 +583,10 @@ export default function OnboardingFlow() {
             <div className="p-2.5 bg-slate-100 dark:bg-surface-dark rounded-xl text-xs text-ink-muted">
               Datos declarados bajo declaración jurada. Verificados al validar con base institucional UTP.
             </div>
+
+            {errorMsg && (
+              <p className="text-xs text-semantic-danger font-semibold">{errorMsg}</p>
+            )}
           </form>
         </div>
 
@@ -508,7 +692,7 @@ export default function OnboardingFlow() {
           </p>
 
           <div className="space-y-3">
-            {/* Consentimiento 1: Cuenta */}
+            {/* Consentimiento 1: Cuenta (Obligatorio, bloqueado) */}
             <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
               <div>
                 <span className="text-xs font-black text-ink dark:text-ink-light block">1. Crear y operar tu cuenta</span>
@@ -519,7 +703,7 @@ export default function OnboardingFlow() {
               </span>
             </div>
 
-            {/* Consentimiento 2: Encuestas */}
+            {/* Consentimiento 2: Encuestas (Activo por defecto) */}
             <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
               <div>
                 <span className="text-xs font-black text-ink dark:text-ink-light block">2. Recibir encuestas de alumnos</span>
@@ -527,13 +711,16 @@ export default function OnboardingFlow() {
               </div>
               <input
                 type="checkbox"
-                checked={user.consentimientos?.encuestas ?? true}
-                onChange={() => toggleConsentimiento('encuestas')}
+                checked={localConsentimientos.encuestas}
+                onChange={(e) => setLocalConsentimientos({
+                  ...localConsentimientos,
+                  encuestas: e.target.checked
+                })}
                 className="w-5 h-5 accent-accent rounded cursor-pointer"
               />
             </div>
 
-            {/* Consentimiento 3: Métricas */}
+            {/* Consentimiento 3: Métricas (Activo por defecto) */}
             <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
               <div>
                 <span className="text-xs font-black text-ink dark:text-ink-light block">3. Métricas agregadas para UTP</span>
@@ -541,15 +728,18 @@ export default function OnboardingFlow() {
               </div>
               <input
                 type="checkbox"
-                checked={user.consentimientos?.metricas ?? true}
-                onChange={() => toggleConsentimiento('metricas')}
+                checked={localConsentimientos.metricas}
+                onChange={(e) => setLocalConsentimientos({
+                  ...localConsentimientos,
+                  metricas: e.target.checked
+                })}
                 className="w-5 h-5 accent-accent rounded cursor-pointer"
               />
             </div>
 
-            {/* Consentimiento 4: Compartir perfil con UTP */}
+            {/* Consentimiento 4: Compartir perfil con UTP (APAGADO por defecto) */}
             <div className={`p-4 rounded-2xl border-2 transition ${
-              user.consentimientos?.perfil_universidad
+              localConsentimientos.perfil_universidad
                 ? 'bg-accent-soft/40 dark:bg-accent-dark/30 border-accent shadow-sm'
                 : 'bg-white dark:bg-surface-cardDark border-line dark:border-line-dark'
             }`}>
@@ -559,32 +749,46 @@ export default function OnboardingFlow() {
                 </span>
                 <input
                   type="checkbox"
-                  checked={user.consentimientos?.perfil_universidad ?? false}
-                  onChange={() => toggleConsentimiento('perfil_universidad')}
+                  checked={localConsentimientos.perfil_universidad}
+                  onChange={(e) => setLocalConsentimientos({
+                    ...localConsentimientos,
+                    perfil_universidad: e.target.checked
+                  })}
                   className="w-5 h-5 accent-accent rounded cursor-pointer"
                 />
               </div>
 
               <p className="text-xs text-ink-soft dark:text-ink-muted leading-relaxed">
-                La UTP tiene programas como <strong>Impulsa</strong> y <strong>Generación Top</strong>, y hoy solo puede encontrarte por tu promedio. Si activas esto, cuando tu universidad se sume a Kampuz también va a ver tus medallas ganadas y grupos creados.
+                La UTP tiene programas como <strong>Impulsa</strong> y <strong>Generación Top</strong>, y hoy solo puede encontrarte por tu promedio. Si activas esto, cuando tu universidad se sume a Kampuz también va a ver lo que construiste aquí: a cuántos compañeros asesoraste, qué grupos creaste, en qué te has venido formando.
               </p>
 
               <div className="mt-2.5 pt-2 border-t border-line dark:border-line-dark text-xs text-ink-muted space-y-1">
-                <p><strong>Qué se comparte:</strong> nombre, carrera, ciclo y medallas obtenidas.</p>
-                <p><strong>Qué no:</strong> tus mensajes, chats, ni qué respondiste en encuestas.</p>
+                <p><strong>Qué se comparte:</strong> tu nombre, tu carrera, tu ciclo y tu perfil de habilidades con su evidencia.</p>
+                <p><strong>Qué no:</strong> tus mensajes, tus chats, ni qué respondiste en las encuestas.</p>
                 <p className="italic text-accent font-bold">Apagado por defecto. Puedes apagarlo cuando quieras.</p>
               </div>
             </div>
           </div>
+
+          {errorMsg && (
+            <p className="text-xs text-semantic-danger mt-2 font-bold">{errorMsg}</p>
+          )}
         </div>
 
         <div className="pt-3 pb-1">
           <button
             onClick={handleConsentimientosFinalize}
-            className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
+            disabled={isLoading}
+            className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
           >
-            <span>Finalizar y entrar a Kampuz</span>
-            <CheckCircle2 size={16} />
+            {isLoading ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <>
+                <span>Finalizar y entrar a Kampuz</span>
+                <CheckCircle2 size={16} />
+              </>
+            )}
           </button>
         </div>
       </div>

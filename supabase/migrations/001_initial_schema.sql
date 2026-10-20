@@ -3,7 +3,6 @@
 -- Basado en KAMPUS-spec-antigravity.md (Sección 8) y PROMPT_ANTIGRAVITY_MVP.md
 -- ==============================================================================
 
--- Extensión para generación de UUIDs si no está habilitada
 create extension if not exists "uuid-ossp";
 
 -- ------------------------------------------------------------------------------
@@ -16,7 +15,6 @@ create table if not exists public.config (
     actualizado_en timestamp with time zone default now()
 );
 
--- Correos externos autorizados (profesor, jurados, testers sin correo @utp.edu.pe)
 create table if not exists public.correos_invitados (
     id uuid primary key default uuid_generate_v4(),
     correo text unique not null,
@@ -37,7 +35,7 @@ create table if not exists public.sedes (
 
 create table if not exists public.carreras (
     id uuid primary key default uuid_generate_v4(),
-    codigo text unique not null, -- ej: 'enf', 'psi', 'ind', 'sis'
+    codigo text unique not null,
     nombre text not null,
     facultad text not null,
     activo boolean default true
@@ -48,7 +46,8 @@ create table if not exists public.cursos (
     carrera_id uuid references public.carreras(id) on delete cascade,
     nombre text not null,
     ciclo_sugerido integer check (ciclo_sugerido between 1 and 10),
-    activo boolean default true
+    activo boolean default true,
+    constraint cursos_carrera_nombre_key unique (carrera_id, nombre)
 );
 
 create table if not exists public.intereses_catalogo (
@@ -68,8 +67,8 @@ create table if not exists public.perfiles (
     apellido text not null,
     foto_url text,
     bio text,
-    sede text not null, -- Sede UTP declarada (ej: 'Lima Sur')
-    carrera text not null, -- Carrera UTP declarada (ej: 'Enfermería')
+    sede text not null,
+    carrera text not null,
     carrera_id uuid references public.carreras(id) on delete set null,
     ciclo integer not null check (ciclo between 1 and 10),
     fecha_nacimiento date not null,
@@ -88,7 +87,6 @@ create table if not exists public.perfiles (
     actualizado_en timestamp with time zone default now()
 );
 
--- Cuatro consentimientos explícitos bajo Ley 29733 (Sección 6.8 de la spec)
 create table if not exists public.consentimientos (
     id uuid primary key default uuid_generate_v4(),
     usuario_id uuid references public.perfiles(id) on delete cascade,
@@ -101,13 +99,8 @@ create table if not exists public.consentimientos (
 );
 
 -- ------------------------------------------------------------------------------
--- 4. ESPACIOS, MEMBRESÍAS Y APOYOS (Sección 4 de la spec)
+-- 4. ESPACIOS, MEMBRESÍAS Y APOYOS
 -- ------------------------------------------------------------------------------
--- Tipos de espacio:
---   - carrera_ciclo: Cohorte salón (ej: Enfermería Ciclo 5)
---   - carrera: Toda la carrera ciclos 1 al 10 (donde viven las consultas agrupadas)
---   - taller: Talleres oficiales espejados con horario real
---   - interes: Comunidades propuestas por alumnos
 create table if not exists public.espacios (
     id uuid primary key default uuid_generate_v4(),
     tipo text not null check (tipo in ('carrera_ciclo', 'carrera', 'taller', 'interes')),
@@ -117,7 +110,7 @@ create table if not exists public.espacios (
     carrera text,
     ciclo integer check (ciclo between 1 and 10),
     sede text not null default 'Lima Sur',
-    horario text, -- Horario real visible para talleres (ej: 'Sábados 10:00 - 12:00')
+    horario text,
     oficial boolean default false,
     creador_id uuid references public.perfiles(id) on delete set null,
     estado text default 'visible' check (estado in ('visible', 'oculto')),
@@ -144,7 +137,7 @@ create table if not exists public.apoyos_propuesta (
 );
 
 -- ------------------------------------------------------------------------------
--- 5. MENSAJERÍA Y CHAT (GRUPAL Y DIRECTO 1 A 1)
+-- 5. MENSAJERÍA Y CHAT
 -- ------------------------------------------------------------------------------
 create table if not exists public.mensajes (
     id uuid primary key default uuid_generate_v4(),
@@ -155,7 +148,6 @@ create table if not exists public.mensajes (
     editado_en timestamp with time zone
 );
 
--- Solicitudes de contacto 1 a 1 (No hay chat directo libre - Sección 6.4)
 create table if not exists public.solicitudes_mensaje (
     id uuid primary key default uuid_generate_v4(),
     de_id uuid references public.perfiles(id) on delete cascade,
@@ -188,7 +180,7 @@ create table if not exists public.mensajes_directos (
 );
 
 -- ------------------------------------------------------------------------------
--- 6. CONSULTAS AGRUPADAS Y ASESORÍAS (Flujo 1 - Sección 7.1)
+-- 6. CONSULTAS Y ASESORÍAS
 -- ------------------------------------------------------------------------------
 create table if not exists public.grupos_consulta (
     id uuid primary key default uuid_generate_v4(),
@@ -238,14 +230,14 @@ create table if not exists public.valoraciones_asesoria (
 );
 
 -- ------------------------------------------------------------------------------
--- 7. ENCUESTAS CON FILTRO Y TOPE SEMANAL (Flujo 3 y Núcleo - Sección 6.5 y 7.4)
+-- 7. ENCUESTAS CON FILTRO
 -- ------------------------------------------------------------------------------
 create table if not exists public.encuestas (
     id uuid primary key default uuid_generate_v4(),
     autor_id uuid references public.perfiles(id) on delete cascade,
     titulo text not null,
     descripcion text,
-    filtro jsonb not null default '{}'::jsonb, -- {carrera, cicloMin, cicloMax, edadMin, edadMax, intereses: []}
+    filtro jsonb not null default '{}'::jsonb,
     alcance_calculado integer default 0,
     alcance_enviado integer default 0,
     estado text default 'borrador' check (estado in ('borrador', 'enviada', 'cerrada')),
@@ -258,7 +250,7 @@ create table if not exists public.preguntas (
     orden integer not null,
     texto text not null,
     tipo text not null check (tipo in ('unica', 'multiple', 'abierta')),
-    opciones jsonb default '[]'::jsonb -- ['Opción 1', 'Opción 2', ...]
+    opciones jsonb default '[]'::jsonb
 );
 
 create table if not exists public.envios_encuesta (
@@ -276,12 +268,12 @@ create table if not exists public.respuestas (
     envio_id uuid references public.envios_encuesta(id) on delete cascade,
     encuesta_id uuid references public.encuestas(id) on delete cascade,
     pregunta_id uuid references public.preguntas(id) on delete cascade,
-    valor jsonb not null, -- texto o arreglo de respuestas seleccionadas
+    valor jsonb not null,
     creado_en timestamp with time zone default now()
 );
 
 -- ------------------------------------------------------------------------------
--- 8. CERTIFICADOS, HABILIDADES Y REPORTES (Sección 5 y 10)
+-- 8. CERTIFICADOS, REPORTES Y BLOQUEOS
 -- ------------------------------------------------------------------------------
 create table if not exists public.certificados (
     id uuid primary key default uuid_generate_v4(),
@@ -318,7 +310,7 @@ create table if not exists public.bloqueos (
 );
 
 -- ------------------------------------------------------------------------------
--- 9. ÍNDICES DE RENDIMIENTO CLAVE
+-- 9. ÍNDICES DE RENDIMIENTO
 -- ------------------------------------------------------------------------------
 create index if not exists idx_perfiles_filtro on public.perfiles(carrera, ciclo, sede);
 create index if not exists idx_perfiles_intereses on public.perfiles using gin(intereses);

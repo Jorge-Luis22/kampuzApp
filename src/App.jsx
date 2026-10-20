@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { StoreProvider, useStore } from './data/store';
 import { App as CapacitorApp } from '@capacitor/app';
+import { Loader2 } from 'lucide-react';
 import PhoneShell from './components/PhoneShell';
 import BottomNav from './components/BottomNav';
 import OfflineBanner from './components/OfflineBanner';
@@ -60,6 +61,10 @@ class ErrorBoundary extends React.Component {
 function AppContent() {
   const {
     user,
+    estadoSesion,
+    errorSesion,
+    reintentarSesion,
+    cerrarSesion,
     currentScreen,
     setCurrentScreen,
     activeTab,
@@ -123,9 +128,45 @@ function AppContent() {
     return <PanelUniversidadView />;
   }
 
+  // Leyendo la sesión de Supabase
+  if (estadoSesion === 'cargando') {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-6 text-ink-muted space-y-2">
+        <Loader2 size={26} className="animate-spin text-accent" />
+        <p className="text-xs font-semibold">Conectando con Kampuz...</p>
+      </div>
+    );
+  }
+
+  // Hay sesión pero el servidor no respondió: nunca se entra con datos inventados
+  if (estadoSesion === 'error') {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-3">
+        <OfflineBanner />
+        <p className="text-sm font-black text-ink dark:text-ink-light">No pudimos cargar tu perfil</p>
+        <p className="text-xs text-ink-muted max-w-xs">{errorSesion}</p>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={reintentarSesion}
+            className="px-4 py-2 bg-brand-primary text-white text-xs font-extrabold rounded-xl shadow-sm"
+          >
+            Reintentar
+          </button>
+          <button
+            onClick={cerrarSesion}
+            className="px-4 py-2 text-xs font-bold text-ink-muted hover:text-ink"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Si no hay usuario autenticado o está en flujo de acceso / registro
   if (
     !user ||
+    estadoSesion !== 'lista' ||
     currentScreen === 'm01_bienvenida' ||
     currentScreen === 'm02_otp' ||
     currentScreen === 'm03_onboarding' ||

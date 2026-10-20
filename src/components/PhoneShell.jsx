@@ -6,7 +6,6 @@ import {
   Moon,
   Sun,
   Layers,
-  RotateCcw,
   Building2,
   UserCheck,
   ShieldCheck,
@@ -26,7 +25,6 @@ export default function PhoneShell({ children }) {
     currentScreen,
     setCurrentScreen,
     setActiveTab,
-    resetDemoState,
     cerrarSesion,
     user
   } = useStore();
@@ -170,15 +168,6 @@ export default function PhoneShell({ children }) {
             title={darkMode ? "Modo Claro" : "Modo Oscuro"}
           >
             {darkMode ? <Sun size={14} /> : <Moon size={14} />}
-          </button>
-
-          {/* Reset Demo State */}
-          <button
-            onClick={resetDemoState}
-            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition"
-            title="Reiniciar datos de demo a bienvenida"
-          >
-            <RotateCcw size={14} />
           </button>
         </div>
       </header>

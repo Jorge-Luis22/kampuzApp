@@ -9,13 +9,15 @@ values
     ('umbral_minimo_segmento', '30', 'Mínimo de alumnos en un segmento para habilitar el envío de encuestas (Ley 29733)')
 on conflict (clave) do update set valor = excluded.valor;
 
--- 2. CORREOS INVITADOS (Jurado, Profesores, Testers externos sin @utp.edu.pe)
-insert into public.correos_invitados (correo, nombre_contacto, rol)
+-- 2. CORREOS INVITADOS (únicos correos sin @utp.edu.pe que pueden registrarse)
+-- La validación ocurre SOLO en el servidor (trigger trg_validar_auth_user, 009).
+-- Para agregar a alguien más (profesor, tester), inserta una fila desde el SQL Editor.
+-- kampuz.app.pe+revision@gmail.com llega al mismo buzón del equipo (alias "+" de Gmail):
+-- así el equipo verifica la cuenta de revisión de Google sin ningún atajo.
+insert into public.correos_invitados (correo, nombre_contacto, rol, motivo, activo)
 values
-    ('profesor.utp.demo@gmail.com', 'Profesor Evaluador UTP', 'moderador'),
-    ('jurado.evaluador@gmail.com', 'Jurado Calificador', 'admin_universidad'),
-    ('demo.tester1@gmail.com', 'Alumno Tester Invitado 1', 'alumno'),
-    ('demo.tester2@gmail.com', 'Alumno Tester Invitado 2', 'alumno')
+    ('kampuz.app.pe@gmail.com', 'Equipo Kampuz', 'alumno', 'Cuenta del equipo', true),
+    ('kampuz.app.pe+revision@gmail.com', 'Revisor Google Play', 'alumno', 'Cuenta de prueba para la revisión de Play Console', true)
 on conflict (correo) do nothing;
 
 -- 3. SEDES UTP

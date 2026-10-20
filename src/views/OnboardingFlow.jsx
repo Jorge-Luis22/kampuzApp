@@ -3,25 +3,22 @@ import { useStore } from '../data/store';
 import {
   SEDES_UTP,
   CARRERAS_UTP,
-  INTERESES_DISPONIBLES,
-  HABILIDADES_BASE_NUEVO_ALUMNO
+  INTERESES_DISPONIBLES
 } from '../data/mockData';
 import {
-  isEmailAllowed,
-  signInWithPassword,
-  signUpWithPassword,
-  signInWithOtp,
-  verifyOtp,
-  requestPasswordReset,
-  confirmPasswordReset,
-  getProfile,
-  saveProfile,
-  checkUsernameAvailability,
-  getActiveOtp
+  FORMATO_USUARIO,
+  limpiarUsuario,
+  usuarioDisponible,
+  registrar,
+  verificarCodigoRegistro,
+  reenviarCodigoRegistro,
+  iniciarSesion,
+  solicitarRecuperacion,
+  confirmarRecuperacion,
+  guardarPerfilInicial
 } from '../lib/auth';
-import { uploadAvatar } from '../lib/profile';
+import { subirAvatar } from '../lib/profile';
 import {
-  ShieldCheck,
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
@@ -30,149 +27,173 @@ import {
   User,
   Eye,
   EyeOff,
-  Building,
-  GraduationCap,
-  Calendar,
-  Sparkles,
   AlertCircle,
   Check,
   Loader2,
-  RefreshCw,
   Camera,
   KeyRound,
-  ExternalLink
+  Inbox
 } from 'lucide-react';
+
+// Fecha máxima de nacimiento para tener 18 años hoy (spec 6.1)
+const fechaMaximaMayorDeEdad = () => {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - 18);
+  return d.toISOString().slice(0, 10);
+};
+
+const esMayorDeEdad = (fecha) => Boolean(fecha) && fecha <= fechaMaximaMayorDeEdad();
+
+const MIN_PASSWORD = 8;
 
 export default function OnboardingFlow() {
   const {
     currentScreen,
     setCurrentScreen,
     user,
-    setUser,
-    loginDirectoDemo
+    completarOnboarding
   } = useStore();
-
-  const isModoDemo = import.meta.env.VITE_MODO_DEMO === 'true';
 
   // Modo: 'login' | 'registro' | 'recuperar'
   const [authMode, setAuthMode] = useState('login');
 
-  // Campos de Login / Registro
+  // Campos de Login
   const [loginIdentifier, setLoginIdentifier] = useState(''); // Usuario o correo
   const [loginPassword, setLoginPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // Campos exclusivos de Registro
+  // Campos de Registro
   const [regNombre, setRegNombre] = useState('');
   const [regApellido, setRegApellido] = useState('');
   const [regUsuario, setRegUsuario] = useState('');
-  const [usernameStatus, setUsernameStatus] = useState({ state: 'idle' }); // 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
+  const [usernameStatus, setUsernameStatus] = useState({ state: 'idle' }); // 'idle' | 'checking' | 'available' | 'taken' | 'invalid' | 'error'
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [regAceptaTerminos, setRegAceptaTerminos] = useState(true);
+  const [regAceptaTerminos, setRegAceptaTerminos] = useState(false);
 
-  // Campos de Recuperación de Contraseña
+  // Recuperación de contraseña
   const [resetIdentifier, setResetIdentifier] = useState('');
-  const [resetEmailTarget, setResetEmailTarget] = useState('');
   const [resetNewPassword, setResetNewPassword] = useState('');
   const [resetConfirmPassword, setResetConfirmPassword] = useState('');
   const [isResetFlow, setIsResetFlow] = useState(false);
 
-  // OTP
+  // Código de 6 dígitos (llega SOLO por correo)
+  const [otpEmail, setOtpEmail] = useState('');
   const [otpCode, setOtpCode] = useState(Array(6).fill(''));
-  const [activeOtpCode, setActiveOtpCode] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
-
-  // Validador en tiempo real de disponibilidad del nombre de usuario (@usuario)
-  useEffect(() => {
-    if (!regUsuario.trim()) {
-      setUsernameStatus({ state: 'idle' });
-      return;
-    }
-
-    const clean = regUsuario.trim().toLowerCase().replace('@', '');
-
-    if (clean.length < 3) {
-      setUsernameStatus({ state: 'invalid', message: 'Mínimo 3 caracteres' });
-      return;
-    }
-
-    if (!/^[a-zA-Z0-9_.]+$/.test(clean)) {
-      setUsernameStatus({ state: 'invalid', message: 'Solo letras, números, . o _' });
-      return;
-    }
-
-    setUsernameStatus({ state: 'checking' });
-    const timer = setTimeout(async () => {
-      const res = await checkUsernameAvailability(clean);
-      if (res.available) {
-        setUsernameStatus({ state: 'available', message: `@${clean} está disponible` });
-      } else {
-        setUsernameStatus({ state: 'taken', message: res.error || 'No disponible' });
-      }
-    }, 250);
-
-    return () => clearTimeout(timer);
-  }, [regUsuario]);
 
   // Feedback y carga
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Temporizador de reenvío OTP
+  // Validador en vivo del @usuario (lo decide el servidor)
   useEffect(() => {
-    let timer;
-    if (resendCooldown > 0) {
-      timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+    const clean = limpiarUsuario(regUsuario);
+    if (!clean) {
+      setUsernameStatus({ state: 'idle' });
+      return;
     }
+    if (!FORMATO_USUARIO.test(clean)) {
+      setUsernameStatus({
+        state: 'invalid',
+        message: clean.length < 3 ? 'Mínimo 3 caracteres' : 'Solo letras, números, . o _'
+      });
+      return;
+    }
+
+    setUsernameStatus({ state: 'checking' });
+    let vigente = true;
+    const timer = setTimeout(async () => {
+      try {
+        const libre = await usuarioDisponible(clean);
+        if (!vigente) return;
+        setUsernameStatus(
+          libre
+            ? { state: 'available', message: `@${clean} está disponible` }
+            : { state: 'taken', message: 'Ya está en uso' }
+        );
+      } catch (err) {
+        if (vigente) setUsernameStatus({ state: 'error', message: 'No pudimos verificarlo' });
+      }
+    }, 350);
+
+    return () => {
+      vigente = false;
+      clearTimeout(timer);
+    };
+  }, [regUsuario]);
+
+  // Temporizador de reenvío del código
+  useEffect(() => {
+    if (resendCooldown <= 0) return undefined;
+    const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
     return () => clearTimeout(timer);
   }, [resendCooldown]);
 
-  // Formulario de Perfil Académico (M03)
+  // Formulario de Perfil Académico (M03 + M04)
   const [formData, setFormData] = useState({
     nombre: user?.nombre || '',
     apellido: user?.apellido || '',
+    usuario: user?.usuario || '',
     sede: user?.sede || 'Lima Sur',
-    carrera: user?.carrera || 'Ingeniería de Sistemas e Informática',
+    carrera: user?.carrera || CARRERAS_UTP[0]?.nombre || '',
     ciclo: user?.ciclo || 1,
-    fechaNacimiento: user?.fechaNacimiento || '2005-01-01'
+    fechaNacimiento: user?.fechaNacimiento || ''
   });
 
-  const [selectedIntereses, setSelectedIntereses] = useState(
-    user?.intereses && user?.id !== 'usr_luz' ? user.intereses : ['Programación', 'Inteligencia Artificial']
-  );
+  // Si la sesión trae nombre/@usuario de la metadata del registro, se precargan
+  useEffect(() => {
+    if (!user) return;
+    setFormData((prev) => ({
+      ...prev,
+      nombre: prev.nombre || user.nombre || '',
+      apellido: prev.apellido || user.apellido || '',
+      usuario: prev.usuario || user.usuario || ''
+    }));
+  }, [user?.id]);
+
+  const [selectedIntereses, setSelectedIntereses] = useState(user?.intereses || []);
 
   const [avatarUrl, setAvatarUrl] = useState(user?.fotoUrl || null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
   const avatarInputRef = useRef(null);
 
-  // --- SUBIR FOTO ---
+  const limpiarMensajes = () => {
+    setErrorMsg('');
+    setSuccessMsg('');
+  };
+
+  const irACodigo = (correo, { reset = false } = {}) => {
+    setOtpEmail(correo);
+    setOtpCode(Array(6).fill(''));
+    setIsResetFlow(reset);
+    setResendCooldown(60);
+    setCurrentScreen('m02_otp');
+  };
+
+  // --- SUBIR FOTO (solo Supabase Storage; si falla, se muestra el error y se puede reintentar) ---
   const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    if (!user?.id) {
-      setErrorMsg('Inicia sesión para subir tu foto.');
-      return;
-    }
     setIsUploadingAvatar(true);
-    setErrorMsg('');
+    setAvatarError('');
     try {
-      const publicUrl = await uploadAvatar(user.id, file);
+      const publicUrl = await subirAvatar(file);
       setAvatarUrl(publicUrl);
     } catch (err) {
-      console.error(err);
-      setErrorMsg('Error al procesar la foto: ' + (err.message || ''));
+      setAvatarError(err.message);
     } finally {
       setIsUploadingAvatar(false);
     }
   };
 
-  // --- 1. ACCIÓN: INICIAR SESIÓN CON USUARIO Y CONTRASEÑA ---
+  // --- 1. INICIAR SESIÓN ---
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
+    limpiarMensajes();
 
     if (!loginIdentifier.trim() || !loginPassword) {
       setErrorMsg('Ingresa tu usuario/correo y tu contraseña.');
@@ -181,78 +202,45 @@ export default function OnboardingFlow() {
 
     setIsLoading(true);
     try {
-      const res = await signInWithPassword(loginIdentifier.trim(), loginPassword);
-
-      if (!res.success) {
-        if (res.emailNeedsConfirm) {
-          setErrorMsg(res.error);
-          setRegEmail(res.emailNeedsConfirm);
-          setOtpCode(Array(6).fill(''));
-          setIsResetFlow(false);
-          setCurrentScreen('m02_otp');
-          return;
-        }
-        setErrorMsg(res.error || 'Credenciales no válidas.');
-        setIsLoading(false);
-        return;
-      }
-
-      const authUser = res.user;
-      const perfil = await getProfile(authUser.id);
-
-      if (perfil && perfil.nombre) {
-        setUser({
-          ...perfil,
-          correoInstitucional: authUser.email
-        });
-        setCurrentScreen('app');
-      } else {
-        setUser({
-          id: authUser.id,
-          correoInstitucional: authUser.email,
-          nombre: authUser.user_metadata?.nombre || '',
-          apellido: authUser.user_metadata?.apellido || '',
-          usuario: authUser.user_metadata?.usuario || '',
-          habilidades: HABILIDADES_BASE_NUEVO_ALUMNO
-        });
-        setCurrentScreen('m03_onboarding');
-      }
+      await iniciarSesion(loginIdentifier.trim(), loginPassword);
+      // El store detecta la sesión (SIGNED_IN) y carga el perfil o el onboarding.
     } catch (err) {
-      setErrorMsg('Error de conexión al iniciar sesión.');
+      if (err.codigo === 'EMAIL_NO_CONFIRMADO') {
+        setSuccessMsg(err.message);
+        irACodigo(err.causa?.correo || loginIdentifier.trim().toLowerCase());
+      } else {
+        setErrorMsg(err.message);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- 2. ACCIÓN: CREAR CUENTA ---
+  // --- 2. CREAR CUENTA ---
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
+    limpiarMensajes();
 
-    const cleanNombre = regNombre.trim();
-    const cleanApellido = regApellido.trim();
-    const cleanUsuario = regUsuario.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
     const cleanEmail = regEmail.trim().toLowerCase();
 
-    if (!cleanNombre || !cleanApellido) {
-      setErrorMsg('Ingresa tu nombre y apellido completo.');
+    if (!regNombre.trim() || !regApellido.trim()) {
+      setErrorMsg('Ingresa tu nombre y apellido reales.');
       return;
     }
-    if (!cleanUsuario || cleanUsuario.length < 3) {
-      setErrorMsg('Elige un nombre de usuario de al menos 3 caracteres.');
+    if (!FORMATO_USUARIO.test(limpiarUsuario(regUsuario))) {
+      setErrorMsg('Elige un @usuario de 3 a 30 caracteres (letras, números, . o _).');
       return;
     }
     if (usernameStatus.state === 'taken') {
-      setErrorMsg('El nombre de usuario ya está en uso. Elige uno disponible.');
+      setErrorMsg('Ese @usuario ya está en uso. Elige otro.');
       return;
     }
     if (!cleanEmail) {
       setErrorMsg('Ingresa tu correo institucional (@utp.edu.pe).');
       return;
     }
-    if (regPassword.length < 6) {
-      setErrorMsg('La contraseña debe tener al menos 6 caracteres.');
+    if (regPassword.length < MIN_PASSWORD) {
+      setErrorMsg(`La contraseña debe tener al menos ${MIN_PASSWORD} caracteres.`);
       return;
     }
     if (!regAceptaTerminos) {
@@ -262,39 +250,30 @@ export default function OnboardingFlow() {
 
     setIsLoading(true);
     try {
-      const res = await signUpWithPassword({
-        nombre: cleanNombre,
-        apellido: cleanApellido,
-        usuario: cleanUsuario,
+      const { correo, sesion } = await registrar({
+        nombre: regNombre,
+        apellido: regApellido,
+        usuario: regUsuario,
         email: cleanEmail,
         password: regPassword
       });
-
-      if (!res.success) {
-        setErrorMsg(res.error || 'Error al crear la cuenta.');
-        setIsLoading(false);
+      if (sesion) {
+        // El proyecto de Supabase tiene "Confirm email" apagado: no hay código que verificar.
         return;
       }
-
-      const backupOtp = res.localOtp || getActiveOtp(cleanEmail) || '123456';
-      setActiveOtpCode(backupOtp);
-      setResendCooldown(30);
-      setOtpCode(Array(6).fill(''));
-      setIsResetFlow(false);
-      setSuccessMsg('¡Código de 6 dígitos generado! Revisa tu bandeja de correo.');
-      setCurrentScreen('m02_otp');
+      setSuccessMsg(`Te enviamos un código de 6 dígitos a ${correo}.`);
+      irACodigo(correo);
     } catch (err) {
-      setErrorMsg('Error al conectar con el servidor.');
+      setErrorMsg(err.message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- 3. ACCIÓN: SOLICITAR RECUPERACIÓN DE CONTRASEÑA ---
+  // --- 3. SOLICITAR RECUPERACIÓN DE CONTRASEÑA ---
   const handleForgotPasswordSubmit = async (e) => {
     e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
+    limpiarMensajes();
 
     if (!resetIdentifier.trim()) {
       setErrorMsg('Ingresa tu usuario o correo institucional.');
@@ -303,29 +282,19 @@ export default function OnboardingFlow() {
 
     setIsLoading(true);
     try {
-      const res = await requestPasswordReset(resetIdentifier.trim());
-      if (!res.success) {
-        setErrorMsg(res.error || 'No se pudo enviar el correo de recuperación.');
-        setIsLoading(false);
-        return;
-      }
-
-      const targetEmail = res.email;
-      const backupOtp = res.localOtp || getActiveOtp(targetEmail) || '123456';
-      setActiveOtpCode(backupOtp);
-      setResetEmailTarget(targetEmail);
-      setResendCooldown(30);
-      setOtpCode(Array(6).fill(''));
-      setIsResetFlow(true);
-      setCurrentScreen('m02_otp');
+      const correo = await solicitarRecuperacion(resetIdentifier.trim());
+      setResetNewPassword('');
+      setResetConfirmPassword('');
+      setSuccessMsg(`Si ${correo} tiene una cuenta, te llegará un código de 6 dígitos.`);
+      irACodigo(correo, { reset: true });
     } catch (err) {
-      setErrorMsg('Error al solicitar recuperación.');
+      setErrorMsg(err.message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- 4. MANEJO DE OTP: PEGAR Y ESCRIBIR ---
+  // --- 4. CÓDIGO: PEGAR Y REENVIAR ---
   const handleOtpPaste = (e) => {
     e.preventDefault();
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
@@ -339,24 +308,21 @@ export default function OnboardingFlow() {
 
   const handleResendOtp = async () => {
     if (resendCooldown > 0) return;
-    setErrorMsg('');
-    const targetEmail = isResetFlow ? resetEmailTarget : regEmail;
-
-    const res = isResetFlow
-      ? await requestPasswordReset(targetEmail)
-      : await signInWithOtp(targetEmail);
-
-    if (res.success) {
-      const backupOtp = res.localOtp || getActiveOtp(targetEmail) || '123456';
-      setActiveOtpCode(backupOtp);
-      setResendCooldown(30);
-      setSuccessMsg('Código reenviado a tu correo.');
-    } else {
-      setErrorMsg(res.error || 'Error al reenviar código.');
+    limpiarMensajes();
+    try {
+      if (isResetFlow) {
+        await solicitarRecuperacion(otpEmail);
+      } else {
+        await reenviarCodigoRegistro(otpEmail);
+      }
+      setResendCooldown(60);
+      setSuccessMsg('Te enviamos un código nuevo. Revisa también "Correo no deseado".');
+    } catch (err) {
+      setErrorMsg(err.message);
     }
   };
 
-  // --- 5. ACCIÓN: VERIFICAR OTP (REGISTRO O RECUPERACIÓN) ---
+  // --- 5. VERIFICAR CÓDIGO (REGISTRO O RECUPERACIÓN) ---
   const handleOtpSubmit = async (e) => {
     if (e) e.preventDefault();
     const entered = otpCode.join('');
@@ -365,132 +331,94 @@ export default function OnboardingFlow() {
       return;
     }
 
-    setErrorMsg('');
+    limpiarMensajes();
+
+    if (isResetFlow) {
+      if (resetNewPassword.length < MIN_PASSWORD) {
+        setErrorMsg(`La nueva contraseña debe tener al menos ${MIN_PASSWORD} caracteres.`);
+        return;
+      }
+      if (resetNewPassword !== resetConfirmPassword) {
+        setErrorMsg('Las contraseñas no coinciden.');
+        return;
+      }
+    }
+
     setIsLoading(true);
-
     try {
-      // Flujo A: Recuperación de contraseña
       if (isResetFlow) {
-        if (!resetNewPassword || resetNewPassword.length < 6) {
-          setErrorMsg('La nueva contraseña debe tener al menos 6 caracteres.');
-          setIsLoading(false);
-          return;
-        }
-        if (resetNewPassword !== resetConfirmPassword) {
-          setErrorMsg('Las contraseñas no coinciden.');
-          setIsLoading(false);
-          return;
-        }
-
-        const res = await confirmPasswordReset(resetEmailTarget, entered, resetNewPassword);
-        if (!res.success) {
-          setErrorMsg(res.error || 'Código incorrecto o vencido.');
-          setIsLoading(false);
-          return;
-        }
-
-        setSuccessMsg('¡Contraseña cambiada con éxito! Inicia sesión con tu nueva clave.');
+        await confirmarRecuperacion(otpEmail, entered, resetNewPassword);
         setAuthMode('login');
-        setLoginIdentifier(resetEmailTarget);
+        setLoginIdentifier(otpEmail);
         setLoginPassword('');
         setCurrentScreen('m01_bienvenida');
-        setIsLoading(false);
-        return;
+        setSuccessMsg('¡Contraseña cambiada! Inicia sesión con tu nueva clave.');
+      } else {
+        await verificarCodigoRegistro(otpEmail, entered);
+        // Sesión real abierta: el store pasa al onboarding (M03) con los datos del registro.
       }
-
-      // Flujo B: Verificación de cuenta nueva
-      const res = await verifyOtp(regEmail, entered, 'signup');
-      if (!res.success) {
-        setErrorMsg(res.error || 'Código no válido o expirado.');
-        setIsLoading(false);
-        return;
-      }
-
-      const authUser = res.user;
-      setUser({
-        id: authUser.id,
-        correoInstitucional: authUser.email,
-        nombre: regNombre || authUser.user_metadata?.nombre || '',
-        apellido: regApellido || authUser.user_metadata?.apellido || '',
-        usuario: regUsuario || authUser.user_metadata?.usuario || '',
-        habilidades: HABILIDADES_BASE_NUEVO_ALUMNO
-      });
-
-      setFormData(prev => ({
-        ...prev,
-        nombre: regNombre || prev.nombre,
-        apellido: regApellido || prev.apellido
-      }));
-
-      setCurrentScreen('m03_onboarding');
     } catch (err) {
-      setErrorMsg('Error al procesar la verificación.');
+      setErrorMsg(err.message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- 6. ACCIÓN: FINALIZAR PERFIL ACADÉMICO ---
+  // --- 6. FINALIZAR PERFIL ACADÉMICO ---
   const handleFinalizarPerfil = async (e) => {
     e.preventDefault();
+    limpiarMensajes();
+
+    if (!formData.nombre.trim() || !formData.apellido.trim()) {
+      setErrorMsg('Ingresa tu nombre y apellido reales.');
+      return;
+    }
+    if (!FORMATO_USUARIO.test(limpiarUsuario(formData.usuario))) {
+      setErrorMsg('Elige un @usuario de 3 a 30 caracteres (letras, números, . o _).');
+      return;
+    }
+    if (!esMayorDeEdad(formData.fechaNacimiento)) {
+      setErrorMsg('Ingresa tu fecha de nacimiento. Kampuz es solo para mayores de 18 años.');
+      return;
+    }
     if (selectedIntereses.length < 2) {
       setErrorMsg('Selecciona al menos 2 intereses.');
       return;
     }
 
     setIsLoading(true);
-    setErrorMsg('');
-
     try {
-      const payload = {
-        correoInstitucional: user?.correoInstitucional || regEmail,
-        nombre: formData.nombre || user?.nombre || 'Estudiante',
-        apellido: formData.apellido || user?.apellido || '',
-        usuario: user?.usuario || regUsuario || (user?.correoInstitucional || '').split('@')[0],
+      const perfil = await guardarPerfilInicial({
+        correoInstitucional: user?.correoInstitucional,
+        nombre: formData.nombre,
+        apellido: formData.apellido,
+        usuario: formData.usuario,
         fotoUrl: avatarUrl,
         sede: formData.sede,
         carrera: formData.carrera,
-        ciclo: Number(formData.ciclo),
+        ciclo: formData.ciclo,
         fechaNacimiento: formData.fechaNacimiento,
         intereses: selectedIntereses
-      };
-
-      if (user?.id) {
-        const res = await saveProfile(user.id, payload, { perfil_universidad: false });
-        if (!res.success) {
-          setErrorMsg(res.error || 'Error al guardar perfil.');
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      setUser(prev => ({
-        ...prev,
-        ...payload,
-        habilidades: prev?.habilidades || HABILIDADES_BASE_NUEVO_ALUMNO
-      }));
-
-      setCurrentScreen('app');
+      });
+      completarOnboarding(perfil);
     } catch (err) {
-      setErrorMsg('Error al finalizar el registro.');
+      setErrorMsg(err.message);
     } finally {
       setIsLoading(false);
     }
   };
 
   // =========================================================================
-  // SUBPANTALLA: VERIFICACIÓN OTP 6 DÍGITOS
+  // SUBPANTALLA: VERIFICACIÓN CON EL CÓDIGO DE 6 DÍGITOS DEL CORREO
   // =========================================================================
   if (currentScreen === 'm02_otp') {
-    const targetEmail = isResetFlow ? resetEmailTarget : regEmail;
-
     return (
       <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
         <div>
           <button
             onClick={() => {
               setCurrentScreen('m01_bienvenida');
-              setErrorMsg('');
+              limpiarMensajes();
             }}
             className="p-1 rounded-full text-ink-muted hover:text-ink dark:hover:text-ink-light mb-3 inline-flex items-center space-x-1"
           >
@@ -503,48 +431,30 @@ export default function OnboardingFlow() {
           </h2>
           <p className="text-xs text-ink-soft dark:text-ink-muted mb-3 leading-relaxed">
             Ingresa el código de 6 dígitos que enviamos a{' '}
-            <strong className="text-accent">{targetEmail || 'tu correo'}</strong>:
+            <strong className="text-accent">{otpEmail || 'tu correo'}</strong>.
           </p>
 
-          {/* Asistente de Acceso Rápido (Anti-Cuarentena UTP) */}
-          <div className="mb-4 p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-black text-amber-900 dark:text-amber-300 flex items-center space-x-1">
-                <Sparkles size={13} className="text-amber-500" />
-                <span>¿Demora en tu correo institucional o en cuarentena?</span>
-              </span>
-              <span className="text-[9px] bg-amber-200/70 dark:bg-amber-800/50 text-amber-900 dark:text-amber-200 font-black px-1.5 py-0.5 rounded">
-                Acceso piloto
-              </span>
-            </div>
-            <p className="text-[11px] text-amber-800 dark:text-amber-300/90 leading-tight">
-              Si Microsoft Defender puso el correo en cuarentena o aún no ingresa a tu bandeja, usa tu código generado:
+          {/* Ayuda si el correo demora: SMTP real, nunca un atajo */}
+          <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800/50 border border-line dark:border-line-dark rounded-2xl flex items-start space-x-2">
+            <Inbox size={16} className="text-accent shrink-0 mt-0.5" />
+            <p className="text-[11px] text-ink-soft dark:text-ink-muted leading-snug">
+              ¿No llega? Puede tardar unos minutos. Revisa <strong>Correo no deseado</strong> y, en Outlook de la UTP,
+              la carpeta <strong>Cuarentena</strong>. El remitente es Kampuz.
             </p>
-            <div className="flex items-center justify-between bg-white dark:bg-surface-cardDark px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-800 shadow-xs">
-              <span className="font-mono font-black text-base tracking-widest text-brand-primary dark:text-teal-300">
-                {activeOtpCode || getActiveOtp(targetEmail) || '123456'}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  const code = (activeOtpCode || getActiveOtp(targetEmail) || '123456').slice(0, 6);
-                  setOtpCode(code.split(''));
-                  setErrorMsg('');
-                }}
-                className="text-xs font-bold px-3 py-1 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white rounded-lg transition shadow-xs"
-              >
-                Autocompletar
-              </button>
-            </div>
           </div>
 
+          {successMsg && (
+            <div className="mb-3 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-200">
+              {successMsg}
+            </div>
+          )}
           {errorMsg && (
             <div className="mb-3 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl text-xs text-rose-700 dark:text-rose-300">
               {errorMsg}
             </div>
           )}
 
-          {/* OTP Digits */}
+          {/* Dígitos del código */}
           <div className="flex justify-between gap-1.5 py-2" onPaste={handleOtpPaste}>
             {otpCode.map((digit, index) => (
               <input
@@ -552,6 +462,8 @@ export default function OnboardingFlow() {
                 id={`otp-${index}`}
                 type="text"
                 inputMode="numeric"
+                autoComplete={index === 0 ? 'one-time-code' : 'off'}
+                aria-label={`Dígito ${index + 1} del código`}
                 maxLength={1}
                 value={digit}
                 onChange={(e) => {
@@ -573,7 +485,7 @@ export default function OnboardingFlow() {
             ))}
           </div>
 
-          {/* Si es flujo de recuperación, solicitar la nueva contraseña */}
+          {/* En recuperación se pide la nueva contraseña */}
           {isResetFlow && (
             <div className="space-y-3 mt-4 pt-3 border-t border-line dark:border-line-dark">
               <div>
@@ -583,7 +495,8 @@ export default function OnboardingFlow() {
                 <input
                   type="password"
                   required
-                  placeholder="Mínimo 6 caracteres"
+                  autoComplete="new-password"
+                  placeholder={`Mínimo ${MIN_PASSWORD} caracteres`}
                   value={resetNewPassword}
                   onChange={(e) => setResetNewPassword(e.target.value)}
                   className="w-full text-xs px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
@@ -596,6 +509,7 @@ export default function OnboardingFlow() {
                 <input
                   type="password"
                   required
+                  autoComplete="new-password"
                   placeholder="Repite la contraseña"
                   value={resetConfirmPassword}
                   onChange={(e) => setResetConfirmPassword(e.target.value)}
@@ -635,6 +549,7 @@ export default function OnboardingFlow() {
       </div>
     );
   }
+
 
   // =========================================================================
   // SUBPANTALLA: CONFIGURAR PERFIL ACADÉMICO (DATOS E INTERESES)
@@ -691,8 +606,75 @@ export default function OnboardingFlow() {
                   <span>{avatarUrl ? 'Cambiar foto' : 'Subir foto (opcional)'}</span>
                 </button>
                 <p className="text-[10px] text-ink-muted mt-1">Se optimiza automáticamente para el campus.</p>
+                {avatarError && (
+                  <p className="text-[11px] text-semantic-danger font-semibold mt-1">
+                    {avatarError}{' '}
+                    <button
+                      type="button"
+                      onClick={() => avatarInputRef.current?.click()}
+                      className="underline font-bold"
+                    >
+                      Reintentar
+                    </button>
+                  </p>
+                )}
               </div>
             </div>
+
+            {/* Nombre y apellido reales (spec 6.1) */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-black text-ink dark:text-ink-light mb-1 block">Nombres</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.nombre}
+                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-black text-ink dark:text-ink-light mb-1 block">Apellidos</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.apellido}
+                  onChange={(e) => setFormData({ ...formData, apellido: e.target.value })}
+                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+            </div>
+
+            {/* @usuario y fecha de nacimiento */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-black text-ink dark:text-ink-light mb-1 block">Tu @usuario</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs font-bold text-ink-muted">@</span>
+                  <input
+                    type="text"
+                    required
+                    value={formData.usuario}
+                    onChange={(e) => setFormData({ ...formData, usuario: e.target.value.toLowerCase().replace(/[^a-z0-9._]/g, '') })}
+                    className="w-full text-xs font-semibold pl-7 pr-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light focus:outline-none focus:ring-2 focus:ring-accent lowercase"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-black text-ink dark:text-ink-light mb-1 block">Fecha de nacimiento</label>
+                <input
+                  type="date"
+                  required
+                  max={fechaMaximaMayorDeEdad()}
+                  value={formData.fechaNacimiento}
+                  onChange={(e) => setFormData({ ...formData, fechaNacimiento: e.target.value })}
+                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+            </div>
+            <p className="text-[10px] text-ink-muted -mt-2">
+              Kampuz es para mayores de 18. Tu fecha de nacimiento no se muestra en tu perfil.
+            </p>
 
             {/* Carrera */}
             <div>
@@ -1017,7 +999,7 @@ export default function OnboardingFlow() {
                     <span>No disponible</span>
                   </span>
                 )}
-                {usernameStatus.state === 'invalid' && (
+                {(usernameStatus.state === 'invalid' || usernameStatus.state === 'error') && (
                   <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
                     {usernameStatus.message}
                   </span>
@@ -1069,7 +1051,7 @@ export default function OnboardingFlow() {
 
             <div>
               <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
-                Crear Contraseña (mínimo 6 caracteres)
+                Crear Contraseña (mínimo 8 caracteres)
               </label>
               <div className="relative">
                 <Lock size={15} className="absolute left-3 top-3 text-ink-muted" />
@@ -1165,19 +1147,6 @@ export default function OnboardingFlow() {
           </form>
         )}
 
-        {/* Acceso Rápido Demo (solo si modo demo está encendido) */}
-        {isModoDemo && (
-          <div className="pt-4 border-t border-line dark:border-line-dark mt-4">
-            <button
-              type="button"
-              onClick={loginDirectoDemo}
-              className="w-full py-2 bg-slate-100 dark:bg-slate-800 text-ink-muted hover:text-ink text-xs font-bold rounded-xl transition flex items-center justify-center space-x-1"
-            >
-              <Sparkles size={14} className="text-amber-500" />
-              <span>Acceder con alumno de prueba (Demo)</span>
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Pie de pantalla */}

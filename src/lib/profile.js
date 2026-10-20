@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from './supabase.js';
+import { supabase, isSupabaseConfigured, ejecutar, uidActual, KampuzError } from './supabase.js';
 import { HABILIDADES_BASE_NUEVO_ALUMNO } from '../data/mockData.js';
 import {
   isValidUUID,
@@ -79,6 +79,31 @@ export async function procesarImagenCuadrada(file, maxDimension = 600, maxSizeBy
     };
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Sube la foto de perfil del usuario con sesión a Supabase Storage (bucket avatares,
+ * carpeta propia) y devuelve su URL pública. Si falla, lanza un error en español
+ * para que la interfaz ofrezca reintentar. Nunca guarda la imagen en base64.
+ */
+export async function subirAvatar(file) {
+  if (!file) throw new KampuzError('Elige una imagen.');
+  const uid = await uidActual();
+  let blob;
+  try {
+    blob = await procesarImagenCuadrada(file, 600, 300 * 1024);
+  } catch (err) {
+    throw new KampuzError('No pudimos leer esa imagen. Prueba con otra foto (JPG o PNG).');
+  }
+  const filePath = `${uid}/avatar_${Date.now()}.jpg`;
+  await ejecutar(
+    supabase.storage.from('avatares').upload(filePath, blob, { contentType: 'image/jpeg', upsert: true }),
+    { ms: 30000 }
+  ).catch((err) => {
+    throw new KampuzError(`No se pudo subir la foto. ${err.message}`);
+  });
+  const { data } = supabase.storage.from('avatares').getPublicUrl(filePath);
+  return data.publicUrl;
 }
 
 /**

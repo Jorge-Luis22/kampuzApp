@@ -166,20 +166,18 @@ En la sección **Contenido de la app → Clasificación de contenido**:
 
 ## 7. Cuenta de Prueba para el Equipo de Revisión de Google
 
-Google Play exige que proporciones credenciales de acceso para que el revisor humano pruebe la aplicación si esta requiere login. Dado que el revisor no posee un correo `@utp.edu.pe`:
+Google Play exige que proporciones credenciales de acceso para que el revisor humano pruebe la aplicación si esta requiere login. El revisor no tiene correo `@utp.edu.pe` y **no existe ningún código de prueba ni atajo**: se le entrega una cuenta ya verificada con usuario y contraseña.
 
-1. Ingresa a tu panel de Supabase → **Table Editor** → tabla `correos_invitados`.
-2. Inserta una fila con:
-   - `email`: `google-reviewer@kampuz.pe` (o el correo de revisión que elijas).
-   - `motivo`: `Revisor Play Console`.
-   - `activo`: `true`.
-3. En Google Play Console, dirígete a:  
-   **Contenido de la app → Acceso a la app → Administrar**:
+1. La cuenta de revisión es `kampuz.app.pe+revision@gmail.com`. Ya está en `supabase/seed.sql` dentro de `correos_invitados`. Gracias al alias "+" de Gmail, el código de verificación llega al buzón del equipo (`kampuz.app.pe@gmail.com`).
+2. Desde la app, crea esa cuenta (Crear cuenta → correo de revisión → contraseña larga solo para Google), verifica el código que llega al buzón del equipo y completa el perfil (por ejemplo, Ingeniería de Sistemas, ciclo 6).
+3. En Google Play Console: **Contenido de la app → Acceso a la app → Administrar**:
    - Selecciona: *"Todas las funciones o algunas de ellas están restringidas"*.
    - Agrega las instrucciones de inicio de sesión:
      - Nombre de la instrucción: `Cuenta de prueba para revisión`
-     - Nombre de usuario / Correo: `google-reviewer@kampuz.pe`
-     - Nota para el revisor: *"Ingrese este correo en la pantalla de bienvenida. Recibirá un código OTP de 6 dígitos enviado por nuestro sistema o utilice el código de prueba documentado para evaluadores autorizados"*.
+     - Usuario / Correo: `kampuz.app.pe+revision@gmail.com`
+     - Contraseña: la que elegiste en el paso 2.
+     - Nota para el revisor: *"Abra la app, elija Iniciar sesión e ingrese este correo y contraseña. La cuenta ya está verificada; no se necesita ningún código."*
+4. Cuando termine la revisión, puedes cambiar la contraseña o desactivar el correo (`update public.correos_invitados set activo = false where correo = 'kampuz.app.pe+revision@gmail.com';` solo impide crear cuentas nuevas; la existente sigue funcionando).
 
 ---
 

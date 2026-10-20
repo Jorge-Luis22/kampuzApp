@@ -17,17 +17,34 @@ Validar en condiciones reales de campus el flujo completo de Kampuz:
 
 ## 2. Preparación y Acceso para los 10 Testers
 
+### 0. Configuración del correo (una sola vez, antes del piloto)
+
+El registro funciona así: el alumno crea su cuenta con correo, contraseña y @usuario; Supabase le envía un **código de 6 dígitos** a su correo; lo escribe en la app y recién ahí entra. **No existe ningún atajo** que salte esa verificación: es lo que garantiza que al otro lado hay un alumno real de la UTP.
+
+1. **Supabase → Authentication → Sign In / Providers → Email:** deja activado **"Confirm email"**. Si está apagado, cualquiera podría registrarse con un correo ajeno sin verificarlo.
+2. **SMTP propio con Resend** (el SMTP de prueba de Supabase solo envía unos pocos correos por hora y suele caer en spam):
+   - En resend.com, crea la cuenta y **verifica un dominio propio** (Domains → Add domain, y copia los registros DNS SPF/DKIM que te muestra en el proveedor del dominio). Sin dominio verificado, Outlook de la UTP tiende a mandar el correo a cuarentena.
+   - Crea una API key en Resend.
+   - Supabase → **Authentication → Emails → SMTP Settings → Enable custom SMTP**: host `smtp.resend.com`, puerto `465`, usuario `resend`, contraseña = la API key, remitente `no-responder@tu-dominio` con nombre "Kampuz".
+3. **Plantillas en español con el código** (Authentication → Emails → Templates). Cada plantilla debe mostrar `{{ .Token }}` (el código de 6 dígitos), no el enlace:
+   - **Confirm signup** — asunto: `Tu código de Kampuz`; cuerpo: `Tu código para verificar tu correo en Kampuz es: <h2>{{ .Token }}</h2> Vence en 1 hora. Si no fuiste tú, ignora este correo.`
+   - **Reset Password** — asunto: `Código para cambiar tu contraseña de Kampuz`; cuerpo: `Usa este código para elegir una nueva contraseña: <h2>{{ .Token }}</h2> Si no lo pediste, ignora este correo.`
+4. Authentication → **Rate Limits**: sube "Emails sent per hour" a 30 o más para el piloto (con SMTP propio está permitido).
+
 ### A. Si tienen correo `@utp.edu.pe`:
-- Los estudiantes pueden ingresar directamente con su correo institucional.
-- Recibirán el código de verificación de 6 dígitos en su bandeja de entrada (o en la carpeta *Correo no deseado* / *Cuarentena* si su organización tiene filtros estrictos de Microsoft 365 Defender).
+- Los estudiantes se registran directamente con su correo institucional.
+- El código llega a su bandeja. **Los servidores de la UTP (Microsoft 365 / Defender) a veces lo retienen unos minutos o lo mandan a *Correo no deseado* o a *Cuarentena*.** La solución es la del punto 0 (SMTP con dominio verificado en Resend). Durante el piloto, pide a los testers que revisen esas dos carpetas antes de pedir otro código (el botón "Reenviar" se habilita a los 60 segundos).
+- Si un correo queda en cuarentena: en Outlook web, **Seguridad → Cuarentena** (o el enlace del aviso de cuarentena que manda la UTP) → **Liberar**.
 
 ### B. Si tienen correos externos (Gmail, Hotmail, etc.) o testers invitados:
-1. Ingresa al panel de Supabase → **Table Editor** → tabla `correos_invitados`.
-2. Inserta una fila por cada tester con:
-   - `email`: `ejemplo@gmail.com`
-   - `motivo`: `Tester piloto 1`
-   - `activo`: `true`
-3. Con esto, el sistema les permitirá solicitar y recibir el OTP sin ser rechazados por el filtro de dominio.
+1. Supabase → **SQL Editor** (o Table Editor → tabla `correos_invitados`).
+2. Agrega una fila por cada tester:
+   ```sql
+   insert into public.correos_invitados (correo, nombre_contacto, motivo, activo)
+   values ('ejemplo@gmail.com', 'Nombre del tester', 'Tester piloto 1', true);
+   ```
+3. El servidor (trigger `trg_validar_auth_user`) solo deja crear cuentas con `@utp.edu.pe` o con un correo de esta tabla con `activo = true`. Para quitarle el acceso a alguien, pon `activo = false`.
+4. La tabla no es visible desde la app: nadie puede listar los correos invitados.
 
 ### C. Distribución de la Aplicación
 1. **APK Android:**

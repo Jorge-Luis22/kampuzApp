@@ -276,3 +276,40 @@ export async function calcularHabilidadesReales(userId) {
     return HABILIDADES_BASE_NUEVO_ALUMNO;
   }
 }
+
+/**
+ * Elimina definitivamente la cuenta del usuario en Supabase (Google Play Store compliance)
+ * Llama a la RPC eliminar_mi_cuenta o a la Edge Function eliminar-cuenta,
+ * y luego cierra la sesión y limpia el almacenamiento local.
+ */
+export async function eliminarCuentaUsuario() {
+  if (!isSupabaseConfigured()) {
+    localStorage.clear();
+    return { success: true };
+  }
+
+  try {
+    // 1. Intentar vía RPC atómica
+    const { data: rpcData, error: rpcError } = await supabase.rpc('eliminar_mi_cuenta');
+
+    if (rpcError) {
+      console.warn('[EliminarCuenta] Falló RPC, intentando vía Edge Function:', rpcError.message);
+      // 2. Fallback a Edge Function
+      const { data: fnData, error: fnError } = await supabase.functions.invoke('eliminar-cuenta');
+      if (fnError) {
+        throw new Error(fnError.message || 'Error al eliminar cuenta en el servidor');
+      }
+    }
+
+    // 3. Cerrar sesión y purgar almacenamiento local
+    await supabase.auth.signOut().catch(() => {});
+    localStorage.clear();
+    sessionStorage.clear();
+
+    return { success: true };
+  } catch (err) {
+    console.error('[EliminarCuenta] Error:', err);
+    return { success: false, error: err.message || 'Error al procesar la eliminación' };
+  }
+}
+

@@ -31,7 +31,8 @@ import {
   Check,
   Loader2,
   RefreshCw,
-  Camera
+  Camera,
+  ExternalLink
 } from 'lucide-react';
 
 export default function OnboardingFlow() {
@@ -422,13 +423,18 @@ export default function OnboardingFlow() {
 
             <div className="pt-2.5 border-t border-line dark:border-line-dark flex items-center justify-between text-xs text-ink-muted">
               <span>Piloto Sede Lima Sur</span>
-              <span className="font-bold text-accent">Ley 29733 Perú</span>
+              <a href="/privacidad.html" target="_blank" rel="noopener noreferrer" className="font-bold text-accent hover:underline">
+                Ley 29733 Perú
+              </a>
             </div>
           </div>
         </div>
 
         <p className="text-xs text-center text-ink-muted pt-3 pb-1 font-medium">
-          Al continuar confirmas ser estudiante activo de la Universidad Tecnológica del Perú.
+          Al continuar confirmas ser estudiante activo de la Universidad Tecnológica del Perú. Lee nuestra{' '}
+          <a href="/privacidad.html" target="_blank" rel="noopener noreferrer" className="text-accent font-bold hover:underline">
+            Política de Privacidad
+          </a>.
         </p>
       </div>
     );
@@ -842,6 +848,18 @@ export default function OnboardingFlow() {
                 <p className="italic text-accent font-bold">Apagado por defecto. Puedes apagarlo cuando quieras.</p>
               </div>
             </div>
+          </div>
+
+          <div className="pt-2 text-center">
+            <a
+              href="/privacidad.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-accent font-bold hover:underline inline-flex items-center space-x-1"
+            >
+              <span>Leer Política de Privacidad de Kampuz (Ley 29733)</span>
+              <ExternalLink size={12} />
+            </a>
           </div>
 
           {errorMsg && (

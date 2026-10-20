@@ -47,4 +47,14 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
 
 *(Cualquier divergencia técnica encontrada durante la implementación se registrará en esta sección).*
 
-- **2026-10-20:** Inicialización del proyecto bajo lineamientos del spec `KAMPUS-spec-antigravity.md` y guía de MVP `PROMPT_ANTIGRAVITY_MVP.md`.
+- **2026-10-20 (Fase 0):** Inicialización del proyecto bajo lineamientos del spec `KAMPUS-spec-antigravity.md` y guía de MVP `PROMPT_ANTIGRAVITY_MVP.md`.
+- **2026-10-20 (Fases 1–3):** Esquema Supabase con RLS en São Paulo (`sa-east-1`). Cómputo derivado de habilidades basado en hechos reales. Compresión iterativa de imágenes en cliente con canvas (<300 KB).
+- **2026-10-20 (Fases 4–7):** Mensajería directa 1 a 1 en tiempo real con motivo de contacto académico obligatorio. Espacios automáticos por carrera y ciclo. Consultas académicas agrupadas atómicamente por carrera+curso+tema con validación docente en trigger ("Se habla del curso, no de la persona").
+- **2026-10-20 (Fase 8):** Integración con Capacitor 8.1.2 para Android. `compileSdkVersion` y `targetSdkVersion` fijados en **36** (Android 16) adelantando el requisito obligatorio de Google Play Store para 2026. Manejo de hardware back button nativo.
+- **2026-10-20 (Fase 9):** Banner de desconexión sin internet (`OfflineBanner`), guía detallada del piloto para 10 estudiantes universitarios (`docs/GUIA_PILOTO.md`) y auditoría de pantallas.
+- **2026-10-20 (Fase 10):** Preparación completa para Google Play Store:
+  - Auto-incremento de `versionCode` en release mediante `${{ github.run_number }}`.
+  - Procedimiento de eliminación permanente e irreversible de cuenta (RPC `eliminar_mi_cuenta` y Edge Function) que purga perfil, almacenamiento en Storage y credenciales en `auth.users`.
+  - Páginas públicas web conformes a Ley 29733: `public/privacidad.html` y `public/eliminar-cuenta.html`.
+  - M33 Centro de Seguridad con normas de convivencia, bloqueo de compañeros y panel de reportes para moderadores.
+  - Guía completa de publicación `docs/PLAY_STORE.md` con comandos `keytool`, respuestas a la Declaración de Seguridad de los Datos (Data Safety) y checklist para el desarrollador.

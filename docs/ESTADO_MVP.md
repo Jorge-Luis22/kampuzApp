@@ -62,7 +62,7 @@ Estado de cumplimiento y trazabilidad de las pantallas de la aplicación móvil 
 
 ---
 
-## 3. Resumen de Estado de Fases (Fases 0 a 9)
+## 3. Resumen de Estado de Fases (Fases 0 a 10) — 100% COMPLETADO
 
 - **Fase 0 (Línea Base y Trazabilidad):** 🟢 Completada.
 - **Fase 1 (Esquema Supabase, RLS, Storage y Seeds):** 🟢 Completada.
@@ -74,7 +74,10 @@ Estado de cumplimiento y trazabilidad de las pantallas de la aplicación móvil 
 - **Fase 7 (Consultas Agrupadas, Moderación Docente y Estrellas):** 🟢 Completada.
 - **Fase 8 (APK Android con Capacitor, Iconos/Splash y CI/CD):** 🟢 Completada. Target SDK 36.
 - **Fase 9 (Pulido para la Demo, Offline Banner y Guía del Piloto):** 🟢 Completada.
-  - Detección de conectividad sin internet (`OfflineBanner`).
-  - Documento `docs/GUIA_PILOTO.md` para los 10 estudiantes de prueba.
-  - Tabla completa de pantallas M01–M33 auditada y validada.
-- **Siguiente paso:** Fase 10 (Preparación para Google Play Store, borrado de cuenta y política de privacidad).
+- **Fase 10 (Listo para Google Play Store):** 🟢 Completada.
+  - Job manual en GitHub Actions para compilar `.aab` firmado para release con `targetSdkVersion` 36 y `versionCode` dinámico.
+  - Procedimiento de borrado total e irreversible de cuenta (RPC y Edge Function) en la app (M32) y web pública.
+  - Política de privacidad en línea (`/privacidad`) conforme a Ley 29733 y los 4 consentimientos.
+  - Centro de Seguridad (M33) con bloqueo recíproco y reporte de moderación.
+  - Ficha de tienda completa, formulario de Data Safety y checklist en `docs/PLAY_STORE.md`.
+  - Gráficos oficiales de tienda en `docs/play-store/icon-512.png` y `docs/play-store/feature-graphic-1024x500.png`.

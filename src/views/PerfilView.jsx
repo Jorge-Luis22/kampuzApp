@@ -9,8 +9,10 @@ import {
   uploadAvatar,
   updateProfile,
   updateConsentimiento,
-  calcularHabilidadesReales
+  calcularHabilidadesReales,
+  eliminarCuentaUsuario
 } from '../lib/profile';
+import CentroSeguridadModal from '../components/CentroSeguridadModal';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -26,6 +28,8 @@ import {
   Eye,
   FileText,
   AlertTriangle,
+  AlertOctagon,
+  Trash2,
   Sparkles,
   Mail,
   Calendar,
@@ -49,12 +53,46 @@ export default function PerfilView() {
     toggleConsentimiento,
     agregarCertificado,
     cerrarSesion,
-    setActiveTab
+    setActiveTab,
+    setCurrentScreen
   } = useStore();
 
   const [activeTabSub, setActiveTabSub] = useState('habilidades'); // 'habilidades' | 'certificados' | 'privacidad'
   const [selectedMedalla, setSelectedMedalla] = useState(null);
   const [selectedHabilidadKey, setSelectedHabilidadKey] = useState(null);
+
+  // Centro de Seguridad (M33) y Borrado de Cuenta (Google Play Store compliance)
+  const [showCentroSeguridad, setShowCentroSeguridad] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [confirmDeleteInput, setConfirmDeleteInput] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const handleDeleteAccount = async () => {
+    if (confirmDeleteInput.trim().toUpperCase() !== 'ELIMINAR') {
+      setDeleteError('Escribe la palabra ELIMINAR para confirmar.');
+      return;
+    }
+
+    setIsDeletingAccount(true);
+    setDeleteError('');
+
+    try {
+      const res = await eliminarCuentaUsuario();
+      if (!res.success) {
+        setDeleteError(res.error || 'Error al procesar la eliminación de cuenta.');
+        setIsDeletingAccount(false);
+        return;
+      }
+
+      setShowDeleteAccountModal(false);
+      setUser(null);
+      setCurrentScreen('m01_bienvenida');
+    } catch (err) {
+      setDeleteError(err.message || 'Error inesperado al eliminar la cuenta.');
+      setIsDeletingAccount(false);
+    }
+  };
 
   // Modal Editar Perfil (Fase 3 - M29)
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
@@ -540,7 +578,27 @@ export default function PerfilView() {
 
       {/* SUBTAB 3: PRIVACIDAD Y CONSENTIMIENTOS REVOCABLES (M32 - Ley 29733) */}
       {activeTabSub === 'privacidad' && (
-        <div className="space-y-3 text-sm">
+        <div className="space-y-3.5 text-sm">
+          {/* ACCESO A CENTRO DE SEGURIDAD (M33) */}
+          <button
+            onClick={() => setShowCentroSeguridad(true)}
+            className="w-full p-3.5 bg-gradient-to-r from-accent/10 to-primary-light/10 dark:from-accent/20 dark:to-primary-dark/20 border-2 border-accent/40 rounded-2xl flex items-center justify-between text-left hover:border-accent transition group shadow-sm"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-accent text-white flex items-center justify-center font-bold shadow-sm">
+                <Shield size={20} />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <h4 className="text-xs font-black text-ink dark:text-ink-light">Centro de Seguridad y Convivencia</h4>
+                  <span className="text-[10px] font-extrabold bg-accent/20 text-accent px-1.5 py-0.5 rounded">M33</span>
+                </div>
+                <p className="text-[11px] text-ink-muted">Normas del campus, bloquear compañeros y moderación</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-accent group-hover:translate-x-0.5 transition-transform shrink-0" />
+          </button>
+
           <div className="p-3 bg-brand-primary-soft/50 dark:bg-brand-primary-dark/30 rounded-2xl border border-brand-primary/20">
             <h3 className="text-xs font-black uppercase text-brand-primary dark:text-teal-300 flex items-center space-x-1.5">
               <ShieldCheck size={16} />
@@ -620,15 +678,38 @@ export default function PerfilView() {
             </div>
           </div>
 
-          <div className="pt-2 text-center">
+          <div className="pt-1 text-center">
             <a
-              href="/privacidad"
+              href="/privacidad.html"
               target="_blank"
+              rel="noopener noreferrer"
               className="text-xs text-accent font-bold hover:underline inline-flex items-center space-x-1"
             >
               <span>Leer Política de Privacidad de Kampuz (Ley 29733)</span>
               <ExternalLink size={12} />
             </a>
+          </div>
+
+          {/* ZONA DE PELIGRO: ELIMINAR MI CUENTA (Google Play Store Mandatory) */}
+          <div className="p-4 bg-rose-50/70 dark:bg-rose-950/20 border-2 border-rose-200 dark:border-rose-900/60 rounded-2xl space-y-2.5">
+            <div className="flex items-center space-x-2 text-rose-700 dark:text-rose-400">
+              <AlertOctagon size={18} className="shrink-0" />
+              <h4 className="text-xs font-black">Zona de eliminación irreversible</h4>
+            </div>
+            <p className="text-xs text-rose-900/80 dark:text-rose-200/80 leading-relaxed">
+              De acuerdo a las normativas de Google Play Store y la Ley 29733, puedes solicitar la eliminación total de tus datos personales, fotos, mensajes, membresías y cuenta de acceso en cualquier momento.
+            </p>
+            <button
+              onClick={() => {
+                setConfirmDeleteInput('');
+                setDeleteError('');
+                setShowDeleteAccountModal(true);
+              }}
+              className="w-full py-2.5 px-3 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-xl transition flex items-center justify-center space-x-1.5 shadow-sm"
+            >
+              <Trash2 size={14} />
+              <span>Eliminar mi cuenta definitivamente</span>
+            </button>
           </div>
         </div>
       )}
@@ -963,6 +1044,86 @@ export default function PerfilView() {
           </div>
         </div>
       )}
+
+      {/* MODAL: CONFIRMACIÓN DE BORRADO DE CUENTA (Google Play Store compliance) */}
+      {showDeleteAccountModal && (
+        <div className="fixed inset-0 bg-ink/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-2xl border-2 border-rose-300 dark:border-rose-900 space-y-4">
+            <div className="flex items-center space-x-2.5 text-rose-600 dark:text-rose-400">
+              <div className="w-9 h-9 rounded-xl bg-rose-100 dark:bg-rose-950/60 flex items-center justify-center font-bold">
+                <Trash2 size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-ink dark:text-ink-light">Eliminar mi cuenta</h3>
+                <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold">Acción destructiva e irreversible</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/30 rounded-2xl border border-rose-200 dark:border-rose-900/50 space-y-2 text-xs text-rose-900 dark:text-rose-200">
+              <p className="font-extrabold">Esta acción eliminará de forma definitiva:</p>
+              <ul className="list-disc list-inside space-y-1 text-[11px]">
+                <li>Tu perfil, sede, ciclo e intereses.</li>
+                <li>Tu foto de perfil en el almacenamiento.</li>
+                <li>Tus mensajes directos y publicaciones en grupos.</li>
+                <li>Tus consentimientos y usuario de acceso en el sistema.</li>
+              </ul>
+            </div>
+
+            {deleteError && (
+              <p className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-100/60 dark:bg-rose-950/50 p-2 rounded-xl">
+                {deleteError}
+              </p>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-ink-muted block">
+                Para confirmar, escribe <strong className="text-rose-600 uppercase">ELIMINAR</strong>:
+              </label>
+              <input
+                type="text"
+                value={confirmDeleteInput}
+                onChange={(e) => setConfirmDeleteInput(e.target.value)}
+                placeholder="ELIMINAR"
+                className="w-full text-xs font-bold px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-dark focus:outline-none focus:ring-2 focus:ring-rose-500 uppercase"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteAccountModal(false);
+                  setConfirmDeleteInput('');
+                  setDeleteError('');
+                }}
+                disabled={isDeletingAccount}
+                className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-ink dark:text-ink-light text-xs font-bold rounded-xl transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={isDeletingAccount || confirmDeleteInput.trim().toUpperCase() !== 'ELIMINAR'}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white text-xs font-extrabold rounded-xl transition flex items-center justify-center space-x-1 shadow-sm"
+              >
+                {isDeletingAccount ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <span>Confirmar borrado</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CENTRO DE SEGURIDAD (M33) */}
+      <CentroSeguridadModal
+        isOpen={showCentroSeguridad}
+        onClose={() => setShowCentroSeguridad(false)}
+        currentUser={user}
+      />
     </div>
   );
 }

@@ -1,5 +1,8 @@
 {
+  "cleanUrls": true,
   "rewrites": [
+    { "source": "/privacidad", "destination": "/privacidad.html" },
+    { "source": "/eliminar-cuenta", "destination": "/eliminar-cuenta.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

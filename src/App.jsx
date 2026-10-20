@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StoreProvider, useStore } from './data/store';
+import { App as CapacitorApp } from '@capacitor/app';
 import PhoneShell from './components/PhoneShell';
 import BottomNav from './components/BottomNav';
 import OnboardingFlow from './views/OnboardingFlow';
@@ -11,7 +12,64 @@ import PerfilView from './views/PerfilView';
 import PanelUniversidadView from './views/PanelUniversidadView';
 
 function AppContent() {
-  const { currentScreen, activeTab } = useStore();
+  const {
+    currentScreen,
+    setCurrentScreen,
+    activeTab,
+    setActiveTab,
+    activeEspacioId,
+    setActiveEspacioId,
+    activeConsultaId,
+    setActiveConsultaId
+  } = useStore();
+
+  // Control del botón atrás de Android (Fase 8)
+  // Navega hacia atrás dentro de la app; en Inicio, sale.
+  useEffect(() => {
+    let backListener;
+    const initBackButton = async () => {
+      try {
+        backListener = await CapacitorApp.addListener('backButton', () => {
+          if (activeConsultaId) {
+            setActiveConsultaId(null);
+            return;
+          }
+          if (activeEspacioId) {
+            setActiveEspacioId(null);
+            return;
+          }
+          if (currentScreen === 'm05_consentimientos') {
+            setCurrentScreen('m04_intereses');
+            return;
+          }
+          if (currentScreen === 'm04_intereses') {
+            setCurrentScreen('m03_onboarding');
+            return;
+          }
+          if (currentScreen === 'm02_otp') {
+            setCurrentScreen('m01_bienvenida');
+            return;
+          }
+          if (activeTab !== 'inicio') {
+            setActiveTab('inicio');
+            return;
+          }
+          // En Inicio, sale de la app
+          CapacitorApp.exitApp();
+        });
+      } catch (e) {
+        // En entorno web puro se ignora
+      }
+    };
+
+    initBackButton();
+
+    return () => {
+      if (backListener && backListener.remove) {
+        backListener.remove();
+      }
+    };
+  }, [currentScreen, activeTab, activeEspacioId, activeConsultaId]);
 
   // If in University Web Panel mode (W01-W06)
   if (currentScreen === 'panel_utp') {

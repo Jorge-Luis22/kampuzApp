@@ -70,23 +70,32 @@ Aplicación MVP de **Kampus**, la red social universitaria cerrada con identidad
 ## 📱 Empaquetado como APK / Play Store (Escalabilidad)
 Para compilar la app a APK Android nativo utilizando Capacitor:
 ```bash
-# 1. Instalar Capacitor CLI y Core
-npm install @capacitor/core @capacitor/cli @capacitor/android
-
-# 2. Inicializar Capacitor
-npx cap init Kampus com.utp.kampus --web-dir dist
-
-# 3. Compilar la aplicación web
+# 1. Compilar la aplicación web
 npm run build
 
-# 4. Agregar plataforma Android
-npx cap add android
+# 2. Sincronizar assets con Android
+npx cap sync android
 
-# 5. Sincronizar y abrir en Android Studio para generar el APK
-npx cap sync
-npx cap open android
+# 3. Compilar APK debug con Gradle
+cd android && ./gradlew assembleDebug
 ```
 Como PWA web-mobile, ya cuenta con manifest, viewport optimizado para notch/dynamic island y safe areas.
+
+---
+
+## 📲 Cómo instalar el APK en tu celular Android
+
+1. **Descargar el APK:**
+   - Ve a la pestaña **Actions** en el repositorio de GitHub.
+   - Haz clic en la última ejecución del workflow **Build Android APK & AAB**.
+   - En la sección **Artifacts** al pie de la página, descarga el archivo `kampuz.apk` (o descárgalo directamente desde el navegador de tu teléfono).
+2. **Permitir orígenes desconocidos:**
+   - En tu celular Android, abre el archivo descargado.
+   - Si el sistema muestra la advertencia de seguridad, entra a **Ajustes** y activa la opción **"Permitir instalar aplicaciones de fuentes desconocidas"** para ese navegador o gestor de archivos.
+3. **Instalación e Inicio:**
+   - Toca en **Instalar**.
+   - Abre la aplicación **Kampuz**.
+   - Ingresa con tu correo institucional UTP (`@utp.edu.pe`) o correo invitado y digita tu código de 6 dígitos para ingresar.
 
 ---
 

@@ -90,26 +90,72 @@ export default function GruposView() {
   const [errorRespuesta, setErrorRespuesta] = useState(null);
   const [isSubmittingRespuesta, setIsSubmittingRespuesta] = useState(false);
 
+  // Asegura que los espacios de la carrera del estudiante estén siempre activos
+  const asegurarEspaciosDeCarrera = (lista) => {
+    if (!user?.carrera) return lista;
+    const miCarrera = user.carrera;
+    const miCiclo = user.ciclo || 1;
+
+    const tieneCohorte = lista.some(e => e.tipo === 'carrera_ciclo' && e.carrera?.toLowerCase().trim() === miCarrera.toLowerCase().trim());
+    const tieneCarrera = lista.some(e => e.tipo === 'carrera' && e.carrera?.toLowerCase().trim() === miCarrera.toLowerCase().trim());
+
+    const nuevos = [...lista];
+
+    if (!tieneCohorte) {
+      nuevos.unshift({
+        id: `esp_cohorte_${miCarrera.toLowerCase().replace(/[^a-z0-9]/g, '_')}_c${miCiclo}`,
+        tipo: 'carrera_ciclo',
+        nombre: `${miCarrera} — ${miCiclo}.° Ciclo`,
+        descripcion: `Espacio cerrado exclusivo para compañeros de ${miCarrera} que cursan el ${miCiclo}.° ciclo en sede ${user.sede || 'Lima Sur'}.`,
+        carrera: miCarrera,
+        ciclo: miCiclo,
+        sede: user.sede || 'Lima Sur',
+        esMiembro: true,
+        miembrosCount: 38,
+        portadaUrl: '/fotos/espacio_enfermeria.jpg',
+        oficial: true
+      });
+    }
+
+    if (!tieneCarrera) {
+      nuevos.splice(1, 0, {
+        id: `esp_carrera_${miCarrera.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+        tipo: 'carrera',
+        nombre: `${miCarrera} — Toda la Carrera`,
+        descripcion: `Espacio de carrera abierto para estudiantes del 1.° al 10.° ciclo de ${miCarrera}. Aquí viven las consultas académicas agrupadas y sesiones de estudio.`,
+        carrera: miCarrera,
+        sede: user.sede || 'Lima Sur',
+        esMiembro: true,
+        miembrosCount: 184,
+        portadaUrl: '/fotos/espacio_futsal.jpg',
+        oficial: true
+      });
+    }
+
+    return nuevos;
+  };
+
   // Cargar espacios desde Supabase (con fallback)
   const cargarEspacios = async () => {
     setIsLoadingEspacios(true);
     try {
       const data = await fetchEspacios(user?.id);
       if (data && data.length > 0) {
-        setEspaciosList(data);
+        setEspaciosList(asegurarEspaciosDeCarrera(data));
       } else {
         // Fallback a los espacios locales
-        setEspaciosList(fallbackEspacios.map(e => ({
+        const fallbackConEstado = fallbackEspacios.map(e => ({
           ...e,
           esMiembro: e.tipo === 'carrera_ciclo' || e.tipo === 'carrera',
           yaApoye: false,
           apoyos: e.apoyosCount || 0,
           umbral: e.umbralRequerido || 15
-        })));
+        }));
+        setEspaciosList(asegurarEspaciosDeCarrera(fallbackConEstado));
       }
     } catch (err) {
       console.warn('Error cargando espacios:', err);
-      setEspaciosList(fallbackEspacios);
+      setEspaciosList(asegurarEspaciosDeCarrera(fallbackEspacios));
     } finally {
       setIsLoadingEspacios(false);
     }
@@ -117,7 +163,7 @@ export default function GruposView() {
 
   useEffect(() => {
     cargarEspacios();
-  }, [user?.id]);
+  }, [user?.id, user?.carrera, user?.ciclo]);
 
   // Selected space detail
   const currentEspacio = espaciosList.find(e => e.id === activeEspacioId) || fallbackEspacios.find(e => e.id === activeEspacioId);
@@ -193,8 +239,15 @@ export default function GruposView() {
     };
   }, [activeEspacioId]);
 
-  // Espacios filtrados por categoría
+  // Espacios filtrados por carrera del usuario y por categoría seleccionada
   const espaciosFiltrados = espaciosList.filter(e => {
+    // Aislamiento de carrera: si el espacio es de cohorte o de carrera, solo mostrar el de la carrera del estudiante
+    if (e.tipo === 'carrera_ciclo' || e.tipo === 'carrera') {
+      if (user?.carrera && e.carrera && e.carrera.toLowerCase().trim() !== user.carrera.toLowerCase().trim()) {
+        return false;
+      }
+    }
+
     if (activeCategory === 'cohorte') return e.tipo === 'carrera_ciclo';
     if (activeCategory === 'carrera') return e.tipo === 'carrera';
     if (activeCategory === 'talleres') return e.tipo === 'taller' || e.tipo === 'interes';
@@ -909,14 +962,14 @@ export default function GruposView() {
         ))}
       </div>
 
-      {/* Group Cards List */}
+      {/* Group Cards 2-Column Grid */}
       {isLoadingEspacios ? (
-        <div className="flex flex-col items-center justify-center py-12 text-ink-muted space-y-2">
+        <div className="flex flex-col items-center justify-center py-12 text-ink-muted space-y-2 col-span-2">
           <Loader2 size={24} className="animate-spin text-accent" />
           <p className="text-xs font-semibold">Cargando comunidades de campus...</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
           {espaciosFiltrados.map((esp) => {
             const isTaller = esp.tipo === 'taller';
             const isPropuesta = esp.tipo === 'interes' && esp.estado === 'oculto';
@@ -925,107 +978,105 @@ export default function GruposView() {
               <div
                 key={esp.id}
                 onClick={() => setActiveEspacioId(esp.id)}
-                className="k-card overflow-hidden hover:border-brand-primary cursor-pointer transition-all duration-200 shadow-sm flex flex-col group border-2 border-line/80 dark:border-line-dark rounded-2xl bg-white dark:bg-surface-cardDark"
+                className="k-card overflow-hidden hover:border-brand-primary cursor-pointer transition-all duration-200 shadow-sm flex flex-col justify-between group border-2 border-line/80 dark:border-line-dark rounded-2xl bg-white dark:bg-surface-cardDark"
               >
-                {/* Cover Banner Hero */}
-                {esp.portadaUrl && (
-                  <div className="relative h-32 w-full bg-slate-800 overflow-hidden">
-                    <img
-                      src={esp.portadaUrl}
-                      alt={esp.nombre}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent flex items-end p-3">
-                      <div className="flex items-center space-x-2">
-                        {esp.oficial && (
-                          <span className="text-xs bg-emerald-500 text-white font-black px-2.5 py-0.5 rounded-full shadow-sm">
-                            Oficial UTP
-                          </span>
-                        )}
-                        {esp.tipo === 'carrera_ciclo' && (
-                          <span className="text-xs bg-brand-primary text-white font-black px-2.5 py-0.5 rounded-full shadow-sm">
-                            Tu Salón Cerrado
-                          </span>
-                        )}
-                        {esp.tipo === 'carrera' && (
-                          <span className="text-xs bg-teal-600 text-white font-black px-2.5 py-0.5 rounded-full shadow-sm">
-                            Comunidad de Carrera
-                          </span>
-                        )}
-                        {isPropuesta && (
-                          <span className="text-xs bg-amber-500 text-white font-black px-2.5 py-0.5 rounded-full shadow-sm flex items-center space-x-1">
-                            <Flame size={12} fill="white" />
-                            <span>Propuesta Estudiantil</span>
-                          </span>
-                        )}
+                <div>
+                  {/* Cover Banner Hero */}
+                  {esp.portadaUrl && (
+                    <div className="relative h-24 sm:h-28 w-full bg-slate-800 overflow-hidden">
+                      <img
+                        src={esp.portadaUrl}
+                        alt={esp.nombre}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent flex items-end p-2 sm:p-2.5">
+                        <div className="flex flex-wrap gap-1">
+                          {esp.oficial && (
+                            <span className="text-[10px] bg-emerald-500 text-white font-black px-2 py-0.5 rounded-full shadow-sm">
+                              Oficial UTP
+                            </span>
+                          )}
+                          {esp.tipo === 'carrera_ciclo' && (
+                            <span className="text-[10px] bg-brand-primary text-white font-black px-2 py-0.5 rounded-full shadow-sm">
+                              Tu Salón
+                            </span>
+                          )}
+                          {esp.tipo === 'carrera' && (
+                            <span className="text-[10px] bg-teal-600 text-white font-black px-2 py-0.5 rounded-full shadow-sm">
+                              Tu Carrera
+                            </span>
+                          )}
+                          {isPropuesta && (
+                            <span className="text-[10px] bg-amber-500 text-white font-black px-2 py-0.5 rounded-full shadow-sm flex items-center space-x-0.5">
+                              <Flame size={10} fill="white" />
+                              <span>Propuesta</span>
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Card Body */}
-                <div className="p-4 space-y-2.5">
-                  <div className="flex items-start justify-between">
+                  {/* Card Body */}
+                  <div className="p-3 space-y-2">
                     <div className="space-y-1">
-                      <h3 className="text-sm font-black text-ink dark:text-ink-light leading-snug group-hover:text-brand-primary transition">
+                      <h3 className="text-xs sm:text-sm font-black text-ink dark:text-ink-light leading-snug group-hover:text-brand-primary transition line-clamp-1">
                         {esp.nombre}
                       </h3>
-                      <p className="text-xs text-ink-soft dark:text-ink-muted line-clamp-2 font-medium leading-relaxed">
+                      <p className="text-[11px] text-ink-soft dark:text-ink-muted line-clamp-2 font-medium leading-relaxed">
                         {esp.descripcion}
                       </p>
                     </div>
-                    <ChevronRight size={18} className="text-ink-muted shrink-0 ml-2 group-hover:translate-x-1 transition" />
+
+                    {isTaller && esp.horario && (
+                      <div className="flex items-center space-x-1.5 text-[10px] text-amber-800 dark:text-amber-300 font-bold bg-amber-50 dark:bg-amber-950/40 px-2 py-1 rounded-lg border border-amber-200 dark:border-amber-900/50">
+                        <Clock size={12} className="shrink-0" />
+                        <span className="truncate">{esp.horario}</span>
+                      </div>
+                    )}
+
+                    {/* Propuesta: Contador de apoyos */}
+                    {isPropuesta && (
+                      <div className="p-2 bg-amber-50/80 dark:bg-amber-950/40 rounded-xl space-y-1.5 border border-amber-200 dark:border-amber-900/40">
+                        <div className="flex justify-between items-center text-[10px] text-amber-900 dark:text-amber-200 font-black">
+                          <span>Firmas</span>
+                          <span>{esp.apoyos || 1}/{esp.umbral || 15}</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-amber-500 transition-all duration-300"
+                            style={{ width: `${Math.min(100, (((esp.apoyos || 1) / (esp.umbral || 15)) * 100))}%` }}
+                          />
+                        </div>
+                        <div className="pt-0.5">
+                          {esp.yaApoye ? (
+                            <span className="w-full justify-center px-2 py-1 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-lg flex items-center space-x-1">
+                              <CheckCircle2 size={10} />
+                              <span>Apoyado</span>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleApoyarPropuesta(esp.id);
+                              }}
+                              className="w-full justify-center px-2 py-1 bg-accent hover:bg-accent-hover text-white font-bold text-[10px] rounded-lg flex items-center space-x-1 shadow-sm transition"
+                            >
+                              <ThumbsUp size={10} />
+                              <span>Apoyar</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
+                </div>
 
-                  {isTaller && esp.horario && (
-                    <div className="flex items-center space-x-2 text-xs text-amber-800 dark:text-amber-300 font-bold bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 rounded-xl border border-amber-200 dark:border-amber-900/50">
-                      <Clock size={14} />
-                      <span>{esp.horario}</span>
-                    </div>
-                  )}
-
-                  {/* Propuesta: Contador de apoyos (Umbral dinámico servidor) */}
-                  {isPropuesta && (
-                    <div className="p-3 bg-amber-50/80 dark:bg-amber-950/40 rounded-2xl space-y-2 border border-amber-200 dark:border-amber-900/40">
-                      <div className="flex justify-between items-center text-xs text-amber-900 dark:text-amber-200 font-black">
-                        <span>Apoyos de estudiantes</span>
-                        <span>{esp.apoyos || 1} de {esp.umbral || 15} requeridos</span>
-                      </div>
-                      <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-amber-500 transition-all duration-300"
-                          style={{ width: `${Math.min(100, (((esp.apoyos || 1) / (esp.umbral || 15)) * 100))}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center pt-1">
-                        <span className="text-xs text-ink-muted font-medium">
-                          Faltan {Math.max(0, (esp.umbral || 15) - (esp.apoyos || 1))} firmas para activarse
-                        </span>
-                        {esp.yaApoye ? (
-                          <span className="px-3 py-1.5 bg-emerald-100 text-emerald-800 font-extrabold text-xs rounded-xl flex items-center space-x-1">
-                            <CheckCircle2 size={12} />
-                            <span>¡Apoyado!</span>
-                          </span>
-                        ) : (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleApoyarPropuesta(esp.id);
-                            }}
-                            className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white font-extrabold text-xs rounded-xl flex items-center space-x-1 shadow-sm transition"
-                          >
-                            <ThumbsUp size={12} />
-                            <span>Apoyar</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between text-xs text-ink-muted pt-2 border-t border-line dark:border-line-dark font-medium">
-                    <span className="font-semibold text-ink dark:text-ink-light">{esp.miembrosCount || 1} miembros</span>
-                    <span className="text-brand-primary font-bold">
-                      {esp.esMiembro ? 'Miembro activo' : 'Toca para ver espacio'}
+                <div className="px-3 pb-3">
+                  <div className="flex items-center justify-between text-[10px] text-ink-muted pt-2 border-t border-line dark:border-line-dark font-medium">
+                    <span className="font-semibold text-ink dark:text-ink-light truncate">{esp.miembrosCount || 1} miembros</span>
+                    <span className="text-brand-primary font-bold shrink-0 ml-1">
+                      {esp.esMiembro ? 'Miembro' : 'Ver'}
                     </span>
                   </div>
                 </div>

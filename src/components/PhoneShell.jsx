@@ -137,7 +137,7 @@ export default function PhoneShell({ children }) {
                 ? 'bg-accent text-white shadow-clean'
                 : 'bg-white/10 hover:bg-white/20 text-white'
             }`}
-            title="Ver Panel Institucional UTP (W01-W06)"
+            title="Ver Panel Institucional UTP"
           >
             <Building2 size={14} />
             <span className="hidden md:inline">{currentScreen === 'panel_utp' ? 'Ver App Alumno' : 'Panel UTP'}</span>

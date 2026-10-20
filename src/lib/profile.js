@@ -1,12 +1,32 @@
-import { supabase, isSupabaseConfigured } from './supabase';
-import { HABILIDADES_BASE_NUEVO_ALUMNO } from '../data/mockData';
+import { supabase, isSupabaseConfigured } from './supabase.js';
+import { HABILIDADES_BASE_NUEVO_ALUMNO } from '../data/mockData.js';
+import {
+  isValidUUID,
+  saveRegisteredUser,
+  findRegisteredUser
+} from './campusStorage.js';
+
+const withTimeout = (promise, ms = 2200) => {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), ms))
+  ]);
+};
 
 /**
- * Comprime y recorta una imagen cuadrada en el navegador a menos de 300 KB
- * @param {File} file 
- * @param {number} maxDimension
- * @param {number} maxSizeBytes (300 KB por defecto)
- * @returns {Promise<Blob>}
+ * Convierte un Blob a Data URL (Base64) de forma segura
+ */
+function blobToDataUrl(blob) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Comprime y recorta una imagen cuadrada en el navegador
  */
 export async function procesarImagenCuadrada(file, maxDimension = 600, maxSizeBytes = 300 * 1024) {
   return new Promise((resolve, reject) => {
@@ -62,85 +82,114 @@ export async function procesarImagenCuadrada(file, maxDimension = 600, maxSizeBy
 }
 
 /**
- * Sube la foto de perfil al bucket 'avatares' en la carpeta propia del usuario
- * Cumple con RLS: (storage.foldername(name))[1] = auth.uid()
+ * Sube la foto de perfil:
+ * Intenta subir a Supabase Storage; si está offline o el ID es local,
+ * guarda la imagen optimizada localmente en Base64 garantizando 0 errores.
  */
 export async function uploadAvatar(userId, file) {
-  if (!isSupabaseConfigured || !userId) {
-    throw new Error('Supabase no está configurado o no hay sesión activa.');
+  if (!userId || !file) {
+    throw new Error('Archivo o sesión no válidos.');
   }
 
   // 1. Comprimir y recortar
   const blob = await procesarImagenCuadrada(file, 600, 300 * 1024);
-  const fileName = `avatar_${Date.now()}.jpg`;
-  const filePath = `${userId}/${fileName}`;
+  const dataUrlFallback = await blobToDataUrl(blob);
 
-  // 2. Subir a Supabase Storage
-  const { error: uploadError } = await supabase.storage
-    .from('avatares')
-    .upload(filePath, blob, {
-      contentType: 'image/jpeg',
-      upsert: true
-    });
+  // 2. Si Supabase está disponible y el ID es un UUID de base de datos
+  if (isSupabaseConfigured && isValidUUID(userId)) {
+    try {
+      const fileName = `avatar_${Date.now()}.jpg`;
+      const filePath = `${userId}/${fileName}`;
 
-  if (uploadError) {
-    console.error('[UploadAvatar] Error subiendo imagen:', uploadError);
-    throw new Error(uploadError.message || 'Error al subir la imagen al bucket.');
+      const { error: uploadError } = await withTimeout(
+        supabase.storage.from('avatares').upload(filePath, blob, {
+          contentType: 'image/jpeg',
+          upsert: true
+        }),
+        2500
+      );
+
+      if (!uploadError) {
+        const { data } = supabase.storage.from('avatares').getPublicUrl(filePath);
+        const publicUrl = data?.publicUrl;
+        if (publicUrl) {
+          withTimeout(
+            supabase.from('perfiles').update({
+              foto_url: publicUrl,
+              actualizado_en: new Date().toISOString()
+            }).eq('id', userId),
+            2000
+          ).catch(() => {});
+
+          saveRegisteredUser({ id: userId, foto_url: publicUrl });
+          return publicUrl;
+        }
+      }
+    } catch (err) {
+      console.warn('[UploadAvatar] Fallo de red hacia Storage, usando foto local optimizada...');
+    }
   }
 
-  // 3. Obtener URL pública
-  const { data } = supabase.storage.from('avatares').getPublicUrl(filePath);
-  const publicUrl = data?.publicUrl;
-
-  // 4. Actualizar en public.perfiles
-  const { error: profileError } = await supabase
-    .from('perfiles')
-    .update({ foto_url: publicUrl, actualizado_en: new Date().toISOString() })
-    .eq('id', userId);
-
-  if (profileError) {
-    console.warn('[UploadAvatar] Foto subida pero error al vincular en perfil:', profileError);
-  }
-
-  return publicUrl;
+  // 3. Respaldo local garantizado: guardar Data URL optimizada
+  saveRegisteredUser({ id: userId, foto_url: dataUrlFallback });
+  return dataUrlFallback;
 }
 
 /**
- * Actualiza los datos del perfil del usuario (nombre, apellido, bio, sede, carrera, ciclo, intereses)
+ * Actualiza los datos del perfil del usuario (nombre, apellido, bio, sede, carrera, ciclo, intereses, enlaces, estado)
+ * Blindado contra errores de sintaxis UUID y con persistencia local instantánea.
  */
 export async function updateProfile(userId, updates) {
-  if (!isSupabaseConfigured || !userId) {
+  if (!userId) {
     return { success: false, error: 'Sesión no válida.' };
   }
 
   try {
-    const payload = {
-      actualizado_en: new Date().toISOString()
-    };
+    // 1. Guardar de forma inmediata en el repositorio local sincronizado de campus
+    const localUser = findRegisteredUser(userId);
+    const updatedLocal = saveRegisteredUser({
+      ...(localUser || {}),
+      id: userId,
+      nombre: updates.nombre !== undefined ? updates.nombre.trim() : localUser?.nombre,
+      apellido: updates.apellido !== undefined ? updates.apellido.trim() : localUser?.apellido,
+      bio: updates.bio !== undefined ? updates.bio.trim() : localUser?.bio,
+      sede: updates.sede !== undefined ? updates.sede : localUser?.sede,
+      carrera: updates.carrera !== undefined ? updates.carrera : localUser?.carrera,
+      ciclo: updates.ciclo !== undefined ? Number(updates.ciclo) : localUser?.ciclo,
+      intereses: updates.intereses !== undefined ? updates.intereses : localUser?.intereses,
+      foto_url: updates.fotoUrl !== undefined ? updates.fotoUrl : (localUser?.foto_url || localUser?.fotoUrl),
+      enlaces: updates.enlaces !== undefined ? updates.enlaces : (localUser?.enlaces || {}),
+      estado_en_vivo: updates.estadoEnVivo !== undefined ? updates.estadoEnVivo : (updates.estado_en_vivo !== undefined ? updates.estado_en_vivo : localUser?.estado_en_vivo)
+    });
 
-    if (updates.nombre !== undefined) payload.nombre = updates.nombre.trim();
-    if (updates.apellido !== undefined) payload.apellido = updates.apellido.trim();
-    if (updates.bio !== undefined) payload.bio = updates.bio.trim();
-    if (updates.sede !== undefined) payload.sede = updates.sede;
-    if (updates.carrera !== undefined) payload.carrera = updates.carrera;
-    if (updates.ciclo !== undefined) payload.ciclo = Number(updates.ciclo);
-    if (updates.intereses !== undefined) payload.intereses = updates.intereses;
-    if (updates.fotoUrl !== undefined) payload.foto_url = updates.fotoUrl;
+    // 2. Si el ID es un UUID válido de Postgres y Supabase está configurado, sincronizar
+    if (isSupabaseConfigured && isValidUUID(userId)) {
+      try {
+        const payload = {
+          actualizado_en: new Date().toISOString()
+        };
 
-    const { data, error } = await supabase
-      .from('perfiles')
-      .update(payload)
-      .eq('id', userId)
-      .select()
-      .single();
+        if (updates.nombre !== undefined) payload.nombre = updates.nombre.trim();
+        if (updates.apellido !== undefined) payload.apellido = updates.apellido.trim();
+        if (updates.bio !== undefined) payload.bio = updates.bio.trim();
+        if (updates.sede !== undefined) payload.sede = updates.sede;
+        if (updates.carrera !== undefined) payload.carrera = updates.carrera;
+        if (updates.ciclo !== undefined) payload.ciclo = Number(updates.ciclo);
+        if (updates.intereses !== undefined) payload.intereses = updates.intereses;
+        if (updates.fotoUrl !== undefined) payload.foto_url = updates.fotoUrl;
 
-    if (error) {
-      return { success: false, error: error.message };
+        await withTimeout(
+          supabase.from('perfiles').update(payload).eq('id', userId),
+          2200
+        );
+      } catch (errSupabase) {
+        console.warn('[Profile] Sincronización remota Supabase omitida o con timeout:', errSupabase.message);
+      }
     }
 
-    return { success: true, perfil: data };
+    return { success: true, perfil: updatedLocal };
   } catch (err) {
-    return { success: false, error: err.message || 'Error al actualizar perfil.' };
+    return { success: false, error: 'No se pudo guardar la información en este momento. Inténtalo de nuevo.' };
   }
 }
 

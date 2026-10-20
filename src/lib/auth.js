@@ -5,7 +5,9 @@ import {
   getRegisteredUsers,
   isUsernameAvailable,
   setActiveOtpStorage,
-  getActiveOtpStorage
+  getActiveOtpStorage,
+  generateUUID,
+  isValidUUID
 } from './campusStorage.js';
 
 // Generador de código OTP numérico de 6 dígitos
@@ -275,7 +277,7 @@ export async function signUpWithPassword({ nombre, apellido, usuario, email, pas
   }
 
   // Guardar siempre en repositorio local de campus
-  const newUserId = supabaseUser?.id || `usr_${Date.now()}`;
+  const newUserId = supabaseUser?.id || generateUUID();
   const savedUser = saveRegisteredUser({
     id: newUserId,
     nombre: nombre.trim(),
@@ -370,7 +372,7 @@ export async function verifyOtp(email, token, type = 'email') {
   if (cleanToken === activeOtp || cleanToken === '123456' || /^\d{6}$/.test(cleanToken)) {
     const localUser = findRegisteredUser(cleanEmail);
     const userPayload = {
-      id: localUser?.id || `usr_${Date.now()}`,
+      id: localUser?.id || generateUUID(),
       email: cleanEmail,
       user_metadata: {
         nombre: localUser?.nombre || 'Estudiante',
@@ -519,8 +521,8 @@ export async function saveProfile(userId, profileData, consentimientos = {}) {
   // 1. Guardar de forma inmediata en el repositorio local
   saveRegisteredUser(perfilPayload);
 
-  // 2. Si Supabase está disponible, sincronizar
-  if (isSupabaseConfigured) {
+  // 2. Si Supabase está disponible y el ID es un UUID válido de Postgres, sincronizar
+  if (isSupabaseConfigured && isValidUUID(userId)) {
     try {
       await withTimeout(
         supabase.from('perfiles').upsert(perfilPayload, { onConflict: 'id' }),

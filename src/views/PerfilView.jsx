@@ -43,8 +43,20 @@ import {
   Camera,
   Loader2,
   Check,
-  Info
+  Info,
+  Globe,
+  Code,
+  Briefcase,
+  FolderGit2
 } from 'lucide-react';
+
+const ESTADOS_DISCORD = [
+  { id: 'campus', label: 'En campus', emoji: '🟢', color: '#10B981', desc: 'En instalaciones de la sede' },
+  { id: 'clase', label: 'En clase', emoji: '🟡', color: '#F59E0B', desc: 'En clase o laboratorio' },
+  { id: 'biblioteca', label: 'En biblioteca', emoji: '🔵', color: '#3B82F6', desc: 'Estudiando / Concentrado' },
+  { id: 'buscando_equipo', label: 'Buscando equipo', emoji: '🟣', color: '#8B5CF6', desc: 'Disponible para proyectos' },
+  { id: 'examen', label: 'En exámenes', emoji: '🔴', color: '#EF4444', desc: 'Ocupado / Semana de parciales' }
+];
 
 export default function PerfilView() {
   const {
@@ -94,8 +106,19 @@ export default function PerfilView() {
     }
   };
 
-  // Modal Editar Perfil (Fase 3 - M29)
+  // Modal Editar Perfil
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const currentStatus = user?.estado_en_vivo || 'En campus';
+
+  const handleSelectStatus = async (statusLabel) => {
+    setShowStatusMenu(false);
+    setUser(prev => ({ ...prev, estado_en_vivo: statusLabel }));
+    if (user?.id) {
+      await updateProfile(user.id, { estado_en_vivo: statusLabel, estadoEnVivo: statusLabel });
+    }
+  };
+
   const [editFormData, setEditFormData] = useState({
     nombre: user?.nombre || '',
     apellido: user?.apellido || '',
@@ -103,7 +126,13 @@ export default function PerfilView() {
     sede: user?.sede || 'Lima Sur',
     carrera: user?.carrera || 'Enfermería',
     ciclo: user?.ciclo || 1,
-    intereses: user?.intereses || []
+    intereses: user?.intereses || [],
+    enlaces: {
+      linkedin: user?.enlaces?.linkedin || '',
+      github: user?.enlaces?.github || '',
+      behance: user?.enlaces?.behance || '',
+      web: user?.enlaces?.web || ''
+    }
   });
   const [avatarPreview, setAvatarPreview] = useState(user?.fotoUrl || null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
@@ -150,14 +179,20 @@ export default function PerfilView() {
       sede: user?.sede || 'Lima Sur',
       carrera: user?.carrera || 'Enfermería',
       ciclo: user?.ciclo || 1,
-      intereses: user?.intereses || []
+      intereses: user?.intereses || [],
+      enlaces: {
+        linkedin: user?.enlaces?.linkedin || '',
+        github: user?.enlaces?.github || '',
+        behance: user?.enlaces?.behance || '',
+        web: user?.enlaces?.web || ''
+      }
     });
     setAvatarPreview(user?.fotoUrl || null);
     setEditErrorMsg('');
     setShowEditProfileModal(true);
   };
 
-  // Manejo de subida y compresión de foto (< 300 KB)
+  // Manejo de subida y optimización de foto de perfil
   const handlePhotoSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -199,6 +234,7 @@ export default function PerfilView() {
         carrera: editFormData.carrera,
         ciclo: editFormData.ciclo,
         intereses: editFormData.intereses,
+        enlaces: editFormData.enlaces,
         fotoUrl: avatarPreview
       });
 
@@ -211,6 +247,7 @@ export default function PerfilView() {
       setUser(prev => ({
         ...prev,
         ...editFormData,
+        enlaces: editFormData.enlaces,
         fotoUrl: avatarPreview
       }));
 
@@ -290,6 +327,16 @@ export default function PerfilView() {
               >
                 {(user.nombre || 'U').charAt(0).toUpperCase()}
               </div>
+
+              {/* Discord Live Status Indicator on Avatar */}
+              <div
+                className="absolute -bottom-1 -left-1 w-6 h-6 rounded-full border-2 border-white dark:border-surface-cardDark shadow-md flex items-center justify-center text-[10px]"
+                style={{ backgroundColor: ESTADOS_DISCORD.find(s => s.label === currentStatus)?.color || '#10B981' }}
+                title={`Estado en campus: ${currentStatus}`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-white" />
+              </div>
+
               <div
                 className="absolute -bottom-1 -right-1 bg-brand-primary text-white p-1.5 rounded-full shadow-md border-2 border-white dark:border-surface-cardDark group-hover:scale-110 transition"
                 title="Editar foto"
@@ -324,9 +371,55 @@ export default function PerfilView() {
               </button>
             </div>
 
-            <p className="text-sm font-bold text-brand-primary dark:text-teal-300 mt-0.5">
-              {user.carrera} · {user.ciclo}.° Ciclo
-            </p>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <p className="text-sm font-bold text-brand-primary dark:text-teal-300">
+                {user.carrera} · {user.ciclo}.° Ciclo
+              </p>
+
+              {/* Discord Live Status Selector */}
+              <div className="relative inline-block">
+                <button
+                  type="button"
+                  onClick={() => setShowStatusMenu(!showStatusMenu)}
+                  className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-ink dark:text-ink-light border border-line dark:border-line-dark flex items-center space-x-1.5 transition"
+                  title="Toca para cambiar tu estado en vivo"
+                >
+                  <span
+                    className="w-2 h-2 rounded-full inline-block"
+                    style={{ backgroundColor: ESTADOS_DISCORD.find(s => s.label === currentStatus)?.color || '#10B981' }}
+                  />
+                  <span>{currentStatus}</span>
+                  <span className="text-[10px] text-ink-muted">▾</span>
+                </button>
+
+                {showStatusMenu && (
+                  <div className="absolute left-0 mt-1.5 w-56 bg-white dark:bg-surface-cardDark border-2 border-line dark:border-line-dark rounded-2xl shadow-elevated p-1.5 z-40 space-y-1 animate-fadeIn">
+                    <div className="px-2 py-1 text-[10px] font-black uppercase text-ink-muted">
+                      Estado en campus (En vivo)
+                    </div>
+                    {ESTADOS_DISCORD.map(st => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        onClick={() => handleSelectStatus(st.label)}
+                        className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-xl text-left text-xs font-bold transition ${
+                          currentStatus === st.label
+                            ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20'
+                            : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-ink dark:text-ink-light'
+                        }`}
+                      >
+                        <span className="text-sm">{st.emoji}</span>
+                        <div className="flex-1">
+                          <div className="leading-tight">{st.label}</div>
+                          <div className="text-[10px] text-ink-muted font-normal">{st.desc}</div>
+                        </div>
+                        {currentStatus === st.label && <Check size={12} className="text-brand-primary" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
 
             {user.bio ? (
               <p className="text-xs text-ink-soft dark:text-ink-muted mt-2 font-medium leading-relaxed italic bg-surface dark:bg-surface-dark p-2.5 rounded-xl border border-line dark:border-line-dark">
@@ -352,6 +445,91 @@ export default function PerfilView() {
                 ))}
               </div>
             )}
+
+            {/* LinkedIn & Portfolio Showcase (LinkedIn Style) */}
+            <div className="mt-3 pt-3 border-t border-line/60 dark:border-line-dark">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-ink-muted flex items-center space-x-1">
+                  <Briefcase size={12} className="text-brand-primary" />
+                  <span>Presencia Profesional</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleOpenEditModal}
+                  className="text-[11px] font-bold text-brand-primary hover:underline"
+                >
+                  Editar enlaces
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {user.enlaces?.linkedin ? (
+                  <a
+                    href={user.enlaces.linkedin.startsWith('http') ? user.enlaces.linkedin : `https://${user.enlaces.linkedin}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#0A66C2]/10 hover:bg-[#0A66C2]/20 text-[#0A66C2] border border-[#0A66C2]/30 flex items-center space-x-1.5 transition shadow-xs"
+                  >
+                    <span className="font-black text-[10px] px-1 bg-[#0A66C2] text-white rounded">in</span>
+                    <span>LinkedIn</span>
+                    <ExternalLink size={11} />
+                  </a>
+                ) : null}
+
+                {user.enlaces?.github ? (
+                  <a
+                    href={user.enlaces.github.startsWith('http') ? user.enlaces.github : `https://${user.enlaces.github}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900/10 hover:bg-slate-900/20 text-slate-900 dark:text-slate-100 dark:bg-slate-100/10 border border-slate-300 dark:border-slate-700 flex items-center space-x-1.5 transition shadow-xs"
+                  >
+                    <Code size={13} />
+                    <span>GitHub</span>
+                    <ExternalLink size={11} />
+                  </a>
+                ) : null}
+
+                {user.enlaces?.behance ? (
+                  <a
+                    href={user.enlaces.behance.startsWith('http') ? user.enlaces.behance : `https://${user.enlaces.behance}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-300 dark:border-purple-800 flex items-center space-x-1.5 transition shadow-xs"
+                  >
+                    <FolderGit2 size={13} />
+                    <span>Portafolio</span>
+                    <ExternalLink size={11} />
+                  </a>
+                ) : null}
+
+                {user.enlaces?.web ? (
+                  <a
+                    href={user.enlaces.web.startsWith('http') ? user.enlaces.web : `https://${user.enlaces.web}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-teal-500/10 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300 border border-teal-300 dark:border-teal-800 flex items-center space-x-1.5 transition shadow-xs"
+                  >
+                    <Globe size={13} />
+                    <span>Sitio Web</span>
+                    <ExternalLink size={11} />
+                  </a>
+                ) : null}
+
+                {!user.enlaces?.linkedin && !user.enlaces?.github && !user.enlaces?.behance && !user.enlaces?.web && (
+                  <button
+                    type="button"
+                    onClick={handleOpenEditModal}
+                    className="text-[11px] font-semibold text-ink-muted hover:text-brand-primary p-2.5 bg-surface dark:bg-surface-dark rounded-xl border border-dashed border-line dark:border-line-dark w-full text-left flex items-center justify-between group transition"
+                  >
+                    <span className="flex items-center space-x-2">
+                      <Briefcase size={14} className="text-brand-primary" />
+                      <span>Añade tu LinkedIn, GitHub o portafolio personal</span>
+                    </span>
+                    <span className="text-brand-primary font-bold group-hover:translate-x-0.5 transition">+ Añadir</span>
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -756,11 +934,12 @@ export default function PerfilView() {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isUploadingPhoto}
-                  className="px-3 py-1.5 bg-brand-primary-soft dark:bg-brand-dark text-brand-primary dark:text-teal-300 text-xs font-bold rounded-xl border border-brand-primary/20 flex items-center space-x-1.5 hover:opacity-90 transition"
+                  className="px-3.5 py-2 bg-brand-primary-soft dark:bg-brand-dark text-brand-primary dark:text-teal-300 text-xs font-bold rounded-xl border border-brand-primary/20 flex items-center space-x-1.5 hover:opacity-90 transition shadow-xs"
                 >
-                  <Camera size={13} />
-                  <span>{isUploadingPhoto ? 'Comprimiendo...' : 'Cambiar foto (< 300 KB)'}</span>
+                  <Camera size={14} />
+                  <span>{isUploadingPhoto ? 'Actualizando foto...' : 'Cambiar foto de perfil'}</span>
                 </button>
+                <p className="text-[10px] text-ink-muted">Formatos JPG o PNG. La imagen se optimiza automáticamente.</p>
               </div>
 
               {/* Bio */}
@@ -843,6 +1022,78 @@ export default function PerfilView() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* Presencia Profesional (LinkedIn, GitHub, Portafolio, Web) */}
+              <div className="space-y-2 pt-2 border-t border-line dark:border-line-dark">
+                <label className="block text-xs font-bold text-ink dark:text-ink-light flex items-center space-x-1.5">
+                  <Briefcase size={13} className="text-brand-primary" />
+                  <span>Presencia Profesional y Portafolio</span>
+                </label>
+
+                <div className="space-y-2">
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-[10px] font-black px-1 bg-[#0A66C2] text-white rounded">in</span>
+                    <input
+                      type="text"
+                      placeholder="https://linkedin.com/in/tu-perfil"
+                      value={editFormData.enlaces?.linkedin || ''}
+                      onChange={(e) => setEditFormData({
+                        ...editFormData,
+                        enlaces: { ...(editFormData.enlaces || {}), linkedin: e.target.value }
+                      })}
+                      className="w-full pl-9 pr-3 py-2 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-xs font-semibold text-ink dark:text-ink-light"
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-ink-muted">
+                      <Code size={14} />
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="https://github.com/tu-usuario"
+                      value={editFormData.enlaces?.github || ''}
+                      onChange={(e) => setEditFormData({
+                        ...editFormData,
+                        enlaces: { ...(editFormData.enlaces || {}), github: e.target.value }
+                      })}
+                      className="w-full pl-9 pr-3 py-2 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-xs font-semibold text-ink dark:text-ink-light"
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-purple-500">
+                      <FolderGit2 size={14} />
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Portafolio (Behance, Figma, Dribbble...)"
+                      value={editFormData.enlaces?.behance || ''}
+                      onChange={(e) => setEditFormData({
+                        ...editFormData,
+                        enlaces: { ...(editFormData.enlaces || {}), behance: e.target.value }
+                      })}
+                      className="w-full pl-9 pr-3 py-2 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-xs font-semibold text-ink dark:text-ink-light"
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-teal-600">
+                      <Globe size={14} />
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Sitio Web personal o Blog"
+                      value={editFormData.enlaces?.web || ''}
+                      onChange={(e) => setEditFormData({
+                        ...editFormData,
+                        enlaces: { ...(editFormData.enlaces || {}), web: e.target.value }
+                      })}
+                      className="w-full pl-9 pr-3 py-2 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-xs font-semibold text-ink dark:text-ink-light"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -955,7 +1206,7 @@ export default function PerfilView() {
               </div>
 
               <div className="p-2.5 bg-slate-100 dark:bg-surface-dark rounded-xl text-[11px] text-ink-muted">
-                <strong>Clasificación:</strong> &gt; 60 hrs → Avanzado; ≥ 20 hrs o con evaluación → Intermedio; otros → Básico.
+                <strong>Reconocimiento:</strong> Más de 60 horas para nivel Avanzado; desde 20 horas o con evaluación formal para Intermedio.
               </div>
 
               <button
@@ -969,13 +1220,13 @@ export default function PerfilView() {
         </div>
       )}
 
-      {/* MODAL: DETALLE DE HABILIDAD (M30) */}
+      {/* MODAL: DETALLE DE HABILIDAD */}
       {selectedHab && (
         <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 animate-fadeIn">
           <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border-2 border-line dark:border-line-dark space-y-3.5">
             <div className="flex items-center justify-between pb-2 border-b border-line dark:border-line-dark">
               <span className="text-xs font-black uppercase tracking-wider text-brand-primary dark:text-teal-300">
-                Detalle de Habilidad (M30)
+                Detalle de Habilidad
               </span>
               <button
                 type="button"

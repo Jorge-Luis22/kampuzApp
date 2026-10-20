@@ -79,10 +79,10 @@ export default function PanelUniversidadView() {
       {/* Panel Navigation Tabs */}
       <div className="bg-white dark:bg-surface-cardDark border-b border-line dark:border-line-dark px-6 flex space-x-6 text-xs font-bold">
         {[
-          { id: 'resumen', label: 'W01 Resumen y Retención' },
-          { id: 'facultades', label: 'W02 Participación por Facultad' },
-          { id: 'talento', label: 'W03 Radar de Talento (Impulsa / Gen Top)' },
-          { id: 'talleres', label: 'W05 Talleres Oficiales' }
+          { id: 'resumen', label: 'Resumen y Retención' },
+          { id: 'facultades', label: 'Participación por Facultad' },
+          { id: 'talento', label: 'Radar de Talento (Impulsa / Gen Top)' },
+          { id: 'talleres', label: 'Talleres y Comunidades' }
         ].map((tab) => (
           <button
             key={tab.id}

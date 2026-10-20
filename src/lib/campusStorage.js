@@ -77,6 +77,22 @@ export function subscribeToCampusEvents(handler) {
 // 1. GESTIÓN DE USUARIOS Y PERFILES REGISTRADOS
 // =============================================================================
 
+export function generateUUID() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+export function isValidUUID(id) {
+  if (!id || typeof id !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
 export function getRegisteredUsers() {
   if (typeof window === 'undefined') return [];
   try {
@@ -99,7 +115,7 @@ export function saveRegisteredUser(userData) {
 
     const now = new Date().toISOString();
     const cleanUser = {
-      id: userData.id || `usr_${Date.now()}`,
+      id: userData.id || generateUUID(),
       nombre: userData.nombre || 'Estudiante',
       apellido: userData.apellido || '',
       usuario: (userData.usuario || userData.correo_institucional?.split('@')[0] || `user_${Date.now()}`).replace('@', '').toLowerCase(),
@@ -111,6 +127,8 @@ export function saveRegisteredUser(userData) {
       intereses: Array.isArray(userData.intereses) ? userData.intereses : ['Programación', 'Inteligencia Artificial'],
       foto_url: userData.foto_url || userData.fotoUrl || null,
       bio: userData.bio || `Estudiante de ${userData.carrera || 'campus'} en UTP Lima Sur.`,
+      enlaces: userData.enlaces || { github: '', linkedin: '', behance: '', web: '' },
+      estado_en_vivo: userData.estado_en_vivo || userData.estadoEnVivo || { tipo: 'activo', texto: 'En campus', color: 'emerald' },
       rol: userData.rol || 'alumno',
       creado_en: userData.creado_en || now,
       actualizado_en: now

@@ -1,6 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../data/store';
 import { CARRERAS_UTP, INTERESES_DISPONIBLES } from '../data/mockData';
+import {
+  fetchUmbralMinimoSegmento,
+  calcularAlcanceEnVivo,
+  enviarEncuestaSegura,
+  fetchBandejaEncuestas,
+  fetchPreguntasEncuesta,
+  responderEncuestaSegura,
+  obtenerResultadosAgregados,
+  fetchMisEncuestasCreadas
+} from '../lib/surveys';
 import {
   ClipboardList,
   Plus,
@@ -17,54 +27,138 @@ import {
   Send,
   HelpCircle,
   ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  Loader2,
+  RefreshCw,
+  Sparkles
 } from 'lucide-react';
 
 export default function EncuestasView() {
   const {
     user,
-    encuestasBandeja,
-    encuestaPropia,
-    getAlcanceSemanal,
-    calcularAlcanceFiltro,
-    responderEncuesta
+    setUser,
+    encuestasBandeja: fallbackBandeja,
+    encuestaPropia: fallbackPropia,
+    getAlcanceSemanal
   } = useStore();
 
   const [activeSubTab, setActiveSubTab] = useState('bandeja'); // 'bandeja' | 'crear' | 'mis_encuestas'
 
+  // Umbral dinámico leído de config (por defecto 30)
+  const [umbralMinimo, setUmbralMinimo] = useState(30);
+
+  // Bandeja real y mis encuestas
+  const [bandejaReal, setBandejaReal] = useState([]);
+  const [isLoadingBandeja, setIsLoadingBandeja] = useState(false);
+  const [misEncuestas, setMisEncuestas] = useState([]);
+  const [isLoadingMisEncuestas, setIsLoadingMisEncuestas] = useState(false);
+
   // Flujo Crear Encuesta: Filtro (M24)
   const [filtro, setFiltro] = useState({
-    sede: 'Lima Sur',
-    carreras: ['Enfermería'],
-    cicloMin: 3,
-    cicloMax: 7,
+    sede: user?.sede || 'Lima Sur',
+    carreras: [user?.carrera || 'Enfermería'],
+    cicloMin: 1,
+    cicloMax: 10,
     edadMin: 18,
-    edadMax: 26,
+    edadMax: 30,
     intereses: []
   });
 
-  const [crearStep, setCrearStep] = useState('filtro'); // 'filtro' | 'bloqueado_m25' | 'preguntas'
+  const [alcanceCalculado, setAlcanceCalculado] = useState(30);
+  const [isCalculandoAlcance, setIsCalculandoAlcance] = useState(false);
+  const [crearStep, setCrearStep] = useState('filtro'); // 'filtro' | 'bloqueado_m25' | 'bloqueado_alcance' | 'preguntas'
   const [encuestaTitulo, setEncuestaTitulo] = useState('');
   const [encuestaObjetivo, setEncuestaObjetivo] = useState('');
   const [preguntasNuevas, setPreguntasNuevas] = useState([
     {
       id: 1,
-      texto: '¿Cuántas horas dedicas a la preparación de prácticas clínicas por semana?',
+      texto: '¿Cuántas horas dedicas al estudio independiente por semana?',
       tipo: 'unica',
       opciones: ['Menos de 3 horas', '3 a 6 horas', 'Más de 6 horas']
     }
   ]);
+  const [isEnviandoEncuesta, setIsEnviandoEncuesta] = useState(false);
   const [encuestaEnviadaExito, setEncuestaEnviadaExito] = useState(false);
+  const [errorEnvio, setErrorEnvio] = useState('');
 
   // Flujo Responder Encuesta (M27)
   const [encuestaParaResponder, setEncuestaParaResponder] = useState(null);
+  const [preguntasParaResponder, setPreguntasParaResponder] = useState([]);
+  const [isLoadingPreguntas, setIsLoadingPreguntas] = useState(false);
   const [respuestasUsuario, setRespuestasUsuario] = useState({});
   const [preguntaIndex, setPreguntaIndex] = useState(0);
+  const [isGuardandoRespuesta, setIsGuardandoRespuesta] = useState(false);
+  const [respuestaFinalizada, setRespuestaFinalizada] = useState(false);
 
-  // Cálculos en vivo
+  // Resultados agregados seleccionados (M28)
+  const [encuestaResultadosSeleccionada, setEncuestaResultadosSeleccionada] = useState(null);
+  const [resultadosAgregados, setResultadosAgregados] = useState(null);
+  const [isLoadingResultados, setIsLoadingResultados] = useState(false);
+
+  // Alcance semanal según nivel de Apoyo a la Investigación [0, 30, 80, 200]
   const alcanceSemanal = getAlcanceSemanal(user);
-  const alcanceCalculado = calcularAlcanceFiltro(filtro);
-  const nivelApoyo = user.habilidades?.apoyo_investigacion?.nivel ?? 1;
+  const nivelApoyo = user?.habilidades?.apoyo_investigacion?.nivel ?? 0;
+
+  // Cargar umbral inicial y bandeja
+  useEffect(() => {
+    fetchUmbralMinimoSegmento().then(setUmbralMinimo);
+  }, []);
+
+  const cargarBandeja = async () => {
+    if (!user?.id) return;
+    setIsLoadingBandeja(true);
+    try {
+      const data = await fetchBandejaEncuestas(user.id);
+      if (data && data.length > 0) {
+        setBandejaReal(data);
+      } else {
+        // Fallback enriquecido si no hay en DB
+        setBandejaReal(fallbackBandeja);
+      }
+    } catch (err) {
+      setBandejaReal(fallbackBandeja);
+    } finally {
+      setIsLoadingBandeja(false);
+    }
+  };
+
+  const cargarMisEncuestas = async () => {
+    if (!user?.id) return;
+    setIsLoadingMisEncuestas(true);
+    try {
+      const data = await fetchMisEncuestasCreadas(user.id);
+      setMisEncuestas(data || []);
+    } catch (err) {
+      console.warn('Error cargando mis encuestas:', err);
+    } finally {
+      setIsLoadingMisEncuestas(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'bandeja') {
+      cargarBandeja();
+    } else if (activeSubTab === 'mis_encuestas') {
+      cargarMisEncuestas();
+    }
+  }, [activeSubTab, user?.id]);
+
+  // Recalcular alcance en vivo con RPC al cambiar filtros (M24)
+  useEffect(() => {
+    let timer = setTimeout(async () => {
+      setIsCalculandoAlcance(true);
+      try {
+        const alcance = await calcularAlcanceEnVivo(filtro);
+        setAlcanceCalculado(alcance);
+      } catch (e) {
+        console.warn('Error calculando alcance:', e);
+      } finally {
+        setIsCalculandoAlcance(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [filtro]);
 
   const toggleCarreraFiltro = (nombre) => {
     if (filtro.carreras.includes(nombre)) {
@@ -75,21 +169,13 @@ export default function EncuestasView() {
     }
   };
 
-  const toggleInteresFiltro = (interes) => {
-    if (filtro.intereses.includes(interes)) {
-      setFiltro({ ...filtro, intereses: filtro.intereses.filter(i => i !== interes) });
-    } else {
-      setFiltro({ ...filtro, intereses: [...filtro.intereses, interes] });
-    }
-  };
-
   const handleVerificarFiltro = () => {
-    if (alcanceCalculado < 30) {
+    // Si el alcance es menor al umbral configurado (30), bloquear con pantalla M25
+    if (alcanceCalculado < umbralMinimo) {
       setCrearStep('bloqueado_m25');
       return;
     }
-    // Sección 5.2 / 7.4: con nivel 0 de Apoyo a la investigación el alcance semanal es 0.
-    // El primer gesto en Kampus es ayudar, no pedir.
+    // Si el alcance semanal del alumno es 0 (no ha apoyado encuestas antes)
     if (alcanceSemanal === 0) {
       setCrearStep('bloqueado_alcance');
       return;
@@ -97,24 +183,87 @@ export default function EncuestasView() {
     setCrearStep('preguntas');
   };
 
-  const handleEnviarEncuestaFinal = (e) => {
+  // Enviar encuesta mediante RPC de servidor (M26)
+  const handleEnviarEncuestaFinal = async (e) => {
     e.preventDefault();
-    if (!encuestaTitulo.trim()) return;
-    // Doble chequeo: nunca se envía con segmento < 30 ni con alcance semanal 0
-    if (alcanceCalculado < 30) { setCrearStep('bloqueado_m25'); return; }
-    if (alcanceSemanal === 0) { setCrearStep('bloqueado_alcance'); return; }
-    setEncuestaEnviadaExito(true);
-    setTimeout(() => {
-      setEncuestaEnviadaExito(false);
-      setCrearStep('filtro');
-      setActiveSubTab('mis_encuestas');
-    }, 1500);
+    if (!encuestaTitulo.trim() || isEnviandoEncuesta) return;
+
+    if (alcanceCalculado < umbralMinimo) {
+      setCrearStep('bloqueado_m25');
+      return;
+    }
+
+    if (alcanceSemanal === 0) {
+      setCrearStep('bloqueado_alcance');
+      return;
+    }
+
+    setIsEnviandoEncuesta(true);
+    setErrorEnvio('');
+
+    try {
+      const res = await enviarEncuestaSegura({
+        titulo: encuestaTitulo,
+        descripcion: encuestaObjetivo,
+        filtro,
+        preguntas: preguntasNuevas
+      });
+
+      if (!res.success) {
+        setErrorEnvio(res.error || 'No se pudo enviar la encuesta.');
+        setIsEnviandoEncuesta(false);
+        return;
+      }
+
+      setEncuestaEnviadaExito(true);
+      setTimeout(() => {
+        setEncuestaEnviadaExito(false);
+        setCrearStep('filtro');
+        setEncuestaTitulo('');
+        setEncuestaObjetivo('');
+        setActiveSubTab('mis_encuestas');
+        cargarMisEncuestas();
+      }, 1500);
+    } catch (err) {
+      setErrorEnvio('Error de red al procesar el envío seguro.');
+    } finally {
+      setIsEnviandoEncuesta(false);
+    }
   };
 
-  const handleIniciarResponder = (encuesta) => {
+  // Iniciar respuesta de encuesta (M27)
+  const handleIniciarResponder = async (encuesta) => {
     setEncuestaParaResponder(encuesta);
     setPreguntaIndex(0);
     setRespuestasUsuario({});
+    setRespuestaFinalizada(false);
+    setIsLoadingPreguntas(true);
+
+    try {
+      let preguntas = [];
+      if (encuesta.encuestaId) {
+        preguntas = await fetchPreguntasEncuesta(encuesta.encuestaId);
+      }
+      if (!preguntas || preguntas.length === 0) {
+        preguntas = encuesta.preguntas || [
+          {
+            id: 'p1',
+            texto: '¿Con qué frecuencia utilizas las salas de estudio de la sede?',
+            opciones: ['Todos los días', '2 a 3 veces por semana', 'Raras veces']
+          },
+          {
+            id: 'p2',
+            texto: '¿Consideras que el horario de tutorías clínicas se adapta a tus cursos?',
+            opciones: ['Sí, completamente', 'Parcialmente', 'No se adapta']
+          }
+        ];
+      }
+      setPreguntasParaResponder(preguntas);
+    } catch (err) {
+      console.warn('Error cargando preguntas:', err);
+    } finally {
+      setIsLoadingPreguntas(false);
+    }
   };
 
   const handleSeleccionarOpcionRespuesta = (preguntaId, opcion) => {
@@ -124,21 +273,72 @@ export default function EncuestasView() {
     }));
   };
 
-  const handleSiguientePregunta = () => {
-    if (!encuestaParaResponder) return;
-    if (preguntaIndex < encuestaParaResponder.preguntas.length - 1) {
+  const handleSiguientePregunta = async () => {
+    if (!encuestaParaResponder || !preguntasParaResponder.length) return;
+
+    if (preguntaIndex < preguntasParaResponder.length - 1) {
       setPreguntaIndex(preguntaIndex + 1);
     } else {
-      responderEncuesta(encuestaParaResponder.id, respuestasUsuario);
-      setEncuestaParaResponder(null);
+      // Última pregunta: guardar respuestas de forma segura
+      setIsGuardandoRespuesta(true);
+      try {
+        await responderEncuestaSegura({
+          envioId: encuestaParaResponder.envioId,
+          encuestaId: encuestaParaResponder.encuestaId,
+          respuestas: respuestasUsuario
+        });
+
+        // Actualizar habilidad localmente
+        setUser(prev => {
+          const actual = prev?.habilidades?.apoyo_investigacion?.nivel || 0;
+          return {
+            ...prev,
+            habilidades: {
+              ...(prev?.habilidades || {}),
+              apoyo_investigacion: {
+                nivel: Math.max(actual, 1),
+                nombre: 'Apoyo a la investigación',
+                puntos: ((prev?.habilidades?.apoyo_investigacion?.puntos) || 0) + 10,
+                encuestasRespondidas: ((prev?.habilidades?.apoyo_investigacion?.encuestasRespondidas) || 0) + 1
+              }
+            }
+          };
+        });
+
+        setRespuestaFinalizada(true);
+        setTimeout(() => {
+          setEncuestaParaResponder(null);
+          setRespuestaFinalizada(false);
+          cargarBandeja();
+        }, 1500);
+      } catch (err) {
+        console.error('Error al responder:', err);
+        setEncuestaParaResponder(null);
+      } finally {
+        setIsGuardandoRespuesta(false);
+      }
     }
   };
 
-  // --- M27: RESPONDER ENCUESTA ---
+  // Ver resultados agregados de una encuesta (M28)
+  const handleVerResultados = async (enc) => {
+    setEncuestaResultadosSeleccionada(enc);
+    setIsLoadingResultados(true);
+    try {
+      const res = await obtenerResultadosAgregados(enc.id);
+      setResultadosAgregados(res);
+    } catch (err) {
+      console.warn('Error cargando resultados agregados:', err);
+    } finally {
+      setIsLoadingResultados(false);
+    }
+  };
+
+  // --- M27: RESPONDER ENCUESTA (1 PREGUNTA POR PANTALLA) ---
   if (encuestaParaResponder) {
-    const totalPreguntas = encuestaParaResponder.preguntas.length;
-    const currentP = encuestaParaResponder.preguntas[preguntaIndex];
-    const tieneRespuesta = !!respuestasUsuario[currentP.id];
+    const totalPreguntas = preguntasParaResponder.length;
+    const currentP = preguntasParaResponder[preguntaIndex];
+    const tieneRespuesta = currentP && !!respuestasUsuario[currentP.id];
 
     return (
       <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn">
@@ -153,75 +353,100 @@ export default function EncuestasView() {
               <span>Volver</span>
             </button>
             <span className="text-xs font-black text-accent">
-              Pregunta {preguntaIndex + 1} de {totalPreguntas}
+              Pregunta {preguntaIndex + 1} de {totalPreguntas || 1}
             </span>
           </div>
 
           <div className="w-full h-2 bg-slate-200 dark:bg-line-dark rounded-full overflow-hidden mt-3.5">
             <div
               className="h-full bg-accent transition-all duration-300"
-              style={{ width: `${((preguntaIndex + 1) / totalPreguntas) * 100}%` }}
+              style={{ width: `${((preguntaIndex + 1) / (totalPreguntas || 1)) * 100}%` }}
             />
           </div>
 
-          <div className="mt-6 space-y-3">
-            <span className="text-xs font-black text-brand-primary dark:text-teal-300 uppercase tracking-wider block">
-              {encuestaParaResponder.titulo}
-            </span>
-            <h2 className="text-base font-black text-ink dark:text-ink-light tracking-tight leading-snug">
-              {currentP.texto}
-            </h2>
-
-            {/* Opciones */}
-            <div className="space-y-2.5 pt-2">
-              {currentP.opciones.map((opcion) => {
-                const seleccionada = respuestasUsuario[currentP.id] === opcion;
-                return (
-                  <button
-                    key={opcion}
-                    type="button"
-                    onClick={() => handleSeleccionarOpcionRespuesta(currentP.id, opcion)}
-                    className={`w-full p-4 rounded-2xl border-2 text-left text-sm font-semibold transition ${
-                      seleccionada
-                        ? 'bg-brand-primary text-white border-brand-primary shadow-sm'
-                        : 'bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light border-line dark:border-line-dark hover:border-brand-primary/50'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                        seleccionada ? 'border-white bg-white text-brand-primary' : 'border-ink-muted'
-                      }`}>
-                        {seleccionada && <div className="w-2.5 h-2.5 rounded-full bg-brand-primary" />}
-                      </div>
-                      <span className="leading-snug">{opcion}</span>
-                    </div>
-                  </button>
-                );
-              })}
+          {isLoadingPreguntas ? (
+            <div className="flex flex-col items-center justify-center py-20 space-y-2 text-ink-muted">
+              <Loader2 size={24} className="animate-spin text-accent" />
+              <p className="text-xs font-semibold">Cargando preguntas de la encuesta...</p>
             </div>
-          </div>
+          ) : respuestaFinalizada ? (
+            <div className="p-8 text-center space-y-3 bg-white dark:bg-surface-cardDark rounded-3xl border-2 border-emerald-300 mt-6 animate-fadeIn">
+              <CheckCircle2 size={48} className="text-emerald-500 mx-auto" />
+              <h3 className="text-base font-black text-ink dark:text-ink-light">
+                ¡Encuesta completada con éxito!
+              </h3>
+              <p className="text-xs text-ink-muted leading-relaxed">
+                Tus respuestas fueron agregadas anónimamente. Desbloqueaste alcance en tu habilidad <strong>Apoyo a la Investigación</strong>.
+              </p>
+            </div>
+          ) : currentP ? (
+            <div className="mt-6 space-y-3">
+              <span className="text-xs font-black text-brand-primary dark:text-teal-300 uppercase tracking-wider block">
+                {encuestaParaResponder.titulo}
+              </span>
+              <h2 className="text-base font-black text-ink dark:text-ink-light tracking-tight leading-snug">
+                {currentP.texto}
+              </h2>
+
+              {/* Opciones */}
+              <div className="space-y-2.5 pt-2">
+                {(currentP.opciones || []).map((opcion) => {
+                  const seleccionada = respuestasUsuario[currentP.id] === opcion;
+                  return (
+                    <button
+                      key={opcion}
+                      type="button"
+                      onClick={() => handleSeleccionarOpcionRespuesta(currentP.id, opcion)}
+                      className={`w-full p-4 rounded-2xl border-2 text-left text-sm font-semibold transition ${
+                        seleccionada
+                          ? 'bg-brand-primary text-white border-brand-primary shadow-sm'
+                          : 'bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light border-line dark:border-line-dark hover:border-brand-primary/50'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                          seleccionada ? 'border-white bg-white text-brand-primary' : 'border-ink-muted'
+                        }`}>
+                          {seleccionada && <div className="w-2.5 h-2.5 rounded-full bg-brand-primary" />}
+                        </div>
+                        <span className="leading-snug">{opcion}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
         </div>
 
-        <div className="space-y-3 pt-5">
-          <div className="flex items-center space-x-1.5 text-xs text-ink-muted justify-center font-medium">
-            <ShieldCheck size={16} className="text-accent" />
-            <span>Respuestas 100% anónimas y agregadas según Ley 29733</span>
-          </div>
+        {!respuestaFinalizada && (
+          <div className="space-y-3 pt-5">
+            <div className="flex items-center space-x-1.5 text-xs text-ink-muted justify-center font-medium">
+              <ShieldCheck size={16} className="text-accent" />
+              <span>Respuestas 100% anónimas y agregadas según Ley 29733</span>
+            </div>
 
-          <button
-            onClick={handleSiguientePregunta}
-            disabled={!tieneRespuesta}
-            className="w-full py-3.5 bg-brand-primary disabled:opacity-40 hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-2xl flex items-center justify-center space-x-2 shadow-sm transition"
-          >
-            <span>{preguntaIndex < totalPreguntas - 1 ? 'Siguiente Pregunta' : 'Finalizar y Sumar Apoyo a Tesis'}</span>
-            <ArrowRight size={16} />
-          </button>
-        </div>
+            <button
+              onClick={handleSiguientePregunta}
+              disabled={!tieneRespuesta || isGuardandoRespuesta}
+              className="w-full py-3.5 bg-brand-primary disabled:opacity-40 hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-2xl flex items-center justify-center space-x-2 shadow-sm transition"
+            >
+              {isGuardandoRespuesta ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <>
+                  <span>{preguntaIndex < totalPreguntas - 1 ? 'Siguiente Pregunta' : 'Finalizar y Sumar Apoyo a Tesis'}</span>
+                  <ArrowRight size={16} />
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
     );
   }
 
-  // --- M25: PANTALLA BLOQUEADA BAJO 30 (PANTALLA COMPLETA DEDICADA) ---
+  // --- M25: ESTADO BLOQUEADO (< 30) (PANTALLA DEDICADA) ---
   if (crearStep === 'bloqueado_m25') {
     return (
       <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn">
@@ -234,17 +459,17 @@ export default function EncuestasView() {
             <span>Ajustar filtro</span>
           </button>
 
-          <div className="k-card p-5 space-y-4 border-2 border-rose-300 dark:border-rose-900/60 rounded-3xl">
+          <div className="k-card p-5 space-y-4 border-2 border-rose-300 dark:border-rose-900/60 rounded-3xl bg-white dark:bg-surface-cardDark shadow-sm">
             <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-semantic-danger flex items-center justify-center">
               <AlertTriangle size={28} />
             </div>
 
             <div>
               <span className="text-xs font-black text-semantic-danger uppercase tracking-wider block">
-                Bloqueo de Seguridad Legal (Umbral &lt; 30)
+                Bloqueo de Seguridad Legal (Umbral &lt; {umbralMinimo})
               </span>
               <h1 className="text-lg font-black text-ink dark:text-ink-light tracking-tight mt-1">
-                Segmento menor a 30 alumnos
+                Segmento menor a {umbralMinimo} alumnos
               </h1>
             </div>
 
@@ -253,12 +478,12 @@ export default function EncuestasView() {
                 {alcanceCalculado} alumnos
               </div>
               <p className="text-sm text-rose-900 dark:text-rose-200 font-semibold mt-1">
-                "Muy pocos. Con menos de 30 personas alguien podría quedar identificado. Amplía el rango de ciclos o quita un filtro."
+                "Muy pocos. Con menos de {umbralMinimo} personas alguien podría quedar identificado. Amplía el rango de ciclos o quita un filtro."
               </p>
             </div>
 
             <p className="text-xs text-ink-soft dark:text-ink-muted leading-relaxed">
-              Bajo la <strong>Ley 29733 de Protección de Datos Personales</strong>, los segmentos deben contar con un mínimo de 30 estudiantes para garantizar el anonimato estadístico estricto.
+              Bajo la <strong>Ley 29733 de Protección de Datos Personales</strong>, los segmentos deben contar con un mínimo de {umbralMinimo} estudiantes para garantizar el anonimato estadístico estricto.
             </p>
           </div>
         </div>
@@ -268,7 +493,7 @@ export default function EncuestasView() {
             onClick={() => {
               setFiltro(prev => ({
                 ...prev,
-                carreras: ['Enfermería', 'Psicología', 'Ingeniería Industrial'],
+                carreras: ['Enfermería', 'Psicología', 'Ingeniería Industrial', 'Ingeniería de Sistemas'],
                 cicloMin: 1,
                 cicloMax: 10
               }));
@@ -276,7 +501,7 @@ export default function EncuestasView() {
             }}
             className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-2xl shadow-sm transition"
           >
-            Ampliar filtro automáticamente (&gt;30)
+            Ampliar filtro automáticamente (&ge;{umbralMinimo})
           </button>
           <button
             onClick={() => setCrearStep('filtro')}
@@ -289,7 +514,7 @@ export default function EncuestasView() {
     );
   }
 
-  // --- BLOQUEO POR ALCANCE SEMANAL 0 (nivel 0 de Apoyo a la investigación) ---
+  // --- BLOQUEO POR ALCANCE SEMANAL 0 (Nivel 0 Apoyo a la Investigación) ---
   if (crearStep === 'bloqueado_alcance') {
     return (
       <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn">
@@ -302,7 +527,7 @@ export default function EncuestasView() {
             <span>Volver al filtro</span>
           </button>
 
-          <div className="k-card p-5 space-y-4 border-2 border-line dark:border-line-dark rounded-3xl">
+          <div className="k-card p-5 space-y-4 border-2 border-line dark:border-line-dark rounded-3xl bg-white dark:bg-surface-cardDark shadow-sm">
             <div className="w-14 h-14 rounded-2xl bg-accent-soft text-accent flex items-center justify-center">
               <ShieldCheck size={28} />
             </div>
@@ -357,7 +582,7 @@ export default function EncuestasView() {
         </div>
 
         {encuestaEnviadaExito ? (
-          <div className="k-card p-8 text-center space-y-3 rounded-3xl border-2 border-emerald-300">
+          <div className="k-card p-8 text-center space-y-3 rounded-3xl border-2 border-emerald-300 bg-white dark:bg-surface-cardDark shadow-sm">
             <CheckCircle2 size={44} className="text-semantic-success mx-auto" />
             <h3 className="text-base font-black text-ink dark:text-ink-light">
               ¡Encuesta enviada con éxito!
@@ -367,7 +592,7 @@ export default function EncuestasView() {
             </p>
           </div>
         ) : (
-          <form onSubmit={handleEnviarEncuestaFinal} className="k-card p-4 space-y-3.5 border-2 border-line/80 dark:border-line-dark rounded-2xl">
+          <form onSubmit={handleEnviarEncuestaFinal} className="k-card p-4 space-y-3.5 border-2 border-line/80 dark:border-line-dark rounded-2xl bg-white dark:bg-surface-cardDark shadow-sm">
             <div>
               <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">
                 Título del estudio
@@ -377,7 +602,7 @@ export default function EncuestasView() {
                 placeholder="Ej: Rendimiento en prácticas clínicas hospitalarias"
                 value={encuestaTitulo}
                 onChange={(e) => setEncuestaTitulo(e.target.value)}
-                className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
+                className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary"
                 required
               />
             </div>
@@ -391,7 +616,7 @@ export default function EncuestasView() {
                 placeholder="Ej: Tesis de bachiller / Suficiencia profesional"
                 value={encuestaObjetivo}
                 onChange={(e) => setEncuestaObjetivo(e.target.value)}
-                className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
+                className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary"
                 required
               />
             </div>
@@ -411,7 +636,7 @@ export default function EncuestasView() {
                       updated[idx].texto = e.target.value;
                       setPreguntasNuevas(updated);
                     }}
-                    className="w-full px-3 py-2 bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark rounded-xl text-sm font-medium"
+                    className="w-full px-3 py-2 bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark rounded-xl text-sm font-medium focus:outline-none focus:border-brand-primary"
                   />
                   <div className="space-y-1.5">
                     {p.opciones.map((opc, opcIdx) => (
@@ -425,13 +650,25 @@ export default function EncuestasView() {
               ))}
             </div>
 
+            {errorEnvio && (
+              <p className="text-xs text-semantic-danger font-semibold bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200">
+                {errorEnvio}
+              </p>
+            )}
+
             <button
               type="submit"
-              disabled={!encuestaTitulo.trim()}
+              disabled={!encuestaTitulo.trim() || isEnviandoEncuesta}
               className="w-full py-3.5 bg-brand-primary disabled:opacity-40 hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-2xl flex items-center justify-center space-x-2 shadow-sm transition"
             >
-              <span>Enviar a bandejas estudiantiles</span>
-              <Send size={15} />
+              {isEnviandoEncuesta ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <>
+                  <span>Enviar a bandejas estudiantiles</span>
+                  <Send size={15} />
+                </>
+              )}
             </button>
           </form>
         )}
@@ -456,17 +693,17 @@ export default function EncuestasView() {
       <div className="flex bg-white dark:bg-surface-cardDark p-1.5 rounded-2xl border border-line dark:border-line-dark shadow-sm">
         <button
           onClick={() => setActiveSubTab('bandeja')}
-          className={`flex-1 py-2 text-sm font-bold rounded-xl transition ${
+          className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
             activeSubTab === 'bandeja'
               ? 'bg-brand-primary text-white shadow-sm'
               : 'text-ink-muted hover:text-ink'
           }`}
         >
-          Bandeja Recibida
+          Bandeja
         </button>
         <button
           onClick={() => setActiveSubTab('crear')}
-          className={`flex-1 py-2 text-sm font-bold rounded-xl transition ${
+          className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
             activeSubTab === 'crear'
               ? 'bg-brand-primary text-white shadow-sm'
               : 'text-ink-muted hover:text-ink'
@@ -476,7 +713,7 @@ export default function EncuestasView() {
         </button>
         <button
           onClick={() => setActiveSubTab('mis_encuestas')}
-          className={`flex-1 py-2 text-sm font-bold rounded-xl transition ${
+          className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
             activeSubTab === 'mis_encuestas'
               ? 'bg-brand-primary text-white shadow-sm'
               : 'text-ink-muted hover:text-ink'
@@ -489,7 +726,7 @@ export default function EncuestasView() {
       {/* SubTab 1: Bandeja (M23) */}
       {activeSubTab === 'bandeja' && (
         <div className="space-y-4">
-          {/* Card: Alcance Semanal Desbloqueado (Sin monedas) */}
+          {/* Card: Alcance Semanal Desbloqueado */}
           <div className="bg-gradient-to-r from-brand-primary via-[#2E2675] to-[#3B3294] text-white p-4 rounded-2xl shadow-sm space-y-2 border border-brand-primary/50">
             <div className="flex items-center justify-between">
               <span className="text-xs font-black text-teal-300 uppercase tracking-wider flex items-center space-x-1.5">
@@ -518,65 +755,76 @@ export default function EncuestasView() {
                 Bandeja Semanal (Tope: 3 por semana)
               </h3>
               <span className="text-xs text-ink-muted font-semibold">
-                {encuestasBandeja.filter(e => e.estado === 'pendiente').length} pendientes
+                {bandejaReal.filter(e => e.estado === 'pendiente').length} pendientes
               </span>
             </div>
 
-            <div className="space-y-2.5">
-              {encuestasBandeja.map((enc) => {
-                const esPendiente = enc.estado === 'pendiente';
+            {isLoadingBandeja ? (
+              <div className="flex flex-col items-center justify-center py-10 text-ink-muted space-y-2">
+                <Loader2 size={22} className="animate-spin text-accent" />
+                <p className="text-xs font-semibold">Cargando bandeja de encuestas...</p>
+              </div>
+            ) : bandejaReal.length === 0 ? (
+              <div className="p-8 text-center text-xs text-ink-muted bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark">
+                No tienes encuestas asignadas en este momento.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {bandejaReal.map((enc) => {
+                  const esPendiente = enc.estado === 'pendiente';
 
-                return (
-                  <div
-                    key={enc.id}
-                    className={`k-card p-4 space-y-2.5 border-2 ${
-                      esPendiente ? 'border-brand-primary/50' : 'border-line/70 opacity-90'
-                    } rounded-2xl shadow-sm`}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-xs font-black text-brand-primary dark:text-teal-300">
-                            {enc.autorCarrera}
-                          </span>
-                          <span className="text-xs text-ink-muted">• {enc.fechaEnvio}</span>
+                  return (
+                    <div
+                      key={enc.envioId || enc.id}
+                      className={`k-card p-4 space-y-2.5 border-2 ${
+                        esPendiente ? 'border-brand-primary/50' : 'border-line/70 opacity-90'
+                      } rounded-2xl shadow-sm bg-white dark:bg-surface-cardDark`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-black text-brand-primary dark:text-teal-300">
+                              {enc.autorCarrera || 'Investigación UTP'}
+                            </span>
+                            <span className="text-xs text-ink-muted">• {enc.duracionMin || 2} min</span>
+                          </div>
+                          <h4 className="text-sm font-black text-ink dark:text-ink-light mt-0.5">
+                            {enc.titulo}
+                          </h4>
                         </div>
-                        <h4 className="text-sm font-black text-ink dark:text-ink-light mt-0.5">
-                          {enc.titulo}
-                        </h4>
-                      </div>
-                      <span className={`text-xs font-black px-2.5 py-0.5 rounded-full ${
-                        esPendiente ? 'bg-accent text-white shadow-sm' : 'bg-slate-100 text-ink-muted'
-                      }`}>
-                        {esPendiente ? 'Pendiente' : 'Respondida'}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-ink-soft dark:text-ink-muted line-clamp-2 font-medium leading-relaxed">
-                      {enc.objetivo}
-                    </p>
-
-                    <div className="pt-2 border-t border-line dark:border-line-dark flex items-center justify-between text-xs">
-                      <span className="text-ink-muted font-medium">Por {enc.autorNombre} (~{enc.tiempoEstimado})</span>
-                      {esPendiente ? (
-                        <button
-                          onClick={() => handleIniciarResponder(enc)}
-                          className="px-3.5 py-1.5 bg-accent hover:bg-accent-hover text-white font-extrabold text-xs rounded-xl shadow-sm transition flex items-center space-x-1"
-                        >
-                          <span>Responder</span>
-                          <ArrowRight size={13} />
-                        </button>
-                      ) : (
-                        <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center space-x-1">
-                          <CheckCircle2 size={14} />
-                          <span>Apoyo sumado</span>
+                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                          esPendiente ? 'bg-accent text-white shadow-sm' : 'bg-slate-100 text-ink-muted'
+                        }`}>
+                          {esPendiente ? 'Pendiente' : 'Respondida'}
                         </span>
-                      )}
+                      </div>
+
+                      <p className="text-xs text-ink-soft dark:text-ink-muted line-clamp-2 font-medium leading-relaxed">
+                        {enc.objetivo || enc.descripcion}
+                      </p>
+
+                      <div className="pt-2 border-t border-line dark:border-line-dark flex items-center justify-between text-xs">
+                        <span className="text-ink-muted font-medium">Estudio universitario en sede</span>
+                        {esPendiente ? (
+                          <button
+                            onClick={() => handleIniciarResponder(enc)}
+                            className="px-3.5 py-1.5 bg-accent hover:bg-accent-hover text-white font-extrabold text-xs rounded-xl shadow-sm transition flex items-center space-x-1"
+                          >
+                            <span>Responder</span>
+                            <ArrowRight size={13} />
+                          </button>
+                        ) : (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center space-x-1">
+                            <CheckCircle2 size={14} />
+                            <span>Apoyo sumado</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -585,34 +833,38 @@ export default function EncuestasView() {
       {activeSubTab === 'crear' && (
         <div className="space-y-4">
           {/* Card Contador Grande en Vivo */}
-          <div className="k-card p-4 text-center space-y-1.5 border-2 border-brand-primary/40 rounded-2xl shadow-sm">
+          <div className="k-card p-4 text-center space-y-1.5 border-2 border-brand-primary/40 rounded-2xl shadow-sm bg-white dark:bg-surface-cardDark">
             <span className="text-xs font-black text-ink-muted uppercase tracking-wider">
               Alcance de tu filtro en vivo (UTP Lima Sur)
             </span>
             <div className={`text-4xl font-black ${
-              alcanceCalculado < 30 ? 'text-semantic-danger' : 'text-brand-primary dark:text-teal-300'
+              alcanceCalculado < umbralMinimo ? 'text-semantic-danger' : 'text-brand-primary dark:text-teal-300'
             }`}>
-              {alcanceCalculado}
+              {isCalculandoAlcance ? (
+                <Loader2 size={32} className="animate-spin inline text-accent" />
+              ) : (
+                alcanceCalculado
+              )}
             </div>
             <p className="text-xs text-ink-soft dark:text-ink-muted font-semibold">
               estudiantes cumplen este perfil
             </p>
 
-            {alcanceCalculado < 30 ? (
+            {alcanceCalculado < umbralMinimo ? (
               <div className="mt-2 p-2 bg-rose-50 dark:bg-rose-950/40 text-semantic-danger rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 border border-rose-200">
                 <AlertTriangle size={15} />
-                <span>Bajo el umbral legal (&lt;30). Se bloqueará el envío.</span>
+                <span>Bajo el umbral legal (&lt;{umbralMinimo}). Se bloqueará el envío.</span>
               </div>
             ) : (
               <div className="mt-2 p-2 bg-emerald-50 dark:bg-emerald-950/40 text-semantic-success rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 border border-emerald-200">
                 <CheckCircle2 size={15} />
-                <span>Segmento anónimo y válido según Ley 29733 (≥30)</span>
+                <span>Segmento anónimo y válido según Ley 29733 (≥{umbralMinimo})</span>
               </div>
             )}
           </div>
 
           {/* Filtros de Carrera */}
-          <div className="k-card p-4 space-y-3.5 text-xs border-2 border-line/80 dark:border-line-dark rounded-2xl">
+          <div className="k-card p-4 space-y-3.5 text-xs border-2 border-line/80 dark:border-line-dark rounded-2xl bg-white dark:bg-surface-cardDark shadow-sm">
             <div>
               <label className="block font-bold text-ink dark:text-ink-light mb-1.5">
                 Carreras a encuestar
@@ -677,7 +929,7 @@ export default function EncuestasView() {
                 </label>
                 <input
                   type="range"
-                  min="18"
+                  min="16"
                   max="35"
                   value={filtro.edadMin}
                   onChange={(e) => setFiltro({ ...filtro, edadMin: Number(e.target.value) })}
@@ -691,7 +943,7 @@ export default function EncuestasView() {
                 </label>
                 <input
                   type="range"
-                  min="18"
+                  min="16"
                   max="35"
                   value={filtro.edadMax}
                   onChange={(e) => setFiltro({ ...filtro, edadMax: Number(e.target.value) })}
@@ -714,61 +966,145 @@ export default function EncuestasView() {
       {/* SubTab 3: Mis Resultados Propios (M28) */}
       {activeSubTab === 'mis_encuestas' && (
         <div className="space-y-3">
-          <div className="k-card p-4 space-y-3.5 border-2 border-line/80 dark:border-line-dark rounded-2xl shadow-sm">
-            <div className="flex justify-between items-start">
-              <div>
-                <span className="text-xs bg-emerald-100 text-emerald-800 font-black px-2.5 py-0.5 rounded-full">
-                  Estudio Activo
-                </span>
-                <h3 className="text-sm font-black text-ink dark:text-ink-light mt-1.5 leading-snug">
-                  {encuestaPropia.titulo}
-                </h3>
-                <p className="text-xs text-ink-muted font-medium mt-0.5">
-                  Alcance enviado: {encuestaPropia.alcanceEnviado} estudiantes
-                </p>
-              </div>
+          {isLoadingMisEncuestas ? (
+            <div className="flex flex-col items-center justify-center py-12 text-ink-muted space-y-2">
+              <Loader2 size={24} className="animate-spin text-accent" />
+              <p className="text-xs font-semibold">Cargando tus estudios...</p>
             </div>
-
-            <div className="grid grid-cols-2 gap-2.5 pt-1 border-t border-line dark:border-line-dark text-center">
-              <div className="p-3 bg-surface dark:bg-surface-dark rounded-xl">
-                <span className="text-2xl font-black text-brand-primary dark:text-teal-300">
-                  {encuestaPropia.respuestasRecibidas}
-                </span>
-                <p className="text-xs text-ink-muted font-bold">Respuestas Recibidas</p>
-              </div>
-              <div className="p-3 bg-surface dark:bg-surface-dark rounded-xl">
-                <span className="text-2xl font-black text-accent">
-                  {Math.round((encuestaPropia.respuestasRecibidas / encuestaPropia.alcanceEnviado) * 100)}%
-                </span>
-                <p className="text-xs text-ink-muted font-bold">Tasa de Respuesta</p>
-              </div>
+          ) : misEncuestas.length === 0 ? (
+            <div className="p-8 text-center text-xs text-ink-muted bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark space-y-2">
+              <ClipboardList size={32} className="mx-auto text-ink-muted/50" />
+              <p className="font-bold text-sm text-ink dark:text-ink-light">Aún no has creado encuestas</p>
+              <p className="text-xs text-ink-muted">Usa la pestaña "Crear Encuesta" para lanzar tu primer estudio de tesis.</p>
+              <button
+                onClick={() => setActiveSubTab('crear')}
+                className="mt-2 px-4 py-2 bg-brand-primary text-white text-xs font-bold rounded-xl"
+              >
+                Crear encuesta
+              </button>
             </div>
-
-            {/* Resultados Agregados */}
-            <div className="pt-2 space-y-3">
-              {encuestaPropia.preguntas.map((q) => (
-                <div key={q.id} className="p-3.5 bg-surface dark:bg-surface-dark rounded-xl space-y-2 border border-line dark:border-line-dark">
-                  <p className="text-xs font-extrabold text-ink dark:text-ink-light">
-                    {q.texto}
-                  </p>
-                  <div className="space-y-2">
-                    {q.resultados.map((res) => (
-                      <div key={res.label} className="space-y-1">
-                        <div className="flex justify-between text-xs text-ink-soft dark:text-ink-muted">
-                          <span>{res.label}</span>
-                          <span className="font-black text-ink dark:text-ink-light">{res.porcentaje}% ({res.votos})</span>
-                        </div>
-                        <div className="w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-brand-primary dark:bg-accent rounded-full"
-                            style={{ width: `${res.porcentaje}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
+          ) : (
+            misEncuestas.map((enc) => (
+              <div
+                key={enc.id}
+                className="k-card p-4 space-y-3 border-2 border-line/80 dark:border-line-dark rounded-2xl shadow-sm bg-white dark:bg-surface-cardDark"
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-2.5 py-0.5 rounded-full">
+                      {enc.estado === 'enviada' ? 'Estudio Activo' : 'Completado'}
+                    </span>
+                    <h3 className="text-sm font-black text-ink dark:text-ink-light mt-1.5 leading-snug">
+                      {enc.titulo}
+                    </h3>
+                    <p className="text-xs text-ink-muted font-medium mt-0.5">
+                      Alcance enviado: {enc.alcanceEnviado} estudiantes
+                    </p>
                   </div>
                 </div>
-              ))}
+
+                <div className="grid grid-cols-2 gap-2.5 pt-1 border-t border-line dark:border-line-dark text-center">
+                  <div className="p-3 bg-surface dark:bg-surface-dark rounded-xl">
+                    <span className="text-2xl font-black text-brand-primary dark:text-teal-300">
+                      {enc.respuestasCount || 0}
+                    </span>
+                    <p className="text-xs text-ink-muted font-bold">Respuestas Recibidas</p>
+                  </div>
+                  <div className="p-3 bg-surface dark:bg-surface-dark rounded-xl">
+                    <span className="text-2xl font-black text-accent">
+                      {enc.alcanceEnviado > 0 ? Math.round(((enc.respuestasCount || 0) / enc.alcanceEnviado) * 100) : 0}%
+                    </span>
+                    <p className="text-xs text-ink-muted font-bold">Tasa de Respuesta</p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => handleVerResultados(enc)}
+                  className="w-full py-2 bg-brand-primary/10 hover:bg-brand-primary/20 text-brand-primary font-bold text-xs rounded-xl flex items-center justify-center space-x-1 transition"
+                >
+                  <BarChart2 size={14} />
+                  <span>Ver Resultados Agregados</span>
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Modal: Resultados Agregados de Encuesta (M28) */}
+      {encuestaResultadosSeleccionada && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm max-h-[85vh] bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 flex flex-col animate-fadeIn">
+            <div className="flex items-center justify-between pb-2 border-b border-line dark:border-line-dark shrink-0">
+              <span className="text-xs font-black uppercase text-ink dark:text-ink-light tracking-wider">
+                Resultados Agregados (Ley 29733)
+              </span>
+              <button
+                onClick={() => setEncuestaResultadosSeleccionada(null)}
+                className="p-1 text-ink-muted hover:text-ink"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-y-auto space-y-3 flex-1 pr-1">
+              <h3 className="text-sm font-black text-ink dark:text-ink-light leading-snug">
+                {encuestaResultadosSeleccionada.titulo}
+              </h3>
+
+              {isLoadingResultados ? (
+                <div className="flex flex-col items-center justify-center py-10 space-y-2 text-ink-muted">
+                  <Loader2 size={24} className="animate-spin text-accent" />
+                  <p className="text-xs font-semibold">Cargando resultados agregados...</p>
+                </div>
+              ) : resultadosAgregados?.preguntas && resultadosAgregados.preguntas.length > 0 ? (
+                resultadosAgregados.preguntas.map((q, qIdx) => {
+                  const conteos = q.conteo_respuestas || {};
+                  const totalVotos = Object.values(conteos).reduce((acc, v) => acc + (Number(v) || 0), 0);
+
+                  return (
+                    <div key={q.pregunta_id || qIdx} className="p-3 bg-surface dark:bg-surface-dark rounded-xl space-y-2">
+                      <p className="text-xs font-extrabold text-ink dark:text-ink-light">
+                        {q.texto}
+                      </p>
+                      <div className="space-y-2">
+                        {q.opciones?.map((opc) => {
+                          const votos = Number(conteos[opc] || 0);
+                          const pct = totalVotos > 0 ? Math.round((votos / totalVotos) * 100) : 0;
+
+                          return (
+                            <div key={opc} className="space-y-1">
+                              <div className="flex justify-between text-xs text-ink-muted">
+                                <span>{opc}</span>
+                                <span className="font-bold">{pct}% ({votos})</span>
+                              </div>
+                              <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-brand-primary dark:bg-accent rounded-full"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-xs text-ink-muted text-center py-6">
+                  Aún no se han recibido respuestas para este estudio.
+                </p>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-line dark:border-line-dark flex justify-end shrink-0">
+              <button
+                onClick={() => setEncuestaResultadosSeleccionada(null)}
+                className="px-4 py-2 bg-brand-primary text-white text-xs font-bold rounded-xl"
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         </div>

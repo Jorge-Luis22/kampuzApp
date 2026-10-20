@@ -35,12 +35,12 @@ Estado de cumplimiento y trazabilidad de las pantallas de la aplicación móvil 
 | **M20** | Consultas agrupadas (vista ciclos > 4) | 🟡 Demo | 🟢 Real | Solo visible/respondible por ciclo $\ge 5$ mayor al autor. |
 | **M21** | Responder consulta | 🟡 Demo | 🟢 Real | Acumula estrellas pendientes. |
 | **M22** | Valorar respuesta recibida | 🟡 Demo | 🟢 Real | Solo el autor valida para acreditar estrellas (anti-gaming). |
-| **M23** | Bandeja de encuestas + alcance | 🟡 Demo | 🟢 Real | Muestra encuestas asignadas y alcance semanal según nivel. |
-| **M24** | Crear encuesta: Filtro en vivo | 🟡 Demo | 🟢 Real | Contador de alcance reactivo vía RPC. |
-| **M25** | Crear encuesta: Estado bloqueado (<30) | 🟡 Demo | 🟢 Real | Pantalla propia que exige ampliar segmento. |
-| **M26** | Redactar preguntas de encuesta | 🟡 Demo | 🟢 Real | Creación de preguntas tipo única/múltiple/abierta. |
-| **M27** | Responder encuesta (1 pregunta/pantalla)| 🟡 Demo | 🟢 Real | Flujo paso a paso para responder. Alimenta Apoyo Inv. |
-| **M28** | Resultados agregados de encuesta | 🟡 Demo | 🟢 Real | Vistas agregadas vía RPC sin exponer identidad de votantes. |
+| **M23** | Bandeja de encuestas + alcance | 🟢 Real | 🟢 Real | Bandeja semanal (tope 3) y alcance según nivel de Apoyo a la investigación [0, 30, 80, 200]. |
+| **M24** | Crear encuesta: Filtro en vivo | 🟢 Real | 🟢 Real | Conteo reactivo vía RPC calcular_alcance_encuesta sin exponer listas de identidades. |
+| **M25** | Crear encuesta: Estado bloqueado (<30) | 🟢 Real | 🟢 Real | Bloqueo estricto si segmento < umbral leído de tabla config (inicial 30, Ley 29733). |
+| **M26** | Redactar preguntas de encuesta | 🟢 Real | 🟢 Real | Envío seguro vía RPC enviar_encuesta_segura con cola semanal y muestra aleatoria. |
+| **M27** | Responder encuesta (1 pregunta/pantalla)| 🟢 Real | 🟢 Real | Flujo secuencial; respuestas disociadas en tabla respuestas; suma habilidad Apoyo Inv. |
+| **M28** | Resultados agregados de encuesta | 🟢 Real | 🟢 Real | Resultados agregados estadísticos vía RPC obtener_resultados_encuesta. |
 | **M29** | Mi perfil (Habilidades y hechos) | 🟢 Real | 🟢 Real | Cálculo derivado de hechos; estado amigable para alumnos nuevos; edición de perfil y foto recortada (<300KB). |
 | **M30** | Detalle de habilidad y meta | 🟢 Real | 🟢 Real | Muestra qué falta para el siguiente nivel y progreso real. |
 | **M31** | Agregar certificado | 🟢 Real | 🟢 Real | Clasificación automática básica/media/avanzada con persistencia en Supabase. |

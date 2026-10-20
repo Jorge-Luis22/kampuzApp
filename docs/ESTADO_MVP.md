@@ -31,10 +31,10 @@ Estado de cumplimiento y trazabilidad de las pantallas de la aplicación móvil 
 | **M16** | Proponer un grupo (apoyos) | 🟢 Real | 🟢 Real | Umbral dinámico max(15, round(base_activa*0.03)) y activación automática vía trigger. |
 | **M17** | Solicitud de publicación ajena | 🟡 Demo | 🟢 Real | Publicación moderada en espacio externo. |
 | **M18** | Eventos del grupo | 🟡 Demo | 🟢 Real | Listado y creación de eventos locales del grupo. |
-| **M19** | Hacer una consulta académica | 🟡 Demo | 🟢 Real | Moderación en cliente y servidor (*"Se habla del curso..."*). |
-| **M20** | Consultas agrupadas (vista ciclos > 4) | 🟡 Demo | 🟢 Real | Solo visible/respondible por ciclo $\ge 5$ mayor al autor. |
-| **M21** | Responder consulta | 🟡 Demo | 🟢 Real | Acumula estrellas pendientes. |
-| **M22** | Valorar respuesta recibida | 🟡 Demo | 🟢 Real | Solo el autor valida para acreditar estrellas (anti-gaming). |
+| **M19** | Hacer una consulta académica | 🟢 Real | 🟢 Real | Moderación en cliente y trigger servidor ("Se habla del curso"); agrupación atómica por carrera+curso+tema. |
+| **M20** | Consultas agrupadas (vista ciclos > 4) | 🟢 Real | 🟢 Real | Conteo de autores únicos; solo visible/respondible por ciclo $\ge 5$ mayor al autor. |
+| **M21** | Responder consulta | 🟢 Real | 🟢 Real | Multiplicador por modo (llamada 3x, texto 1x) con estrellas pendientes hasta validación. |
+| **M22** | Valorar respuesta recibida | 🟢 Real | 🟢 Real | Solo quien preguntó valida para acreditar estrellas y alimentar Orientación a compañeros. |
 | **M23** | Bandeja de encuestas + alcance | 🟢 Real | 🟢 Real | Bandeja semanal (tope 3) y alcance según nivel de Apoyo a la investigación [0, 30, 80, 200]. |
 | **M24** | Crear encuesta: Filtro en vivo | 🟢 Real | 🟢 Real | Conteo reactivo vía RPC calcular_alcance_encuesta sin exponer listas de identidades. |
 | **M25** | Crear encuesta: Estado bloqueado (<30) | 🟢 Real | 🟢 Real | Bloqueo estricto si segmento < umbral leído de tabla config (inicial 30, Ley 29733). |

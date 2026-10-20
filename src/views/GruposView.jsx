@@ -12,6 +12,14 @@ import {
   subscribeToMensajesEspacio
 } from '../lib/spaces';
 import {
+  fetchConsultasCarrera,
+  crearOConsultarAgrupada,
+  validarPermisoOrientar,
+  publicarOrientacionDB,
+  valorarRespuestaDB,
+  moderarConsultaTexto
+} from '../lib/consultas';
+import {
   Users,
   MessageSquare,
   Sparkles,
@@ -40,21 +48,19 @@ export default function GruposView() {
   const {
     user,
     espacios: fallbackEspacios,
-    consultas,
+    consultas: fallbackConsultas,
     activeEspacioId,
     setActiveEspacioId,
     activeConsultaId,
-    setActiveConsultaId,
-    agregarConsulta,
-    responderConsulta,
-    puedeOrientarConsulta,
-    esAutorDeConsulta,
-    valorarRespuesta,
-    moderarConsultaTexto
+    setActiveConsultaId
   } = useStore();
 
   const [espaciosList, setEspaciosList] = useState([]);
   const [isLoadingEspacios, setIsLoadingEspacios] = useState(true);
+
+  // Consultas académicas (Fase 7 - M19–M22)
+  const [consultasList, setConsultasList] = useState([]);
+  const [isLoadingConsultas, setIsLoadingConsultas] = useState(false);
 
   const [activeCategory, setActiveCategory] = useState('todos'); // 'todos' | 'cohorte' | 'carrera' | 'talleres'
   const [showProponerModal, setShowProponerModal] = useState(false);
@@ -75,12 +81,14 @@ export default function GruposView() {
   const [temaConsulta, setTemaConsulta] = useState('');
   const [textoConsulta, setTextoConsulta] = useState('');
   const [moderationWarning, setModerationWarning] = useState(null);
+  const [isSubmittingConsulta, setIsSubmittingConsulta] = useState(false);
 
   // Flujo 1: Modal Responder Consulta (M21)
   const [showResponderModal, setShowResponderModal] = useState(false);
   const [textoRespuesta, setTextoRespuesta] = useState('');
   const [modoRespuesta, setModoRespuesta] = useState('mensaje'); // 'mensaje' | 'llamada'
   const [errorRespuesta, setErrorRespuesta] = useState(null);
+  const [isSubmittingRespuesta, setIsSubmittingRespuesta] = useState(false);
 
   // Cargar espacios desde Supabase (con fallback)
   const cargarEspacios = async () => {
@@ -113,7 +121,33 @@ export default function GruposView() {
 
   // Selected space detail
   const currentEspacio = espaciosList.find(e => e.id === activeEspacioId) || fallbackEspacios.find(e => e.id === activeEspacioId);
-  const currentConsulta = consultas.find(c => c.id === activeConsultaId);
+
+  // Cargar consultas cuando se abre un espacio de carrera
+  const cargarConsultas = async (carrera) => {
+    if (!carrera) return;
+    setIsLoadingConsultas(true);
+    try {
+      const data = await fetchConsultasCarrera(carrera);
+      if (data && data.length > 0) {
+        setConsultasList(data);
+      } else {
+        setConsultasList(fallbackConsultas);
+      }
+    } catch (err) {
+      setConsultasList(fallbackConsultas);
+    } finally {
+      setIsLoadingConsultas(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentEspacio?.carrera) {
+      cargarConsultas(currentEspacio.carrera);
+    }
+  }, [currentEspacio?.carrera]);
+
+  const consultasParaMostrar = consultasList.length > 0 ? consultasList : fallbackConsultas;
+  const currentConsulta = consultasParaMostrar.find(c => c.id === activeConsultaId);
 
   // Cargar mensajes y suscribirse a Realtime cuando se abre un espacio
   useEffect(() => {
@@ -282,31 +316,93 @@ export default function GruposView() {
     }
   };
 
-  const handleCrearConsultaSubmit = (e) => {
+  const handleCrearConsultaSubmit = async (e) => {
     e.preventDefault();
-    if (!temaConsulta.trim() || !textoConsulta.trim()) return;
-    const res = agregarConsulta(cursoConsulta, temaConsulta, textoConsulta);
-    if (!res.exito) {
-      setModerationWarning(res.motivo);
-      return;
-    }
-    setShowCrearConsultaModal(false);
-    setTemaConsulta('');
-    setTextoConsulta('');
+    if (!temaConsulta.trim() || !textoConsulta.trim() || !user?.id) return;
+    setIsSubmittingConsulta(true);
     setModerationWarning(null);
-    setActiveConsultaId(res.consultaId);
+
+    try {
+      const carreraActual = currentEspacio?.carrera || user?.carrera || 'Enfermería';
+      const res = await crearOConsultarAgrupada({
+        carrera: carreraActual,
+        curso: cursoConsulta,
+        tema: temaConsulta,
+        texto: textoConsulta,
+        user
+      });
+
+      if (!res.exito) {
+        setModerationWarning(res.motivo);
+        setIsSubmittingConsulta(false);
+        return;
+      }
+
+      setShowCrearConsultaModal(false);
+      setTemaConsulta('');
+      setTextoConsulta('');
+      setModerationWarning(null);
+
+      await cargarConsultas(carreraActual);
+      if (res.consultaId) {
+        setActiveConsultaId(res.consultaId);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSubmittingConsulta(false);
+    }
   };
 
-  const handleResponderSubmit = (e) => {
+  const handleResponderSubmit = async (e) => {
     e.preventDefault();
-    if (!textoRespuesta.trim() || !activeConsultaId) return;
-    const res = responderConsulta(activeConsultaId, textoRespuesta, modoRespuesta);
-    if (res.exito) {
+    if (!textoRespuesta.trim() || !activeConsultaId || !user?.id || isSubmittingRespuesta) return;
+    setIsSubmittingRespuesta(true);
+    setErrorRespuesta(null);
+
+    try {
+      const res = await publicarOrientacionDB({
+        consultaId: activeConsultaId,
+        user,
+        texto: textoRespuesta,
+        modo: modoRespuesta,
+        nAlumnos: currentConsulta?.nAlumnos || 1
+      });
+
+      if (!res.exito) {
+        setErrorRespuesta(res.motivo);
+        setIsSubmittingRespuesta(false);
+        return;
+      }
+
       setShowResponderModal(false);
       setTextoRespuesta('');
       setErrorRespuesta(null);
-    } else {
-      setErrorRespuesta(res.motivo);
+
+      if (currentEspacio?.carrera) {
+        await cargarConsultas(currentEspacio.carrera);
+      }
+    } catch (err) {
+      setErrorRespuesta('Error al publicar orientación.');
+    } finally {
+      setIsSubmittingRespuesta(false);
+    }
+  };
+
+  const handleValorarRespuesta = async (consultaId, asesoriaId) => {
+    if (!user?.id) return;
+    try {
+      await valorarRespuestaDB({
+        asesoriaId,
+        consultaId,
+        user,
+        sirvio: true
+      });
+      if (currentEspacio?.carrera) {
+        await cargarConsultas(currentEspacio.carrera);
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -427,7 +523,7 @@ export default function GruposView() {
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-black uppercase text-brand-primary dark:text-teal-300 flex items-center space-x-1.5">
                 <HelpCircle size={15} />
-                <span>Consultas Agrupadas ({consultas.length})</span>
+                <span>Consultas Agrupadas ({consultasParaMostrar.length})</span>
               </span>
               <button
                 onClick={() => setShowCrearConsultaModal(true)}
@@ -439,7 +535,7 @@ export default function GruposView() {
             </div>
 
             <div className="space-y-2">
-              {consultas.map((c) => (
+              {consultasParaMostrar.map((c) => (
                 <div
                   key={c.id}
                   onClick={() => setActiveConsultaId(c.id)}
@@ -548,9 +644,9 @@ export default function GruposView() {
 
   // --- VISTA DETALLE DE CONSULTA AGRUPADA (M20, M21, M22) ---
   if (currentConsulta) {
-    const permisoOrientar = puedeOrientarConsulta(currentConsulta);
+    const permisoOrientar = validarPermisoOrientar(user, currentConsulta);
     const puedoOrientar = permisoOrientar.puede;
-    const soyAutor = esAutorDeConsulta(currentConsulta);
+    const soyAutor = currentConsulta.autoresIds ? currentConsulta.autoresIds.includes(user?.id) : false;
     const factorModo = modoRespuesta === 'llamada' ? 3 : 1;
     const estrellasPotenciales = currentConsulta.nAlumnos >= 2 ? factorModo * currentConsulta.nAlumnos : 0;
 
@@ -653,7 +749,7 @@ export default function GruposView() {
                     {!r.calificadoPorSolicitante ? (
                       soyAutor && !r.esMio ? (
                         <button
-                          onClick={() => valorarRespuesta(currentConsulta.id, r.id, true)}
+                          onClick={() => handleValorarRespuesta(currentConsulta.id, r.id)}
                           className="px-3 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-lg flex items-center space-x-1.5 shadow-sm"
                         >
                           <ThumbsUp size={12} />

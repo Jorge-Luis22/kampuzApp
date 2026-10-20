@@ -1,6 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../data/store';
 import { CURSOS_ENFERMERIA } from '../data/mockData';
+import {
+  fetchEspacios,
+  unirseAEspacio,
+  salirDeEspacio,
+  apoyarPropuestaEspacio,
+  proponerNuevoEspacio,
+  fetchMensajesEspacio,
+  enviarMensajeEspacio,
+  subscribeToMensajesEspacio
+} from '../lib/spaces';
 import {
   Users,
   MessageSquare,
@@ -14,43 +24,50 @@ import {
   Award,
   HelpCircle,
   ThumbsUp,
-  Phone,
   AlertTriangle,
   ChevronRight,
   CheckCircle2,
   Lock,
   Flame,
-  Search
+  Search,
+  UserPlus,
+  Loader2,
+  Check,
+  Calendar
 } from 'lucide-react';
 
 export default function GruposView() {
   const {
     user,
-    espacios,
+    espacios: fallbackEspacios,
     consultas,
     activeEspacioId,
     setActiveEspacioId,
     activeConsultaId,
     setActiveConsultaId,
-    apoyarGrupo,
-    enviarMensaje,
-    proponerGrupo,
     agregarConsulta,
     responderConsulta,
     puedeOrientarConsulta,
     esAutorDeConsulta,
     valorarRespuesta,
-    yaApoye,
     moderarConsultaTexto
   } = useStore();
+
+  const [espaciosList, setEspaciosList] = useState([]);
+  const [isLoadingEspacios, setIsLoadingEspacios] = useState(true);
 
   const [activeCategory, setActiveCategory] = useState('todos'); // 'todos' | 'cohorte' | 'carrera' | 'talleres'
   const [showProponerModal, setShowProponerModal] = useState(false);
   const [propNombre, setPropNombre] = useState('');
   const [propDesc, setPropDesc] = useState('');
+  const [isSubmittingProp, setIsSubmittingProp] = useState(false);
 
-  // Chat message input
+  // Chat de espacio (Realtime)
+  const [mensajesEspacio, setMensajesEspacio] = useState([]);
   const [chatTexto, setChatTexto] = useState('');
+  const [isLoadingChat, setIsLoadingChat] = useState(false);
+  const [isSendingMsg, setIsSendingMsg] = useState(false);
+  const chatBottomRef = useRef(null);
 
   // Flujo 1: Modal Hacer Consulta (M19)
   const [showCrearConsultaModal, setShowCrearConsultaModal] = useState(false);
@@ -65,33 +82,194 @@ export default function GruposView() {
   const [modoRespuesta, setModoRespuesta] = useState('mensaje'); // 'mensaje' | 'llamada'
   const [errorRespuesta, setErrorRespuesta] = useState(null);
 
+  // Cargar espacios desde Supabase (con fallback)
+  const cargarEspacios = async () => {
+    setIsLoadingEspacios(true);
+    try {
+      const data = await fetchEspacios(user?.id);
+      if (data && data.length > 0) {
+        setEspaciosList(data);
+      } else {
+        // Fallback a los espacios locales
+        setEspaciosList(fallbackEspacios.map(e => ({
+          ...e,
+          esMiembro: e.tipo === 'carrera_ciclo' || e.tipo === 'carrera',
+          yaApoye: false,
+          apoyos: e.apoyosCount || 0,
+          umbral: e.umbralRequerido || 15
+        })));
+      }
+    } catch (err) {
+      console.warn('Error cargando espacios:', err);
+      setEspaciosList(fallbackEspacios);
+    } finally {
+      setIsLoadingEspacios(false);
+    }
+  };
+
+  useEffect(() => {
+    cargarEspacios();
+  }, [user?.id]);
+
   // Selected space detail
-  const currentEspacio = espacios.find(e => e.id === activeEspacioId);
+  const currentEspacio = espaciosList.find(e => e.id === activeEspacioId) || fallbackEspacios.find(e => e.id === activeEspacioId);
   const currentConsulta = consultas.find(c => c.id === activeConsultaId);
 
-  // Espacios filtrados
-  const espaciosFiltrados = espacios.filter(e => {
+  // Cargar mensajes y suscribirse a Realtime cuando se abre un espacio
+  useEffect(() => {
+    if (!activeEspacioId) return;
+
+    let isMounted = true;
+    setIsLoadingChat(true);
+
+    fetchMensajesEspacio(activeEspacioId).then((mensajesDb) => {
+      if (isMounted) {
+        if (mensajesDb && mensajesDb.length > 0) {
+          setMensajesEspacio(mensajesDb);
+        } else if (currentEspacio?.mensajes) {
+          // Mensajes mock iniciales si no hay mensajes en DB
+          setMensajesEspacio(currentEspacio.mensajes.map(m => ({
+            id: m.id,
+            espacioId: activeEspacioId,
+            autorId: m.esMio ? user?.id : 'mock',
+            autorNombre: m.autor,
+            texto: m.texto,
+            creadoEn: new Date().toISOString()
+          })));
+        } else {
+          setMensajesEspacio([]);
+        }
+        setIsLoadingChat(false);
+        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'auto' }), 50);
+      }
+    });
+
+    // Suscripción Realtime
+    const unsubscribe = subscribeToMensajesEspacio(activeEspacioId, (nuevoMsg) => {
+      setMensajesEspacio(prev => {
+        if (prev.some(m => m.id === nuevoMsg.id)) return prev;
+        return [...prev, nuevoMsg];
+      });
+      setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [activeEspacioId]);
+
+  // Espacios filtrados por categoría
+  const espaciosFiltrados = espaciosList.filter(e => {
     if (activeCategory === 'cohorte') return e.tipo === 'carrera_ciclo';
     if (activeCategory === 'carrera') return e.tipo === 'carrera';
     if (activeCategory === 'talleres') return e.tipo === 'taller' || e.tipo === 'interes';
     return true;
   });
 
-  const handleProponerSubmit = (e) => {
-    e.preventDefault();
-    if (!propNombre.trim()) return;
-    const nuevoId = proponerGrupo(propNombre, propDesc);
-    setShowProponerModal(false);
-    setPropNombre('');
-    setPropDesc('');
-    setActiveEspacioId(nuevoId);
+  // Manejar unirse o salir de un espacio
+  const handleToggleMembresia = async (espacio) => {
+    if (!user?.id) return;
+    if (espacio.esMiembro) {
+      await salirDeEspacio(user.id, espacio.id);
+      setEspaciosList(prev => prev.map(e => e.id === espacio.id ? { ...e, esMiembro: false, miembrosCount: Math.max(0, (e.miembrosCount || 1) - 1) } : e));
+    } else {
+      await unirseAEspacio(user.id, espacio.id);
+      setEspaciosList(prev => prev.map(e => e.id === espacio.id ? { ...e, esMiembro: true, miembrosCount: (e.miembrosCount || 0) + 1 } : e));
+    }
   };
 
-  const handleSendMessage = (e) => {
+  // Manejar apoyar una propuesta (M16)
+  const handleApoyarPropuesta = async (espacioId) => {
+    if (!user?.id) return;
+    try {
+      const res = await apoyarPropuestaEspacio(user.id, espacioId);
+      if (res.success) {
+        setEspaciosList(prev =>
+          prev.map(e => {
+            if (e.id === espacioId) {
+              const nuevosApoyos = (e.apoyos || 0) + 1;
+              const nuevoEstado = nuevosApoyos >= (e.umbral || 15) ? 'visible' : e.estado;
+              return {
+                ...e,
+                apoyos: nuevosApoyos,
+                yaApoye: true,
+                estado: nuevoEstado
+              };
+            }
+            return e;
+          })
+        );
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Proponer nuevo grupo con umbral dinámico (M16)
+  const handleProponerSubmit = async (e) => {
     e.preventDefault();
-    if (!chatTexto.trim() || !activeEspacioId) return;
-    enviarMensaje(activeEspacioId, chatTexto);
+    if (!propNombre.trim() || !user?.id) return;
+    setIsSubmittingProp(true);
+
+    try {
+      const res = await proponerNuevoEspacio({
+        userId: user.id,
+        nombre: propNombre.trim(),
+        descripcion: propDesc.trim(),
+        sede: user.sede || 'Lima Sur'
+      });
+
+      if (res.success && res.espacio) {
+        setShowProponerModal(false);
+        setPropNombre('');
+        setPropDesc('');
+        cargarEspacios();
+        setActiveEspacioId(res.espacio.id);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSubmittingProp(false);
+    }
+  };
+
+  // Enviar mensaje en chat grupal en tiempo real (M12–M15)
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    const texto = chatTexto.trim();
+    if (!texto || !activeEspacioId || isSendingMsg) return;
+
+    const mensajeOptimista = {
+      id: 'temp_' + Date.now(),
+      espacioId: activeEspacioId,
+      autorId: user?.id,
+      autorNombre: `${user?.nombre || 'Tú'} ${user?.apellido || ''}`.trim(),
+      autorFoto: user?.fotoUrl || null,
+      autorCarrera: user?.carrera || '',
+      autorCiclo: user?.ciclo || '',
+      autorRol: user?.rol || 'alumno',
+      texto,
+      creadoEn: new Date().toISOString(),
+      isOptimistic: true
+    };
+
+    setMensajesEspacio(prev => [...prev, mensajeOptimista]);
     setChatTexto('');
+    setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+
+    setIsSendingMsg(true);
+    try {
+      await enviarMensajeEspacio({
+        espacioId: activeEspacioId,
+        autorId: user.id,
+        texto
+      });
+    } catch (err) {
+      console.error('Error al enviar mensaje grupal:', err);
+    } finally {
+      setIsSendingMsg(false);
+    }
   };
 
   const handleTextoConsultaChange = (val) => {
@@ -133,12 +311,11 @@ export default function GruposView() {
   };
 
   // --- VISTA DETALLE DE ESPACIO (M12, M13, M14, M15) ---
-  // Si hay una consulta abierta, manda la consulta (M20). Antes, dentro del espacio de carrera,
-  // tocar una consulta no hacía nada porque esta vista se devolvía primero.
   if (currentEspacio && !currentConsulta) {
     const isEspacioCarrera = currentEspacio.tipo === 'carrera';
     const isCohorte = currentEspacio.tipo === 'carrera_ciclo';
     const isTaller = currentEspacio.tipo === 'taller';
+    const esMiembro = currentEspacio.esMiembro;
 
     return (
       <div className="flex-1 flex flex-col h-full bg-surface dark:bg-surface-dark select-none animate-fadeIn">
@@ -163,17 +340,42 @@ export default function GruposView() {
                 <ArrowLeft size={18} />
               </button>
 
-              {isTaller && currentEspacio.linkInscripcion && (
-                <a
-                  href={currentEspacio.linkInscripcion}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white text-xs font-bold rounded-xl flex items-center space-x-1 shadow-md transition"
-                >
-                  <span>Portal Oficial UTP</span>
-                  <ExternalLink size={13} />
-                </a>
-              )}
+              <div className="flex items-center space-x-2">
+                {isTaller && currentEspacio.linkInscripcion && (
+                  <a
+                    href={currentEspacio.linkInscripcion}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white text-xs font-bold rounded-xl flex items-center space-x-1 shadow-md transition"
+                  >
+                    <span>Portal Oficial</span>
+                    <ExternalLink size={13} />
+                  </a>
+                )}
+
+                {!isCohorte && !isEspacioCarrera && (
+                  <button
+                    onClick={() => handleToggleMembresia(currentEspacio)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold shadow-md transition flex items-center space-x-1 ${
+                      esMiembro
+                        ? 'bg-slate-200 dark:bg-slate-800 text-ink dark:text-ink-light'
+                        : 'bg-brand-primary text-white hover:bg-brand-primaryHover'
+                    }`}
+                  >
+                    {esMiembro ? (
+                      <>
+                        <Check size={13} />
+                        <span>Unido</span>
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus size={13} />
+                        <span>Unirme al grupo</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div>
@@ -182,13 +384,13 @@ export default function GruposView() {
                   {currentEspacio.nombre}
                 </h2>
                 {currentEspacio.oficial && (
-                  <span className="text-xs bg-emerald-500 text-white font-extrabold px-2 py-0.5 rounded-full shadow-sm">
-                    Oficial
+                  <span className="text-[11px] bg-emerald-500 text-white font-extrabold px-2 py-0.5 rounded-full shadow-sm">
+                    Oficial UTP
                   </span>
                 )}
               </div>
               <p className="text-xs text-slate-200 font-semibold drop-shadow-sm">
-                {currentEspacio.miembrosCount} miembros activos · Sede {currentEspacio.sede}
+                {currentEspacio.miembrosCount || 1} miembros · Sede {currentEspacio.sede || 'Lima Sur'}
               </p>
             </div>
           </div>
@@ -199,7 +401,7 @@ export default function GruposView() {
           {isCohorte && (
             <div className="flex items-center space-x-2 text-brand-primary dark:text-teal-300 font-bold text-xs">
               <Lock size={14} />
-              <span>Cohorte cerrada · Salón {user.carrera} Ciclo {user.ciclo}</span>
+              <span>Cohorte cerrada · Salón {user?.carrera || currentEspacio.carrera} Ciclo {user?.ciclo || currentEspacio.ciclo}</span>
             </div>
           )}
           {isEspacioCarrera && (
@@ -211,7 +413,7 @@ export default function GruposView() {
           {isTaller && (
             <div className="flex items-center space-x-2 text-amber-700 dark:text-amber-300 font-bold text-xs">
               <Clock size={14} />
-              <span>{currentEspacio.horario}</span>
+              <span>{currentEspacio.horario || 'Horario de taller UTP'}</span>
             </div>
           )}
           {currentEspacio.tipo === 'interes' && (
@@ -219,7 +421,7 @@ export default function GruposView() {
           )}
         </div>
 
-        {/* Consultas Agrupadas si es Espacio de Carrera */}
+        {/* Consultas Agrupadas si es Espacio de Carrera (M19–M22) */}
         {isEspacioCarrera && (
           <div className="p-3.5 bg-brand-primary-soft/50 dark:bg-brand-dark/40 border-b border-line dark:border-line-dark">
             <div className="flex items-center justify-between mb-2">
@@ -241,7 +443,7 @@ export default function GruposView() {
                 <div
                   key={c.id}
                   onClick={() => setActiveConsultaId(c.id)}
-                  className="k-card p-3 cursor-pointer hover:border-accent transition text-xs space-y-1.5 border border-line dark:border-line-dark"
+                  className="k-card p-3 cursor-pointer hover:border-accent transition text-xs space-y-1.5 border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark rounded-xl shadow-xs"
                 >
                   <div className="flex justify-between items-center">
                     <span className="font-extrabold text-sm text-ink dark:text-ink-light">{c.curso}</span>
@@ -258,40 +460,57 @@ export default function GruposView() {
           </div>
         )}
 
-        {/* Chat Messages */}
+        {/* Chat Messages (Realtime Supabase) */}
         <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-surface dark:bg-surface-dark">
-          {(!currentEspacio.mensajes || currentEspacio.mensajes.length === 0) ? (
+          {isLoadingChat ? (
+            <div className="flex flex-col items-center justify-center h-full text-ink-muted space-y-2">
+              <Loader2 size={24} className="animate-spin text-accent" />
+              <p className="text-xs font-semibold">Cargando chat grupal...</p>
+            </div>
+          ) : mensajesEspacio.length === 0 ? (
             <div className="text-center py-12 text-ink-muted text-xs">
               <MessageSquare size={28} className="mx-auto mb-2 opacity-40 text-brand-primary" />
               <p className="font-bold text-sm text-ink dark:text-ink-light">Conversación de {currentEspacio.nombre}</p>
               <p className="text-xs mt-1 text-ink-muted">Sé el primero en enviar un mensaje a la comunidad.</p>
             </div>
           ) : (
-            currentEspacio.mensajes.map((m) => (
-              <div
-                key={m.id}
-                className={`flex flex-col ${m.esMio ? 'items-end' : 'items-start'}`}
-              >
-                {!m.esMio && (
-                  <span className="text-xs font-bold text-ink-muted ml-1 mb-1">
-                    {m.autor}
-                  </span>
-                )}
+            mensajesEspacio.map((m) => {
+              const esMio = m.autorId === user?.id;
+
+              return (
                 <div
-                  className={`max-w-[82%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                    m.esMio
-                      ? 'bg-brand-primary text-white rounded-br-none shadow-sm'
-                      : 'bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark text-ink dark:text-ink-light rounded-bl-none shadow-sm font-medium'
-                  }`}
+                  key={m.id}
+                  className={`flex flex-col ${esMio ? 'items-end' : 'items-start'}`}
                 >
-                  {m.texto}
+                  {!esMio && (
+                    <div className="flex items-center space-x-1.5 ml-1 mb-1">
+                      <span className="text-xs font-bold text-ink dark:text-ink-light">
+                        {m.autorNombre}
+                      </span>
+                      {m.autorCarrera && (
+                        <span className="text-[10px] text-ink-muted">
+                          · {m.autorCarrera}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[82%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                      esMio
+                        ? 'bg-brand-primary text-white rounded-br-none shadow-sm'
+                        : 'bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark text-ink dark:text-ink-light rounded-bl-none shadow-sm font-medium'
+                    }`}
+                  >
+                    {m.texto}
+                  </div>
+                  <span className="text-[10px] text-ink-muted mt-1 px-1 font-medium">
+                    {m.creadoEn ? new Date(m.creadoEn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                  </span>
                 </div>
-                <span className="text-xs text-ink-muted mt-1 px-1 font-medium">
-                  {m.hora}
-                </span>
-              </div>
-            ))
+              );
+            })
           )}
+          <div ref={chatBottomRef} />
         </div>
 
         {/* Chat Input Bar */}
@@ -301,17 +520,26 @@ export default function GruposView() {
         >
           <input
             type="text"
-            placeholder="Escribe un mensaje al grupo..."
+            placeholder={
+              !esMiembro && !isCohorte && !isEspacioCarrera
+                ? "Únete al espacio para escribir..."
+                : "Escribe un mensaje al grupo..."
+            }
             value={chatTexto}
             onChange={(e) => setChatTexto(e.target.value)}
+            disabled={!esMiembro && !isCohorte && !isEspacioCarrera}
             className="flex-1 px-3.5 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-medium text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary"
           />
           <button
             type="submit"
-            disabled={!chatTexto.trim()}
-            className="p-2.5 bg-brand-primary disabled:opacity-40 text-white rounded-xl shadow-sm transition"
+            disabled={!chatTexto.trim() || isSendingMsg}
+            className="p-2.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-40 text-white rounded-xl shadow-sm transition"
           >
-            <Send size={18} />
+            {isSendingMsg ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Send size={18} />
+            )}
           </button>
         </form>
       </div>
@@ -320,7 +548,6 @@ export default function GruposView() {
 
   // --- VISTA DETALLE DE CONSULTA AGRUPADA (M20, M21, M22) ---
   if (currentConsulta) {
-    // Regla 7.1: ciclo >= 5, ciclo mayor que el de quien preguntó, y no ser autor
     const permisoOrientar = puedeOrientarConsulta(currentConsulta);
     const puedoOrientar = permisoOrientar.puede;
     const soyAutor = esAutorDeConsulta(currentConsulta);
@@ -348,7 +575,7 @@ export default function GruposView() {
 
         <div className="p-4 space-y-4">
           {/* Main Query Card */}
-          <div className="k-card p-4 space-y-2.5 border-2 border-line/80 dark:border-line-dark">
+          <div className="k-card p-4 space-y-2.5 border-2 border-line/80 dark:border-line-dark rounded-2xl bg-white dark:bg-surface-cardDark shadow-xs">
             <div className="flex justify-between items-start">
               <span className="px-2.5 py-1 bg-brand-primary-soft dark:bg-brand-dark text-brand-primary dark:text-teal-300 font-bold text-xs rounded-lg">
                 {currentConsulta.curso}
@@ -385,12 +612,12 @@ export default function GruposView() {
             </h4>
 
             {currentConsulta.respuestas.length === 0 ? (
-              <div className="k-card p-5 text-center text-xs text-ink-muted">
+              <div className="k-card p-5 text-center text-xs text-ink-muted rounded-2xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark">
                 Aún no hay respuestas. Alumnos de ciclo ≥ 5 pueden orientar.
               </div>
             ) : (
               currentConsulta.respuestas.map((r) => (
-                <div key={r.id} className="k-card p-4 space-y-2.5 border-2 border-line/80 dark:border-line-dark">
+                <div key={r.id} className="k-card p-4 space-y-2.5 border-2 border-line/80 dark:border-line-dark rounded-2xl bg-white dark:bg-surface-cardDark shadow-xs">
                   <div className="flex justify-between items-center">
                     <div className="flex items-center space-x-2.5">
                       <div className="w-8 h-8 rounded-full bg-accent-soft text-accent flex items-center justify-center font-black text-sm">
@@ -425,7 +652,6 @@ export default function GruposView() {
                     <span className="text-ink-muted font-medium">{r.fecha}</span>
                     {!r.calificadoPorSolicitante ? (
                       soyAutor && !r.esMio ? (
-                        // M22: solo quien preguntó valora, y recién ahí se acreditan las estrellas
                         <button
                           onClick={() => valorarRespuesta(currentConsulta.id, r.id, true)}
                           className="px-3 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-lg flex items-center space-x-1.5 shadow-sm"
@@ -452,7 +678,7 @@ export default function GruposView() {
 
           {/* Botón de Orientar */}
           {!puedoOrientar && !soyAutor && (
-            <div className="k-card p-3 text-xs text-ink-muted font-semibold text-center">
+            <div className="k-card p-3 text-xs text-ink-muted font-semibold text-center rounded-2xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark">
               {permisoOrientar.motivo}
             </div>
           )}
@@ -552,7 +778,7 @@ export default function GruposView() {
             Comunidades y Espacios
           </h1>
           <p className="text-xs font-semibold text-ink-muted">
-            Vida universitaria activa en sede {user.sede}
+            Vida universitaria activa en sede {user?.sede || 'Lima Sur'}
           </p>
         </div>
 
@@ -569,7 +795,7 @@ export default function GruposView() {
       <div className="flex space-x-2 overflow-x-auto pb-1 text-xs">
         {[
           { id: 'todos', label: 'Todos los Espacios' },
-          { id: 'cohorte', label: 'Tu Salón (Ciclo 5)' },
+          { id: 'cohorte', label: `Tu Salón (Ciclo ${user?.ciclo || 1})` },
           { id: 'carrera', label: 'Toda la Carrera' },
           { id: 'talleres', label: 'Talleres & Clubes' }
         ].map((tab) => (
@@ -587,133 +813,141 @@ export default function GruposView() {
         ))}
       </div>
 
-      {/* Group Cards List — Estilo Hero Visual con Portada Completa */}
-      <div className="space-y-4">
-        {espaciosFiltrados.map((esp) => {
-          const isTaller = esp.tipo === 'taller';
-          const isPropuesta = esp.tipo === 'interes' && esp.estado === 'oculto';
+      {/* Group Cards List */}
+      {isLoadingEspacios ? (
+        <div className="flex flex-col items-center justify-center py-12 text-ink-muted space-y-2">
+          <Loader2 size={24} className="animate-spin text-accent" />
+          <p className="text-xs font-semibold">Cargando comunidades de campus...</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {espaciosFiltrados.map((esp) => {
+            const isTaller = esp.tipo === 'taller';
+            const isPropuesta = esp.tipo === 'interes' && esp.estado === 'oculto';
 
-          return (
-            <div
-              key={esp.id}
-              onClick={() => setActiveEspacioId(esp.id)}
-              className="k-card overflow-hidden hover:border-brand-primary cursor-pointer transition-all duration-200 shadow-sm flex flex-col group border-2 border-line/80 dark:border-line-dark rounded-2xl"
-            >
-              {/* Cover Banner Hero */}
-              {esp.portadaUrl && (
-                <div className="relative h-32 w-full bg-slate-800 overflow-hidden">
-                  <img
-                    src={esp.portadaUrl}
-                    alt={esp.nombre}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent flex items-end p-3">
-                    <div className="flex items-center space-x-2">
-                      {esp.oficial && (
-                        <span className="text-xs bg-emerald-500 text-white font-black px-2.5 py-0.5 rounded-full shadow-sm">
-                          Oficial UTP
-                        </span>
-                      )}
-                      {esp.tipo === 'carrera_ciclo' && (
-                        <span className="text-xs bg-brand-primary text-white font-black px-2.5 py-0.5 rounded-full shadow-sm">
-                          Tu Salón Cerrado
-                        </span>
-                      )}
-                      {esp.tipo === 'carrera' && (
-                        <span className="text-xs bg-teal-600 text-white font-black px-2.5 py-0.5 rounded-full shadow-sm">
-                          Comunidad de Carrera
-                        </span>
-                      )}
-                      {isPropuesta && (
-                        <span className="text-xs bg-amber-500 text-white font-black px-2.5 py-0.5 rounded-full shadow-sm flex items-center space-x-1">
-                          <Flame size={12} fill="white" />
-                          <span>Propuesta Estudiantil</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Card Body */}
-              <div className="p-4 space-y-2.5">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <h3 className="text-sm font-black text-ink dark:text-ink-light leading-snug group-hover:text-brand-primary transition">
-                      {esp.nombre}
-                    </h3>
-                    <p className="text-xs text-ink-soft dark:text-ink-muted line-clamp-2 font-medium leading-relaxed">
-                      {esp.descripcion}
-                    </p>
-                  </div>
-                  <ChevronRight size={18} className="text-ink-muted shrink-0 ml-2 group-hover:translate-x-1 transition" />
-                </div>
-
-                {isTaller && esp.horario && (
-                  <div className="flex items-center space-x-2 text-xs text-amber-800 dark:text-amber-300 font-bold bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 rounded-xl border border-amber-200 dark:border-amber-900/50">
-                    <Clock size={14} />
-                    <span>{esp.horario}</span>
-                  </div>
-                )}
-
-                {/* Propuesta: Contador de apoyos (Umbral de 15 apoyos de alumnos) */}
-                {isPropuesta && (
-                  <div className="p-3 bg-amber-50/80 dark:bg-amber-950/40 rounded-2xl space-y-2 border border-amber-200 dark:border-amber-900/40">
-                    <div className="flex justify-between items-center text-xs text-amber-900 dark:text-amber-200 font-black">
-                      <span>Apoyos de estudiantes</span>
-                      <span>{esp.apoyosCount} de {esp.umbralRequerido} requeridos</span>
-                    </div>
-                    <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-amber-500 transition-all duration-300"
-                        style={{ width: `${Math.min(100, ((esp.apoyosCount || 1) / (esp.umbralRequerido || 15)) * 100)}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between items-center pt-1">
-                      <span className="text-xs text-ink-muted font-medium">
-                        Faltan {Math.max(0, (esp.umbralRequerido || 15) - (esp.apoyosCount || 1))} para visibilidad pública
-                      </span>
-                      {yaApoye(esp) ? (
-                        // Cada alumno apoya una sola vez
-                        <span className="px-3 py-1.5 bg-emerald-100 text-emerald-800 font-extrabold text-xs rounded-xl flex items-center space-x-1">
-                          <CheckCircle2 size={12} />
-                          <span>Apoyado</span>
-                        </span>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            apoyarGrupo(esp.id);
-                          }}
-                          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs rounded-xl flex items-center space-x-1 shadow-sm transition"
-                        >
-                          <ThumbsUp size={12} />
-                          <span>Apoyar (+1)</span>
-                        </button>
-                      )}
+            return (
+              <div
+                key={esp.id}
+                onClick={() => setActiveEspacioId(esp.id)}
+                className="k-card overflow-hidden hover:border-brand-primary cursor-pointer transition-all duration-200 shadow-sm flex flex-col group border-2 border-line/80 dark:border-line-dark rounded-2xl bg-white dark:bg-surface-cardDark"
+              >
+                {/* Cover Banner Hero */}
+                {esp.portadaUrl && (
+                  <div className="relative h-32 w-full bg-slate-800 overflow-hidden">
+                    <img
+                      src={esp.portadaUrl}
+                      alt={esp.nombre}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent flex items-end p-3">
+                      <div className="flex items-center space-x-2">
+                        {esp.oficial && (
+                          <span className="text-xs bg-emerald-500 text-white font-black px-2.5 py-0.5 rounded-full shadow-sm">
+                            Oficial UTP
+                          </span>
+                        )}
+                        {esp.tipo === 'carrera_ciclo' && (
+                          <span className="text-xs bg-brand-primary text-white font-black px-2.5 py-0.5 rounded-full shadow-sm">
+                            Tu Salón Cerrado
+                          </span>
+                        )}
+                        {esp.tipo === 'carrera' && (
+                          <span className="text-xs bg-teal-600 text-white font-black px-2.5 py-0.5 rounded-full shadow-sm">
+                            Comunidad de Carrera
+                          </span>
+                        )}
+                        {isPropuesta && (
+                          <span className="text-xs bg-amber-500 text-white font-black px-2.5 py-0.5 rounded-full shadow-sm flex items-center space-x-1">
+                            <Flame size={12} fill="white" />
+                            <span>Propuesta Estudiantil</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
 
-                <div className="flex items-center justify-between text-xs text-ink-muted pt-2 border-t border-line dark:border-line-dark font-medium">
-                  <span className="font-semibold text-ink dark:text-ink-light">{esp.miembrosCount} miembros</span>
-                  <span className="italic">{esp.horaUltimoMensaje}</span>
+                {/* Card Body */}
+                <div className="p-4 space-y-2.5">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-black text-ink dark:text-ink-light leading-snug group-hover:text-brand-primary transition">
+                        {esp.nombre}
+                      </h3>
+                      <p className="text-xs text-ink-soft dark:text-ink-muted line-clamp-2 font-medium leading-relaxed">
+                        {esp.descripcion}
+                      </p>
+                    </div>
+                    <ChevronRight size={18} className="text-ink-muted shrink-0 ml-2 group-hover:translate-x-1 transition" />
+                  </div>
+
+                  {isTaller && esp.horario && (
+                    <div className="flex items-center space-x-2 text-xs text-amber-800 dark:text-amber-300 font-bold bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 rounded-xl border border-amber-200 dark:border-amber-900/50">
+                      <Clock size={14} />
+                      <span>{esp.horario}</span>
+                    </div>
+                  )}
+
+                  {/* Propuesta: Contador de apoyos (Umbral dinámico servidor) */}
+                  {isPropuesta && (
+                    <div className="p-3 bg-amber-50/80 dark:bg-amber-950/40 rounded-2xl space-y-2 border border-amber-200 dark:border-amber-900/40">
+                      <div className="flex justify-between items-center text-xs text-amber-900 dark:text-amber-200 font-black">
+                        <span>Apoyos de estudiantes</span>
+                        <span>{esp.apoyos || 1} de {esp.umbral || 15} requeridos</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-amber-500 transition-all duration-300"
+                          style={{ width: `${Math.min(100, (((esp.apoyos || 1) / (esp.umbral || 15)) * 100))}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between items-center pt-1">
+                        <span className="text-xs text-ink-muted font-medium">
+                          Faltan {Math.max(0, (esp.umbral || 15) - (esp.apoyos || 1))} para visibilidad pública
+                        </span>
+                        {esp.yaApoye ? (
+                          <span className="px-3 py-1.5 bg-emerald-100 text-emerald-800 font-extrabold text-xs rounded-xl flex items-center space-x-1">
+                            <CheckCircle2 size={12} />
+                            <span>Apoyado</span>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleApoyarPropuesta(esp.id);
+                            }}
+                            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs rounded-xl flex items-center space-x-1 shadow-sm transition"
+                          >
+                            <ThumbsUp size={12} />
+                            <span>Apoyar (+1)</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-xs text-ink-muted pt-2 border-t border-line dark:border-line-dark font-medium">
+                    <span className="font-semibold text-ink dark:text-ink-light">{esp.miembrosCount || 1} miembros</span>
+                    <span className="text-brand-primary font-bold">
+                      {esp.esMiembro ? 'Miembro activo' : 'Toca para ver espacio'}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Modal: Proponer Grupo (M16) */}
       {showProponerModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5">
+          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 animate-fadeIn">
             <h3 className="text-sm font-black text-ink dark:text-ink-light">
               Proponer una comunidad estudiantil
             </h3>
             <p className="text-xs text-ink-soft dark:text-ink-muted leading-relaxed">
-              Requiere <strong>15 apoyos</strong> de otros alumnos para convertirse en un espacio público de campus.
+              Requiere apoyos de tus compañeros (umbral de campus) para convertirse en un espacio público de sede.
             </p>
 
             <form onSubmit={handleProponerSubmit} className="space-y-3">
@@ -726,7 +960,7 @@ export default function GruposView() {
                   placeholder="Ej: Club de Robótica UTP"
                   value={propNombre}
                   onChange={(e) => setPropNombre(e.target.value)}
-                  className="w-full px-3 py-2 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
+                  className="w-full px-3 py-2 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary"
                   required
                 />
               </div>
@@ -740,7 +974,7 @@ export default function GruposView() {
                   placeholder="Objetivos, actividades y a quiénes va dirigido..."
                   value={propDesc}
                   onChange={(e) => setPropDesc(e.target.value)}
-                  className="w-full p-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-medium text-ink dark:text-ink-light resize-none"
+                  className="w-full p-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-medium text-ink dark:text-ink-light resize-none focus:outline-none focus:border-brand-primary"
                   required
                 />
               </div>
@@ -755,10 +989,10 @@ export default function GruposView() {
                 </button>
                 <button
                   type="submit"
-                  disabled={!propNombre.trim()}
-                  className="px-4 py-2 bg-brand-primary disabled:opacity-40 text-white text-xs font-bold rounded-xl shadow-sm transition"
+                  disabled={!propNombre.trim() || isSubmittingProp}
+                  className="px-4 py-2 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-40 text-white text-xs font-bold rounded-xl shadow-sm transition"
                 >
-                  Crear propuesta
+                  {isSubmittingProp ? 'Creando propuesta...' : 'Crear propuesta'}
                 </button>
               </div>
             </form>
@@ -769,9 +1003,9 @@ export default function GruposView() {
       {/* Modal: Hacer Consulta de Carrera con Moderación (M19) */}
       {showCrearConsultaModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5">
+          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 animate-fadeIn">
             <h3 className="text-sm font-black text-ink dark:text-ink-light">
-              Nueva Consulta en {user.carrera}
+              Nueva Consulta en {user?.carrera || 'tu Carrera'}
             </h3>
 
             <form onSubmit={handleCrearConsultaSubmit} className="space-y-3">

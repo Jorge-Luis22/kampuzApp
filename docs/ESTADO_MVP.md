@@ -23,12 +23,12 @@ Estado de cumplimiento y trazabilidad de las pantallas de la aplicación móvil 
 | **M08** | Perfil de otro alumno + Solicitud | 🟢 Real | 🟢 Real | Tarjeta con avatar 48px, interés afín, solicitud con motivo obligatorio (Spec 6.4), reportar y bloquear. |
 | **M09** | Solicitudes recibidas y enviadas | 🟢 Real | 🟢 Real | Bandeja de solicitudes en tabla solicitudes_mensaje con estados pendiente/aceptada/rechazada. |
 | **M10** | Conversación directa 1 a 1 | 🟢 Real | 🟢 Real | Chat WhatsApp en tiempo real con Supabase Realtime, envío optimista, autoscroll y leído/no leído. |
-| **M11** | Grupos: Espacios del alumno | 🟡 Demo | 🟢 Real | Auto-asignación a carrera y ciclo, más talleres. |
-| **M12** | Espacio de carrera (Consultas) | 🟡 Demo | 🟢 Real | Cruce de ciclos 1 al 10 para dudas académicas. |
-| **M13** | Subgrupo de ciclo (Chat cohorte) | 🟡 Demo | 🟢 Real | Chat grupal en tiempo real de la cohorte. |
-| **M14** | Detalle grupo interés / taller | 🟡 Demo | 🟢 Real | Info de taller oficial con horarios y enlaces UTP. |
-| **M15** | Chat de grupo general | 🟡 Demo | 🟢 Real | Mensajería de grupo en tiempo real. |
-| **M16** | Proponer un grupo (apoyos) | 🟡 Demo | 🟢 Real | Umbral dinámico con visibilidad automática. |
+| **M11** | Grupos: Espacios del alumno | 🟢 Real | 🟢 Real | Auto-asignación a carrera y ciclo vía trigger en perfiles, membresías y talleres en Supabase. |
+| **M12** | Espacio de carrera (Consultas) | 🟢 Real | 🟢 Real | Cruce de ciclos 1 al 10 para dudas académicas y chat grupal en tiempo real. |
+| **M13** | Subgrupo de ciclo (Chat cohorte) | 🟢 Real | 🟢 Real | Chat grupal en tiempo real de la cohorte con Supabase Realtime en tabla mensajes. |
+| **M14** | Detalle grupo interés / taller | 🟢 Real | 🟢 Real | Horario oficial, sello Oficial UTP, enlaces oficiales y botón para unirse en membresias. |
+| **M15** | Chat de grupo general | 🟢 Real | 🟢 Real | Mensajería de grupo en tiempo real con suscripción postgres_changes y optimismo. |
+| **M16** | Proponer un grupo (apoyos) | 🟢 Real | 🟢 Real | Umbral dinámico max(15, round(base_activa*0.03)) y activación automática vía trigger. |
 | **M17** | Solicitud de publicación ajena | 🟡 Demo | 🟢 Real | Publicación moderada en espacio externo. |
 | **M18** | Eventos del grupo | 🟡 Demo | 🟢 Real | Listado y creación de eventos locales del grupo. |
 | **M19** | Hacer una consulta académica | 🟡 Demo | 🟢 Real | Moderación en cliente y servidor (*"Se habla del curso..."*). |

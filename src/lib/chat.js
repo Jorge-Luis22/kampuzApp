@@ -1,66 +1,75 @@
-import { supabase, isSupabaseConfigured } from './supabase';
+import { supabase, isSupabaseConfigured } from './supabase.js';
+import {
+  getConversacionesStorage,
+  getOrCreateConversacionStorage,
+  getMensajesDirectosStorage,
+  saveMensajeDirectoStorage,
+  marcarMensajesComoLeidosStorage,
+  subscribeToCampusEvents,
+  findRegisteredUser,
+  getRegisteredUsers
+} from './campusStorage.js';
+
+const withTimeout = (promise, ms = 2000) => {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), ms))
+  ]);
+};
 
 /**
  * Obtiene o crea la conversación directa 1 a 1 entre dos usuarios.
  * Normaliza los IDs ordenados para garantizar un único registro por pareja de interlocutores.
  */
 export async function getOrCreateConversacion(userId, otherUserId) {
-  if (!isSupabaseConfigured || !userId || !otherUserId || userId === otherUserId) {
+  if (!userId || !otherUserId || userId === otherUserId) {
     return { success: false, error: 'Parámetros inválidos para conversación.' };
   }
 
-  const userA = userId < otherUserId ? userId : otherUserId;
-  const userB = userId < otherUserId ? otherUserId : userId;
+  // 1. Crear u obtener siempre del almacén local sincronizado
+  const localConv = getOrCreateConversacionStorage(userId, otherUserId);
 
-  try {
-    // 1. Buscar si ya existe
-    const { data: existente, error: fetchErr } = await supabase
-      .from('conversaciones')
-      .select('*')
-      .eq('usuario_a_id', userA)
-      .eq('usuario_b_id', userB)
-      .maybeSingle();
+  // 2. Si Supabase está disponible, sincronizar
+  if (isSupabaseConfigured) {
+    const userA = userId < otherUserId ? userId : otherUserId;
+    const userB = userId < otherUserId ? otherUserId : userId;
 
-    if (fetchErr && fetchErr.code !== 'PGRST116') {
-      console.warn('[Kampus Chat] Error buscando conversación:', fetchErr.message);
-    }
+    try {
+      const { data: existente } = await withTimeout(
+        supabase
+          .from('conversaciones')
+          .select('*')
+          .eq('usuario_a_id', userA)
+          .eq('usuario_b_id', userB)
+          .maybeSingle(),
+        1800
+      );
 
-    if (existente) {
-      return { success: true, conversacion: existente };
-    }
-
-    // 2. Si no existe, crearla
-    const { data: creada, error: insertErr } = await supabase
-      .from('conversaciones')
-      .insert({
-        usuario_a_id: userA,
-        usuario_b_id: userB,
-        abierta_en: new Date().toISOString(),
-        ultimo_mensaje_en: new Date().toISOString()
-      })
-      .select()
-      .single();
-
-    if (insertErr) {
-      // Posible concurrencia: si ya se creó justo ahora, reintentar select
-      const { data: reintento } = await supabase
-        .from('conversaciones')
-        .select('*')
-        .eq('usuario_a_id', userA)
-        .eq('usuario_b_id', userB)
-        .maybeSingle();
-
-      if (reintento) {
-        return { success: true, conversacion: reintento };
+      if (existente) {
+        return { success: true, conversacion: existente };
       }
-      return { success: false, error: insertErr.message };
-    }
 
-    return { success: true, conversacion: creada };
-  } catch (err) {
-    console.error('[Kampus Chat] Excepción getOrCreateConversacion:', err);
-    return { success: false, error: err.message };
+      const { data: creada, error: insertErr } = await withTimeout(
+        supabase
+          .from('conversaciones')
+          .insert({
+            usuario_a_id: userA,
+            usuario_b_id: userB,
+            abierta_en: new Date().toISOString(),
+            ultimo_mensaje_en: new Date().toISOString()
+          })
+          .select()
+          .single(),
+        1800
+      );
+
+      if (!insertErr && creada) {
+        return { success: true, conversacion: creada };
+      }
+    } catch (err) {}
   }
+
+  return { success: true, conversacion: localConv };
 }
 
 /**
@@ -68,156 +77,154 @@ export async function getOrCreateConversacion(userId, otherUserId) {
  * el último mensaje enviado/recibido y el conteo de no leídos.
  */
 export async function fetchConversaciones(userId) {
-  if (!isSupabaseConfigured || !userId) return [];
+  if (!userId) return [];
 
-  try {
-    const { data: convs, error } = await supabase
-      .from('conversaciones')
-      .select('*')
-      .or(`usuario_a_id.eq.${userId},usuario_b_id.eq.${userId}`)
-      .order('ultimo_mensaje_en', { ascending: false });
+  // 1. Obtener conversaciones locales
+  const locales = getConversacionesStorage().filter(
+    c => c.usuario_a_id === userId || c.usuario_b_id === userId
+  );
 
-    if (error) {
-      console.warn('[Kampus Chat] Error cargando conversaciones:', error.message);
-      return [];
-    }
+  let convs = [...locales];
 
-    if (!convs || convs.length === 0) return [];
-
-    // Cargar detalles para cada conversación
-    const enriquecidas = await Promise.all(
-      convs.map(async (c) => {
-        const otherUserId = c.usuario_a_id === userId ? c.usuario_b_id : c.usuario_a_id;
-
-        // Cargar perfil del otro estudiante
-        const { data: perfil } = await supabase
-          .from('perfiles')
-          .select('id, nombre, apellido, foto_url, carrera, ciclo, sede')
-          .eq('id', otherUserId)
-          .maybeSingle();
-
-        // Cargar último mensaje
-        const { data: ultimos } = await supabase
-          .from('mensajes_directos')
+  // 2. Si Supabase responde, fusionar
+  if (isSupabaseConfigured) {
+    try {
+      const { data: remotos } = await withTimeout(
+        supabase
+          .from('conversaciones')
           .select('*')
-          .eq('conversacion_id', c.id)
-          .order('creado_en', { ascending: false })
-          .limit(1);
+          .or(`usuario_a_id.eq.${userId},usuario_b_id.eq.${userId}`)
+          .order('ultimo_mensaje_en', { ascending: false }),
+        2000
+      );
 
-        const ultimoMensaje = ultimos && ultimos.length > 0 ? ultimos[0] : null;
-
-        // Contar mensajes no leídos dirigidos al usuario actual
-        const { count: noLeidos } = await supabase
-          .from('mensajes_directos')
-          .select('*', { count: 'exact', head: true })
-          .eq('conversacion_id', c.id)
-          .eq('leido', false)
-          .neq('autor_id', userId);
-
-        return {
-          id: c.id,
-          otherUser: perfil || {
-            id: otherUserId,
-            nombre: 'Compañero UTP',
-            apellido: '',
-            carrera: 'Estudiante',
-            ciclo: 1,
-            sede: 'Lima'
-          },
-          ultimoMensaje: ultimoMensaje ? ultimoMensaje.texto : 'Conversación iniciada',
-          ultimoMensajeHora: ultimoMensaje ? ultimoMensaje.creado_en : c.abierta_en,
-          noLeidos: noLeidos || 0,
-          raw: c
-        };
-      })
-    );
-
-    return enriquecidas;
-  } catch (err) {
-    console.error('[Kampus Chat] Excepción al listar conversaciones:', err);
-    return [];
+      if (remotos && remotos.length > 0) {
+        const ids = new Set(convs.map(c => c.id));
+        for (const r of remotos) {
+          if (!ids.has(r.id)) {
+            convs.push(r);
+          }
+        }
+      }
+    } catch (err) {}
   }
+
+  // Enriquecer cada conversación
+  const enriquecidas = convs.map(c => {
+    const otherUserId = c.usuario_a_id === userId ? c.usuario_b_id : c.usuario_a_id;
+
+    // Buscar perfil del interlocutor
+    const perfil = findRegisteredUser(otherUserId);
+
+    // Obtener mensajes de la conversación
+    const msgs = getMensajesDirectosStorage(c.id);
+    const ultimoMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+
+    const noLeidos = msgs.filter(m => m.autor_id !== userId && !m.leido).length;
+
+    return {
+      id: c.id,
+      otherUser: perfil || {
+        id: otherUserId,
+        nombre: 'Compañero UTP',
+        apellido: '',
+        usuario: 'estudiante',
+        carrera: 'Campus',
+        ciclo: 1,
+        sede: 'Lima Sur'
+      },
+      ultimoMensaje: ultimoMsg ? ultimoMsg.texto : 'Conversación iniciada',
+      ultimoMensajeHora: ultimoMsg ? ultimoMsg.creado_en : c.abierta_en,
+      noLeidos,
+      raw: c
+    };
+  });
+
+  return enriquecidas.sort((a, b) => new Date(b.ultimoMensajeHora) - new Date(a.ultimoMensajeHora));
 }
 
 /**
  * Carga el historial de mensajes de una conversación
  */
 export async function fetchMensajesDirectos(conversacionId) {
-  if (!isSupabaseConfigured || !conversacionId) return [];
+  if (!conversacionId) return [];
 
-  try {
-    const { data, error } = await supabase
-      .from('mensajes_directos')
-      .select('*')
-      .eq('conversacion_id', conversacionId)
-      .order('creado_en', { ascending: true });
+  // 1. Mensajes locales
+  let mensajes = getMensajesDirectosStorage(conversacionId);
 
-    if (error) {
-      console.warn('[Kampus Chat] Error cargando mensajes:', error.message);
-      return [];
-    }
+  // 2. Supabase si está disponible
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase
+          .from('mensajes_directos')
+          .select('*')
+          .eq('conversacion_id', conversacionId)
+          .order('creado_en', { ascending: true }),
+        2000
+      );
 
-    return data || [];
-  } catch (err) {
-    console.error('[Kampus Chat] Excepción fetchMensajesDirectos:', err);
-    return [];
+      if (!error && data?.length) {
+        const ids = new Set(mensajes.map(m => m.id));
+        for (const m of data) {
+          if (!ids.has(m.id)) mensajes.push(m);
+        }
+      }
+    } catch (err) {}
   }
+
+  return mensajes.sort((a, b) => new Date(a.creado_en) - new Date(b.creado_en));
 }
 
 /**
  * Envía un mensaje directo dentro de una conversación
  */
 export async function enviarMensajeDirecto({ conversacionId, autorId, texto }) {
-  if (!isSupabaseConfigured || !conversacionId || !autorId || !texto?.trim()) {
+  if (!conversacionId || !autorId || !texto?.trim()) {
     return { success: false, error: 'Datos incompletos para enviar mensaje.' };
   }
 
-  const payload = {
-    conversacion_id: conversacionId,
-    autor_id: autorId,
-    texto: texto.trim(),
-    leido: false
-  };
+  // 1. Guardar de inmediato en almacenamiento local sincronizado
+  const mensajeLocal = saveMensajeDirectoStorage({
+    conversacionId,
+    autorId,
+    texto: texto.trim()
+  });
 
-  try {
-    const { data, error } = await supabase
-      .from('mensajes_directos')
-      .insert(payload)
-      .select()
-      .single();
-
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
-    // Actualizar timestamp de la conversación en paralelo
-    supabase
-      .from('conversaciones')
-      .update({ ultimo_mensaje_en: new Date().toISOString() })
-      .eq('id', conversacionId)
-      .then();
-
-    return { success: true, mensaje: data };
-  } catch (err) {
-    return { success: false, error: err.message };
+  // 2. Intentar enviar a Supabase en paralelo
+  if (isSupabaseConfigured) {
+    withTimeout(
+      supabase.from('mensajes_directos').insert({
+        conversacion_id: conversacionId,
+        autor_id: autorId,
+        texto: texto.trim(),
+        leido: false
+      }),
+      2000
+    ).catch(() => {});
   }
+
+  return { success: true, mensaje: mensajeLocal };
 }
 
 /**
  * Marca los mensajes no leídos recibidos en esta conversación como leídos
  */
 export async function marcarMensajesComoLeidos(conversacionId, userId) {
-  if (!isSupabaseConfigured || !conversacionId || !userId) return;
+  if (!conversacionId || !userId) return;
 
-  try {
-    await supabase
-      .from('mensajes_directos')
-      .update({ leido: true })
-      .eq('conversacion_id', conversacionId)
-      .neq('autor_id', userId)
-      .eq('leido', false);
-  } catch (err) {
-    console.warn('[Kampus Chat] Error al marcar leídos:', err.message);
+  marcarMensajesComoLeidosStorage(conversacionId, userId);
+
+  if (isSupabaseConfigured) {
+    withTimeout(
+      supabase
+        .from('mensajes_directos')
+        .update({ leido: true })
+        .eq('conversacion_id', conversacionId)
+        .neq('autor_id', userId)
+        .eq('leido', false),
+      1500
+    ).catch(() => {});
   }
 }
 
@@ -225,29 +232,47 @@ export async function marcarMensajesComoLeidos(conversacionId, userId) {
  * Se suscribe en tiempo real a los mensajes directos de una conversación
  */
 export function subscribeToConversacion(conversacionId, onInsert) {
-  if (!isSupabaseConfigured || !conversacionId) {
-    return () => {};
+  if (!conversacionId) return () => {};
+
+  // 1. Suscripción local entre pestañas / ventanas
+  const unsubCampus = subscribeToCampusEvents((evt) => {
+    if (evt.tipo === 'mensaje_directo' && evt.payload?.conversacion_id === conversacionId) {
+      if (typeof onInsert === 'function') {
+        onInsert(evt.payload);
+      }
+    }
+  });
+
+  // 2. Suscripción a Supabase Realtime si está disponible
+  let supabaseChannel = null;
+  if (isSupabaseConfigured) {
+    try {
+      supabaseChannel = supabase
+        .channel(`chat_${conversacionId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'mensajes_directos',
+            filter: `conversacion_id=eq.${conversacionId}`
+          },
+          (payload) => {
+            if (payload?.new && typeof onInsert === 'function') {
+              onInsert(payload.new);
+            }
+          }
+        )
+        .subscribe();
+    } catch (e) {}
   }
 
-  const channel = supabase
-    .channel(`chat_${conversacionId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'mensajes_directos',
-        filter: `conversacion_id=eq.${conversacionId}`
-      },
-      (payload) => {
-        if (payload?.new && typeof onInsert === 'function') {
-          onInsert(payload.new);
-        }
-      }
-    )
-    .subscribe();
-
   return () => {
-    supabase.removeChannel(channel);
+    unsubCampus();
+    if (supabaseChannel) {
+      try {
+        supabase.removeChannel(supabaseChannel);
+      } catch (e) {}
+    }
   };
 }

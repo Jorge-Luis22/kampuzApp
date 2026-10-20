@@ -10,6 +10,7 @@ import {
   bloquearUsuario
 } from '../lib/explore';
 import { fetchConversaciones, getOrCreateConversacion } from '../lib/chat';
+import { subscribeToCampusEvents } from '../lib/campusStorage';
 import ChatDirectoModal from '../components/ChatDirectoModal';
 import {
   Search,
@@ -121,6 +122,21 @@ export default function ExplorarView() {
   useEffect(() => {
     cargarPerfiles();
   }, [searchTerm, filtroCarrera, filtroCiclo, filtroInteres, user?.id]);
+
+  // Suscripción a eventos en tiempo real entre pestañas y campus
+  useEffect(() => {
+    const unsub = subscribeToCampusEvents((evt) => {
+      if (evt?.tipo === 'usuario_actualizado') {
+        cargarPerfiles();
+      } else if (evt?.tipo === 'solicitud_nueva' || evt?.tipo === 'solicitud_respondida') {
+        cargarSolicitudes();
+        cargarConversaciones();
+      } else if (evt?.tipo === 'conversacion_creada' || evt?.tipo === 'mensaje_directo') {
+        cargarConversaciones();
+      }
+    });
+    return unsub;
+  }, [user?.id]);
 
   useEffect(() => {
     if (activeSubTab === 'solicitudes') {
@@ -402,9 +418,16 @@ export default function ExplorarView() {
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <h3 className="text-sm font-black text-ink dark:text-ink-light truncate group-hover:text-brand-primary transition">
-                            {nombreEst}
-                          </h3>
+                          <div className="flex items-center space-x-1.5 truncate">
+                            <h3 className="text-sm font-black text-ink dark:text-ink-light truncate group-hover:text-brand-primary transition">
+                              {nombreEst}
+                            </h3>
+                            {est.usuario && (
+                              <span className="text-[11px] font-bold text-accent truncate">
+                                @{est.usuario}
+                              </span>
+                            )}
+                          </div>
                           {est.rol && (
                             <span className="text-[10px] font-black px-2 py-0.5 rounded-full shrink-0 bg-slate-100 dark:bg-slate-800 text-ink-muted">
                               {est.rol}

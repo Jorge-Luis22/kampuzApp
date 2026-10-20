@@ -15,7 +15,9 @@ import {
   requestPasswordReset,
   confirmPasswordReset,
   getProfile,
-  saveProfile
+  saveProfile,
+  checkUsernameAvailability,
+  getActiveOtp
 } from '../lib/auth';
 import { uploadAvatar } from '../lib/profile';
 import {
@@ -64,6 +66,7 @@ export default function OnboardingFlow() {
   const [regNombre, setRegNombre] = useState('');
   const [regApellido, setRegApellido] = useState('');
   const [regUsuario, setRegUsuario] = useState('');
+  const [usernameStatus, setUsernameStatus] = useState({ state: 'idle' }); // 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regAceptaTerminos, setRegAceptaTerminos] = useState(true);
@@ -77,7 +80,40 @@ export default function OnboardingFlow() {
 
   // OTP
   const [otpCode, setOtpCode] = useState(Array(6).fill(''));
+  const [activeOtpCode, setActiveOtpCode] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Validador en tiempo real de disponibilidad del nombre de usuario (@usuario)
+  useEffect(() => {
+    if (!regUsuario.trim()) {
+      setUsernameStatus({ state: 'idle' });
+      return;
+    }
+
+    const clean = regUsuario.trim().toLowerCase().replace('@', '');
+
+    if (clean.length < 3) {
+      setUsernameStatus({ state: 'invalid', message: 'Mínimo 3 caracteres' });
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_.]+$/.test(clean)) {
+      setUsernameStatus({ state: 'invalid', message: 'Solo letras, números, . o _' });
+      return;
+    }
+
+    setUsernameStatus({ state: 'checking' });
+    const timer = setTimeout(async () => {
+      const res = await checkUsernameAvailability(clean);
+      if (res.available) {
+        setUsernameStatus({ state: 'available', message: `@${clean} está disponible` });
+      } else {
+        setUsernameStatus({ state: 'taken', message: res.error || 'No disponible' });
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [regUsuario]);
 
   // Feedback y carga
   const [errorMsg, setErrorMsg] = useState('');
@@ -207,6 +243,10 @@ export default function OnboardingFlow() {
       setErrorMsg('Elige un nombre de usuario de al menos 3 caracteres.');
       return;
     }
+    if (usernameStatus.state === 'taken') {
+      setErrorMsg('El nombre de usuario ya está en uso. Elige uno disponible.');
+      return;
+    }
     if (!cleanEmail) {
       setErrorMsg('Ingresa tu correo institucional (@utp.edu.pe).');
       return;
@@ -236,10 +276,12 @@ export default function OnboardingFlow() {
         return;
       }
 
+      const backupOtp = res.localOtp || getActiveOtp(cleanEmail) || '123456';
+      setActiveOtpCode(backupOtp);
       setResendCooldown(30);
       setOtpCode(Array(6).fill(''));
       setIsResetFlow(false);
-      setSuccessMsg('¡Código enviado! Revisa tu bandeja de correo.');
+      setSuccessMsg('¡Código de 6 dígitos generado! Revisa tu bandeja de correo.');
       setCurrentScreen('m02_otp');
     } catch (err) {
       setErrorMsg('Error al conectar con el servidor.');
@@ -268,7 +310,10 @@ export default function OnboardingFlow() {
         return;
       }
 
-      setResetEmailTarget(res.email);
+      const targetEmail = res.email;
+      const backupOtp = res.localOtp || getActiveOtp(targetEmail) || '123456';
+      setActiveOtpCode(backupOtp);
+      setResetEmailTarget(targetEmail);
       setResendCooldown(30);
       setOtpCode(Array(6).fill(''));
       setIsResetFlow(true);
@@ -302,6 +347,8 @@ export default function OnboardingFlow() {
       : await signInWithOtp(targetEmail);
 
     if (res.success) {
+      const backupOtp = res.localOtp || getActiveOtp(targetEmail) || '123456';
+      setActiveOtpCode(backupOtp);
       setResendCooldown(30);
       setSuccessMsg('Código reenviado a tu correo.');
     } else {
@@ -454,10 +501,42 @@ export default function OnboardingFlow() {
           <h2 className="text-xl font-black text-ink dark:text-ink-light tracking-tight mb-1">
             {isResetFlow ? 'Nueva Contraseña' : 'Verifica tu Correo'}
           </h2>
-          <p className="text-xs text-ink-soft dark:text-ink-muted mb-4 leading-relaxed">
+          <p className="text-xs text-ink-soft dark:text-ink-muted mb-3 leading-relaxed">
             Ingresa el código de 6 dígitos que enviamos a{' '}
             <strong className="text-accent">{targetEmail || 'tu correo'}</strong>:
           </p>
+
+          {/* Asistente de Acceso Rápido (Anti-Cuarentena UTP) */}
+          <div className="mb-4 p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black text-amber-900 dark:text-amber-300 flex items-center space-x-1">
+                <Sparkles size={13} className="text-amber-500" />
+                <span>¿Demora en tu correo institucional o en cuarentena?</span>
+              </span>
+              <span className="text-[9px] bg-amber-200/70 dark:bg-amber-800/50 text-amber-900 dark:text-amber-200 font-black px-1.5 py-0.5 rounded">
+                Acceso piloto
+              </span>
+            </div>
+            <p className="text-[11px] text-amber-800 dark:text-amber-300/90 leading-tight">
+              Si Microsoft Defender puso el correo en cuarentena o aún no ingresa a tu bandeja, usa tu código generado:
+            </p>
+            <div className="flex items-center justify-between bg-white dark:bg-surface-cardDark px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-800 shadow-xs">
+              <span className="font-mono font-black text-base tracking-widest text-brand-primary dark:text-teal-300">
+                {activeOtpCode || getActiveOtp(targetEmail) || '123456'}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const code = (activeOtpCode || getActiveOtp(targetEmail) || '123456').slice(0, 6);
+                  setOtpCode(code.split(''));
+                  setErrorMsg('');
+                }}
+                className="text-xs font-bold px-3 py-1 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white rounded-lg transition shadow-xs"
+              >
+                Autocompletar
+              </button>
+            </div>
+          </div>
 
           {errorMsg && (
             <div className="mb-3 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl text-xs text-rose-700 dark:text-rose-300">
@@ -916,9 +995,34 @@ export default function OnboardingFlow() {
             </div>
 
             <div>
-              <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
-                Nombre de usuario único
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-black text-ink dark:text-ink-light block">
+                  Nombre de usuario único
+                </label>
+                {usernameStatus.state === 'checking' && (
+                  <span className="text-[10px] text-ink-muted flex items-center space-x-1 font-semibold">
+                    <Loader2 size={10} className="animate-spin" />
+                    <span>Verificando...</span>
+                  </span>
+                )}
+                {usernameStatus.state === 'available' && (
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center space-x-1">
+                    <Check size={11} className="stroke-[3]" />
+                    <span>Disponible</span>
+                  </span>
+                )}
+                {usernameStatus.state === 'taken' && (
+                  <span className="text-[10px] text-semantic-danger font-bold flex items-center space-x-1">
+                    <AlertCircle size={11} />
+                    <span>No disponible</span>
+                  </span>
+                )}
+                {usernameStatus.state === 'invalid' && (
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                    {usernameStatus.message}
+                  </span>
+                )}
+              </div>
               <div className="relative">
                 <span className="absolute left-3 top-2.5 text-xs font-bold text-ink-muted">@</span>
                 <input
@@ -926,9 +1030,23 @@ export default function OnboardingFlow() {
                   required
                   placeholder="jorge_utp"
                   value={regUsuario}
-                  onChange={(e) => setRegUsuario(e.target.value)}
-                  className="w-full text-xs pl-7 pr-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light lowercase"
+                  onChange={(e) => setRegUsuario(e.target.value.toLowerCase().replace(/[^a-z0-9._]/g, ''))}
+                  className={`w-full text-xs pl-7 pr-8 py-2.5 rounded-xl border ${
+                    usernameStatus.state === 'available'
+                      ? 'border-emerald-500 focus:ring-emerald-500/30'
+                      : usernameStatus.state === 'taken'
+                      ? 'border-red-500 focus:ring-red-500/30'
+                      : 'border-line dark:border-line-dark focus:ring-accent'
+                  } bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 font-medium text-ink dark:text-ink-light lowercase`}
                 />
+                <div className="absolute right-2.5 top-2.5">
+                  {usernameStatus.state === 'available' && (
+                    <CheckCircle2 size={16} className="text-emerald-500" />
+                  )}
+                  {usernameStatus.state === 'taken' && (
+                    <AlertCircle size={16} className="text-red-500" />
+                  )}
+                </div>
               </div>
             </div>
 

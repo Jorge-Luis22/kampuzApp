@@ -1,5 +1,19 @@
-import { supabase, isSupabaseConfigured } from './supabase';
-import { getOrCreateConversacion } from './chat';
+import { supabase, isSupabaseConfigured } from './supabase.js';
+import { getOrCreateConversacion } from './chat.js';
+import {
+  getRegisteredUsers,
+  getSolicitudesStorage,
+  saveSolicitudStorage,
+  responderSolicitudStorage,
+  findRegisteredUser
+} from './campusStorage.js';
+
+const withTimeout = (promise, ms = 2000) => {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), ms))
+  ]);
+};
 
 // Perfiles de campus para complementar el feed durante el piloto inicial
 const PERFILES_CAMPUS_PILOTO = [
@@ -103,11 +117,12 @@ export async function fetchPerfilesExplorar({ currentUserId, searchTerm, carrera
 
   let realProfiles = [];
 
+  // 1. Perfiles de Supabase si está disponible
   if (isSupabaseConfigured) {
     try {
       let query = supabase
         .from('perfiles')
-        .select('id, nombre, apellido, foto_url, bio, sede, carrera, ciclo, intereses, rol, creado_en');
+        .select('id, nombre, apellido, usuario, foto_url, bio, sede, carrera, ciclo, intereses, rol, creado_en');
 
       if (currentUserId) {
         query = query.neq('id', currentUserId);
@@ -121,29 +136,54 @@ export async function fetchPerfilesExplorar({ currentUserId, searchTerm, carrera
         query = query.eq('ciclo', Number(ciclo));
       }
 
-      const { data, error } = await query;
+      const { data, error } = await withTimeout(query, 2000);
       if (!error && data) {
         realProfiles = data;
       }
     } catch (err) {
-      console.warn('[Kampus Explore] Error consultando perfiles:', err.message);
+      // Timeout o red offline
     }
   }
 
-  // Filtrar bloqueados
-  realProfiles = realProfiles.filter(p => !blockedIds.includes(p.id));
-
-  // Combinar perfiles de campus complementarios para el piloto asegurando que no se dupliquen
-  const idsReales = new Set(realProfiles.map(p => p.id));
-  const complementarios = PERFILES_CAMPUS_PILOTO.filter(
-    p => p.id !== currentUserId && !idsReales.has(p.id) && !blockedIds.includes(p.id)
+  // 2. Perfiles registrados localmente (nuevos usuarios creados en la app)
+  const localRegistered = getRegisteredUsers().filter(
+    p => p.id !== currentUserId && !blockedIds.includes(p.id)
   );
 
-  const todos = [...realProfiles, ...complementarios];
+  // Filtrar bloqueados de Supabase
+  realProfiles = realProfiles.filter(p => !blockedIds.includes(p.id));
+
+  // Combinar perfiles de campus asegurando unicidad por id y usuario
+  const idsVistos = new Set();
+  const todos = [];
+
+  // Prioridad 1: Usuarios registrados recientemente en el campus (aparecen arriba para conectar)
+  for (const reg of localRegistered) {
+    if (!idsVistos.has(reg.id)) {
+      idsVistos.add(reg.id);
+      todos.push(reg);
+    }
+  }
+
+  // Prioridad 2: Perfiles reales traídos de Supabase
+  for (const p of realProfiles) {
+    if (!idsVistos.has(p.id)) {
+      idsVistos.add(p.id);
+      todos.push(p);
+    }
+  }
+
+  // Prioridad 3: Perfiles de muestra de campus para el piloto
+  for (const p of PERFILES_CAMPUS_PILOTO) {
+    if (p.id !== currentUserId && !idsVistos.has(p.id) && !blockedIds.includes(p.id)) {
+      idsVistos.add(p.id);
+      todos.push(p);
+    }
+  }
 
   // Aplicar filtros en memoria
   return todos.filter(p => {
-    const nombreCompleto = `${p.nombre || ''} ${p.apellido || ''}`.toLowerCase();
+    const nombreCompleto = `${p.nombre || ''} ${p.apellido || ''} ${p.usuario ? '@' + p.usuario : ''}`.toLowerCase();
     const carreraStr = (p.carrera || '').toLowerCase();
 
     if (searchTerm) {
@@ -176,73 +216,87 @@ export async function fetchPerfilesExplorar({ currentUserId, searchTerm, carrera
  * Consulta las solicitudes de conexión recibidas y enviadas
  */
 export async function fetchSolicitudes(userId) {
-  if (!isSupabaseConfigured || !userId) {
+  if (!userId) {
     return { recibidas: [], enviadas: [] };
   }
 
-  try {
-    // 1. Solicitudes recibidas
-    const { data: recibidasData, error: errRecibidas } = await supabase
-      .from('solicitudes_mensaje')
-      .select('id, de_id, a_id, motivo, estado, creado_en, respondido_en')
-      .eq('a_id', userId)
-      .order('creado_en', { ascending: false });
+  // 1. Obtener del almacén local
+  const locales = getSolicitudesStorage();
+  let localRecibidas = locales.filter(s => s.a_id === userId);
+  let localEnviadas = locales.filter(s => s.de_id === userId);
 
-    // 2. Solicitudes enviadas
-    const { data: enviadasData, error: errEnviadas } = await supabase
-      .from('solicitudes_mensaje')
-      .select('id, de_id, a_id, motivo, estado, creado_en, respondido_en')
-      .eq('de_id', userId)
-      .order('creado_en', { ascending: false });
+  // 2. Si Supabase está disponible, consultar y fusionar
+  if (isSupabaseConfigured) {
+    try {
+      const [resRec, resEnv] = await Promise.all([
+        withTimeout(
+          supabase
+            .from('solicitudes_mensaje')
+            .select('id, de_id, a_id, motivo, estado, creado_en, respondido_en')
+            .eq('a_id', userId)
+            .order('creado_en', { ascending: false }),
+          2000
+        ).catch(() => ({ data: [] })),
+        withTimeout(
+          supabase
+            .from('solicitudes_mensaje')
+            .select('id, de_id, a_id, motivo, estado, creado_en, respondido_en')
+            .eq('de_id', userId)
+            .order('creado_en', { ascending: false }),
+          2000
+        ).catch(() => ({ data: [] }))
+      ]);
 
-    if (errRecibidas || errEnviadas) {
-      console.warn('[Kampus Explore] Error cargando solicitudes');
-    }
+      if (resRec?.data?.length) {
+        const ids = new Set(localRecibidas.map(s => s.id));
+        for (const s of resRec.data) {
+          if (!ids.has(s.id)) localRecibidas.push(s);
+        }
+      }
 
-    // Enriquecer con perfiles
-    const enriquecer = async (lista, campoOtroId) => {
-      if (!lista || lista.length === 0) return [];
-      return Promise.all(
-        lista.map(async (sol) => {
-          const otherId = sol[campoOtroId];
-          const { data: perfil } = await supabase
-            .from('perfiles')
-            .select('id, nombre, apellido, foto_url, carrera, ciclo, sede, intereses')
-            .eq('id', otherId)
-            .maybeSingle();
-
-          return {
-            ...sol,
-            otroUsuario: perfil || {
-              id: otherId,
-              nombre: 'Estudiante UTP',
-              apellido: '',
-              carrera: 'Campus',
-              ciclo: 1,
-              sede: 'Lima'
-            }
-          };
-        })
-      );
-    };
-
-    const [recibidas, enviadas] = await Promise.all([
-      enriquecer(recibidasData || [], 'de_id'),
-      enriquecer(enviadasData || [], 'a_id')
-    ]);
-
-    return { recibidas, enviadas };
-  } catch (err) {
-    console.error('[Kampus Explore] Excepción en fetchSolicitudes:', err);
-    return { recibidas: [], enviadas: [] };
+      if (resEnv?.data?.length) {
+        const ids = new Set(localEnviadas.map(s => s.id));
+        for (const s of resEnv.data) {
+          if (!ids.has(s.id)) localEnviadas.push(s);
+        }
+      }
+    } catch (err) {}
   }
+
+  // Enriquecer con perfiles
+  const enriquecer = (lista, campoOtroId) => {
+    if (!lista || lista.length === 0) return [];
+    return lista.map((sol) => {
+      const otherId = sol[campoOtroId];
+      // Buscar en registrados locales o catálogo de piloto
+      const localP = findRegisteredUser(otherId) || PERFILES_CAMPUS_PILOTO.find(p => p.id === otherId);
+
+      return {
+        ...sol,
+        otroUsuario: localP || {
+          id: otherId,
+          nombre: 'Compañero UTP',
+          apellido: '',
+          usuario: 'estudiante',
+          carrera: 'Campus',
+          ciclo: 1,
+          sede: 'Lima Sur'
+        }
+      };
+    });
+  };
+
+  return {
+    recibidas: enriquecer(localRecibidas, 'de_id'),
+    enviadas: enriquecer(localEnviadas, 'a_id')
+  };
 }
 
 /**
  * Envía una solicitud de mensaje formal con motivo académico (Spec 6.4)
  */
 export async function enviarSolicitudMensaje({ deId, aId, motivo }) {
-  if (!isSupabaseConfigured || !deId || !aId) {
+  if (!deId || !aId) {
     return { success: false, error: 'Identidad de usuario requerida.' };
   }
 
@@ -255,54 +309,28 @@ export async function enviarSolicitudMensaje({ deId, aId, motivo }) {
   }
 
   try {
-    // Si el destinatario es un id simulado de campus
-    if (String(aId).startsWith('usr_')) {
-      return {
-        success: true,
-        solicitud: {
-          id: 'sol_sim_' + Date.now(),
+    // 1. Guardar siempre en almacenamiento local sincronizado
+    let solicitudLocal;
+    try {
+      solicitudLocal = saveSolicitudStorage({ deId, aId, motivo: motivo.trim() });
+    } catch (errLocal) {
+      return { success: false, error: errLocal.message };
+    }
+
+    // 2. Intentar guardar en Supabase en paralelo si está disponible
+    if (isSupabaseConfigured && !String(aId).startsWith('usr_')) {
+      withTimeout(
+        supabase.from('solicitudes_mensaje').insert({
           de_id: deId,
           a_id: aId,
           motivo: motivo.trim(),
-          estado: 'pendiente',
-          creado_en: new Date().toISOString()
-        }
-      };
+          estado: 'pendiente'
+        }),
+        2000
+      ).catch(() => {});
     }
 
-    // Comprobar si ya existe una solicitud entre ambos
-    const { data: existente } = await supabase
-      .from('solicitudes_mensaje')
-      .select('id, estado')
-      .eq('de_id', deId)
-      .eq('a_id', aId)
-      .maybeSingle();
-
-    if (existente) {
-      if (existente.estado === 'pendiente') {
-        return { success: false, error: 'Ya tienes una solicitud pendiente enviada a este estudiante.' };
-      }
-      if (existente.estado === 'aceptada') {
-        return { success: false, error: 'Ya tienes conexión aceptada con este estudiante. Puedes abrir el chat directo.' };
-      }
-    }
-
-    const { data, error } = await supabase
-      .from('solicitudes_mensaje')
-      .insert({
-        de_id: deId,
-        a_id: aId,
-        motivo: motivo.trim(),
-        estado: 'pendiente'
-      })
-      .select()
-      .single();
-
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
-    return { success: true, solicitud: data };
+    return { success: true, solicitud: solicitudLocal };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -312,29 +340,29 @@ export async function enviarSolicitudMensaje({ deId, aId, motivo }) {
  * Responde a una solicitud de conexión (aceptar o rechazar)
  */
 export async function responderSolicitud({ solicitudId, accion, deId, aId }) {
-  if (!isSupabaseConfigured || !solicitudId) {
+  if (!solicitudId) {
     return { success: false, error: 'ID de solicitud requerido.' };
   }
 
   try {
     const estado = accion === 'aceptada' ? 'aceptada' : 'rechazada';
 
-    // Actualizar solicitud
-    const { error: updErr } = await supabase
-      .from('solicitudes_mensaje')
-      .update({
-        estado,
-        respondido_en: new Date().toISOString()
-      })
-      .eq('id', solicitudId);
+    // 1. Actualizar en almacenamiento local
+    const resultadoLocal = responderSolicitudStorage(solicitudId, accion);
 
-    if (updErr) {
-      console.warn('[Kampus Explore] Error actualizando solicitud:', updErr.message);
+    // 2. Intentar actualizar en Supabase en paralelo
+    if (isSupabaseConfigured) {
+      withTimeout(
+        supabase
+          .from('solicitudes_mensaje')
+          .update({ estado, respondido_en: new Date().toISOString() })
+          .eq('id', solicitudId),
+        2000
+      ).catch(() => {});
     }
 
-    // Si fue aceptada, abrir/crear conversación
-    let conversacion = null;
-    if (estado === 'aceptada' && deId && aId) {
+    let conversacion = resultadoLocal?.conversacion || null;
+    if (estado === 'aceptada' && deId && aId && !conversacion) {
       const resConv = await getOrCreateConversacion(deId, aId);
       if (resConv.success) {
         conversacion = resConv.conversacion;

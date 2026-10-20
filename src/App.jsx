@@ -3,6 +3,7 @@ import { StoreProvider, useStore } from './data/store';
 import { App as CapacitorApp } from '@capacitor/app';
 import PhoneShell from './components/PhoneShell';
 import BottomNav from './components/BottomNav';
+import OfflineBanner from './components/OfflineBanner';
 import OnboardingFlow from './views/OnboardingFlow';
 import InicioView from './views/InicioView';
 import ExplorarView from './views/ExplorarView';
@@ -90,6 +91,7 @@ function AppContent() {
   // Main Mobile App with 5-tab Bottom Navigation
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <OfflineBanner />
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'inicio' && <InicioView />}
         {activeTab === 'explorar' && <ExplorarView />}

@@ -62,7 +62,19 @@ Estado de cumplimiento y trazabilidad de las pantallas de la aplicación móvil 
 
 ---
 
-## 3. Resumen de la Línea Base (Fase 0)
-- **Compilación actual:** `npm run build` ejecutado exitosamente sin advertencias críticas.
-- **Componentes React:** Vistas completas existentes en `src/views/` con lógica en `src/data/store.jsx`.
-- **Siguiente paso:** Fase 1 (Configuración de Supabase, esquemas DDL con RLS, RPCs, Storage y Seeds).
+## 3. Resumen de Estado de Fases (Fases 0 a 9)
+
+- **Fase 0 (Línea Base y Trazabilidad):** 🟢 Completada.
+- **Fase 1 (Esquema Supabase, RLS, Storage y Seeds):** 🟢 Completada.
+- **Fase 2 (Registro y Login OTP 6 dígitos):** 🟢 Completada. Conectado a Gmail SMTP (`kampuz.app.pe@gmail.com`).
+- **Fase 3 (Perfil, Recorte Foto <300KB y Habilidades Derivadas):** 🟢 Completada.
+- **Fase 4 (Explorar, Solicitudes con Motivo y Chat 1 a 1 Realtime):** 🟢 Completada.
+- **Fase 5 (Espacios, Talleres Oficiales, Chat Grupal y Propuestas):** 🟢 Completada.
+- **Fase 6 (Encuestas con Filtro Seguro, Umbral Ley 29733 y Resultados):** 🟢 Completada.
+- **Fase 7 (Consultas Agrupadas, Moderación Docente y Estrellas):** 🟢 Completada.
+- **Fase 8 (APK Android con Capacitor, Iconos/Splash y CI/CD):** 🟢 Completada. Target SDK 36.
+- **Fase 9 (Pulido para la Demo, Offline Banner y Guía del Piloto):** 🟢 Completada.
+  - Detección de conectividad sin internet (`OfflineBanner`).
+  - Documento `docs/GUIA_PILOTO.md` para los 10 estudiantes de prueba.
+  - Tabla completa de pantallas M01–M33 auditada y validada.
+- **Siguiente paso:** Fase 10 (Preparación para Google Play Store, borrado de cuenta y política de privacidad).

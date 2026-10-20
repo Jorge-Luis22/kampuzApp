@@ -171,7 +171,6 @@ export default function OnboardingFlow() {
         });
         setCurrentScreen('app');
       } else {
-        // Usuario autenticado pero sin perfil completado
         setUser({
           id: authUser.id,
           correoInstitucional: authUser.email,
@@ -237,7 +236,6 @@ export default function OnboardingFlow() {
         return;
       }
 
-      // Si requiere verificar con código enviado al correo
       setResendCooldown(30);
       setOtpCode(Array(6).fill(''));
       setIsResetFlow(false);
@@ -434,357 +432,7 @@ export default function OnboardingFlow() {
   };
 
   // =========================================================================
-  // PANTALLA 1: ACCESO (LOGIN / REGISTRO / RECUPERAR)
-  // =========================================================================
-  if (currentScreen === 'm01_bienvenida') {
-    return (
-      <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
-        <div className="pt-2">
-          {/* Logo y Marca */}
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="w-12 h-12 rounded-2xl bg-brand-primary flex items-center justify-center font-black text-white text-2xl tracking-tight shadow-md">
-              Z
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="font-black text-xl tracking-wide text-brand-primary dark:text-teal-300">KAMPUZ</span>
-                <span className="text-[11px] bg-accent/15 text-accent font-extrabold px-2 py-0.5 rounded-md">UTP</span>
-              </div>
-              <p className="text-xs text-ink-soft dark:text-ink-muted font-medium">
-                Comunidad Universitaria de Aprendizaje
-              </p>
-            </div>
-          </div>
-
-          {/* Selector de Pestañas: Iniciar Sesión vs Crear Cuenta */}
-          {authMode !== 'recuperar' ? (
-            <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1 rounded-2xl mb-4 border border-line dark:border-line-dark">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('login');
-                  setErrorMsg('');
-                  setSuccessMsg('');
-                }}
-                className={`flex-1 py-2 text-xs font-black rounded-xl transition ${
-                  authMode === 'login'
-                    ? 'bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light shadow-sm'
-                    : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
-                }`}
-              >
-                Iniciar Sesión
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('registro');
-                  setErrorMsg('');
-                  setSuccessMsg('');
-                }}
-                className={`flex-1 py-2 text-xs font-black rounded-xl transition ${
-                  authMode === 'registro'
-                    ? 'bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light shadow-sm'
-                    : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
-                }`}
-              >
-                Crear Cuenta
-              </button>
-            </div>
-          ) : (
-            <div className="mb-3">
-              <button
-                onClick={() => {
-                  setAuthMode('login');
-                  setErrorMsg('');
-                }}
-                className="inline-flex items-center space-x-1.5 text-xs text-ink-muted hover:text-ink dark:hover:text-ink-light font-bold"
-              >
-                <ArrowLeft size={14} />
-                <span>Volver a Iniciar Sesión</span>
-              </button>
-            </div>
-          )}
-
-          {/* Feedback Messages */}
-          {errorMsg && (
-            <div className="mb-3 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl flex items-start space-x-2 text-xs text-rose-700 dark:text-rose-300">
-              <AlertCircle size={16} className="shrink-0 mt-0.5" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-          {successMsg && (
-            <div className="mb-3 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-start space-x-2 text-xs text-emerald-800 dark:text-emerald-200">
-              <Check size={16} className="shrink-0 mt-0.5" />
-              <span>{successMsg}</span>
-            </div>
-          )}
-
-          {/* FORMULARIO: INICIAR SESIÓN */}
-          {authMode === 'login' && (
-            <form onSubmit={handleLoginSubmit} className="space-y-3.5">
-              <div>
-                <label className="text-xs font-black text-ink dark:text-ink-light mb-1 block">
-                  Usuario o Correo Institucional
-                </label>
-                <div className="relative">
-                  <User size={16} className="absolute left-3.5 top-3.5 text-ink-muted" />
-                  <input
-                    type="text"
-                    required
-                    autoFocus
-                    placeholder="ej. jorge_utp o u2320732@utp.edu.pe"
-                    value={loginIdentifier}
-                    onChange={(e) => setLoginIdentifier(e.target.value)}
-                    className="w-full text-xs pl-10 pr-3 py-3 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-black text-ink dark:text-ink-light">
-                    Contraseña
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthMode('recuperar');
-                      setErrorMsg('');
-                      setSuccessMsg('');
-                    }}
-                    className="text-[11px] text-accent hover:underline font-bold"
-                  >
-                    ¿Olvidaste tu contraseña?
-                  </button>
-                </div>
-                <div className="relative">
-                  <Lock size={16} className="absolute left-3.5 top-3.5 text-ink-muted" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="Tu contraseña secreta"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    className="w-full text-xs pl-10 pr-10 py-3 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-3.5 text-ink-muted hover:text-ink"
-                  >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition mt-2"
-              >
-                {isLoading ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <>
-                    <span>Entrar a Kampuz</span>
-                    <ArrowRight size={16} />
-                  </>
-                )}
-              </button>
-            </form>
-          )}
-
-          {/* FORMULARIO: CREAR CUENTA */}
-          {authMode === 'registro' && (
-            <form onSubmit={handleRegisterSubmit} className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
-                    Nombres
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Jorge"
-                    value={regNombre}
-                    onChange={(e) => setRegNombre(e.target.value)}
-                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
-                    Apellidos
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Zegarra"
-                    value={regApellido}
-                    onChange={(e) => setRegApellido(e.target.value)}
-                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
-                  Nombre de usuario único
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-xs font-bold text-ink-muted">@</span>
-                  <input
-                    type="text"
-                    required
-                    placeholder="jorge_utp"
-                    value={regUsuario}
-                    onChange={(e) => setRegUsuario(e.target.value)}
-                    className="w-full text-xs pl-7 pr-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light lowercase"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
-                  Correo Institucional (@utp.edu.pe)
-                </label>
-                <div className="relative">
-                  <Mail size={15} className="absolute left-3 top-3 text-ink-muted" />
-                  <input
-                    type="email"
-                    required
-                    placeholder="u2320732@utp.edu.pe"
-                    value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value)}
-                    className="w-full text-xs pl-9 pr-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
-                  Crear Contraseña (mínimo 6 caracteres)
-                </label>
-                <div className="relative">
-                  <Lock size={15} className="absolute left-3 top-3 text-ink-muted" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="••••••••"
-                    value={regPassword}
-                    onChange={(e) => setRegPassword(e.target.value)}
-                    className="w-full text-xs pl-9 pr-9 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 text-ink-muted hover:text-ink"
-                  >
-                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="pt-1 flex items-start space-x-2">
-                <input
-                  type="checkbox"
-                  id="terminos"
-                  checked={regAceptaTerminos}
-                  onChange={(e) => setRegAceptaTerminos(e.target.checked)}
-                  className="w-4 h-4 mt-0.5 accent-accent rounded cursor-pointer shrink-0"
-                />
-                <label htmlFor="terminos" className="text-[11px] text-ink-soft dark:text-ink-muted leading-tight cursor-pointer">
-                  Acepto los Términos de Servicio y la{' '}
-                  <a href="/privacidad.html" target="_blank" rel="noopener noreferrer" className="text-accent font-bold hover:underline">
-                    Política de Privacidad
-                  </a>.
-                </label>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading || !regAceptaTerminos}
-                className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
-              >
-                {isLoading ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <>
-                    <span>Crear cuenta y verificar</span>
-                    <ArrowRight size={16} />
-                  </>
-                )}
-              </button>
-            </form>
-          )}
-
-          {/* FORMULARIO: RECUPERAR CONTRASEÑA */}
-          {authMode === 'recuperar' && (
-            <form onSubmit={handleForgotPasswordSubmit} className="space-y-3.5">
-              <div>
-                <h3 className="text-sm font-black text-ink dark:text-ink-light mb-1">
-                  Recuperar tu contraseña
-                </h3>
-                <p className="text-xs text-ink-muted mb-3">
-                  Te enviaremos un código de seguridad de 6 dígitos a tu correo institucional para que elijas una nueva contraseña.
-                </p>
-                <div className="relative">
-                  <Mail size={16} className="absolute left-3.5 top-3.5 text-ink-muted" />
-                  <input
-                    type="text"
-                    required
-                    autoFocus
-                    placeholder="Tu usuario o correo @utp.edu.pe"
-                    value={resetIdentifier}
-                    onChange={(e) => setResetIdentifier(e.target.value)}
-                    className="w-full text-xs pl-10 pr-3 py-3 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3.5 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
-              >
-                {isLoading ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <>
-                    <span>Enviar código de recuperación</span>
-                    <KeyRound size={16} />
-                  </>
-                )}
-              </button>
-            </form>
-          )}
-
-          {/* Acceso Rápido Demo (solo si modo demo está encendido) */}
-          {isModoDemo && (
-            <div className="pt-4 border-t border-line dark:border-line-dark mt-4">
-              <button
-                type="button"
-                onClick={loginDirectoDemo}
-                className="w-full py-2 bg-slate-100 dark:bg-slate-800 text-ink-muted hover:text-ink text-xs font-bold rounded-xl transition flex items-center justify-center space-x-1"
-              >
-                <Sparkles size={14} className="text-amber-500" />
-                <span>Acceder con alumno de prueba (Demo)</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Pie de pantalla */}
-        <div className="pt-3 text-center">
-          <p className="text-[11px] text-ink-muted font-medium">
-            Comunidad exclusiva para estudiantes de la Universidad Tecnológica del Perú.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // =========================================================================
-  // PANTALLA 2: VERIFICACIÓN OTP 6 DÍGITOS
+  // SUBPANTALLA: VERIFICACIÓN OTP 6 DÍGITOS
   // =========================================================================
   if (currentScreen === 'm02_otp') {
     const targetEmail = isResetFlow ? resetEmailTarget : regEmail;
@@ -910,7 +558,7 @@ export default function OnboardingFlow() {
   }
 
   // =========================================================================
-  // PANTALLA 3: CONFIGURAR PERFIL ACADÉMICO (DATOS E INTERESES)
+  // SUBPANTALLA: CONFIGURAR PERFIL ACADÉMICO (DATOS E INTERESES)
   // =========================================================================
   if (currentScreen === 'm03_onboarding' || currentScreen === 'm04_intereses' || currentScreen === 'm05_consentimientos') {
     return (
@@ -978,7 +626,7 @@ export default function OnboardingFlow() {
                 className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light focus:outline-none focus:ring-2 focus:ring-accent"
               >
                 {CARRERAS_UTP.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c.id || c.nombre} value={c.nombre}>{c.nombre}</option>
                 ))}
               </select>
             </div>
@@ -1074,5 +722,352 @@ export default function OnboardingFlow() {
     );
   }
 
-  return null;
+  // =========================================================================
+  // PANTALLA PRINCIPAL POR DEFECTO: ACCESO (LOGIN / REGISTRO / RECUPERAR)
+  // Siempre visible si el usuario no tiene sesión activa (nunca queda en blanco)
+  // =========================================================================
+  return (
+    <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
+      <div className="pt-2">
+        {/* Logo y Marca */}
+        <div className="flex items-center space-x-3 mb-4">
+          <div className="w-12 h-12 rounded-2xl bg-brand-primary flex items-center justify-center font-black text-white text-2xl tracking-tight shadow-md">
+            Z
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="font-black text-xl tracking-wide text-brand-primary dark:text-teal-300">KAMPUZ</span>
+              <span className="text-[11px] bg-accent/15 text-accent font-extrabold px-2 py-0.5 rounded-md">UTP</span>
+            </div>
+            <p className="text-xs text-ink-soft dark:text-ink-muted font-medium">
+              Comunidad Universitaria de Aprendizaje
+            </p>
+          </div>
+        </div>
+
+        {/* Selector de Pestañas: Iniciar Sesión vs Crear Cuenta */}
+        {authMode !== 'recuperar' ? (
+          <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1 rounded-2xl mb-4 border border-line dark:border-line-dark">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('login');
+                setErrorMsg('');
+                setSuccessMsg('');
+              }}
+              className={`flex-1 py-2 text-xs font-black rounded-xl transition ${
+                authMode === 'login'
+                  ? 'bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light shadow-sm'
+                  : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
+              }`}
+            >
+              Iniciar Sesión
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('registro');
+                setErrorMsg('');
+                setSuccessMsg('');
+              }}
+              className={`flex-1 py-2 text-xs font-black rounded-xl transition ${
+                authMode === 'registro'
+                  ? 'bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light shadow-sm'
+                  : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
+              }`}
+            >
+              Crear Cuenta
+            </button>
+          </div>
+        ) : (
+          <div className="mb-3">
+            <button
+              onClick={() => {
+                setAuthMode('login');
+                setErrorMsg('');
+              }}
+              className="inline-flex items-center space-x-1.5 text-xs text-ink-muted hover:text-ink dark:hover:text-ink-light font-bold"
+            >
+              <ArrowLeft size={14} />
+              <span>Volver a Iniciar Sesión</span>
+            </button>
+          </div>
+        )}
+
+        {/* Feedback Messages */}
+        {errorMsg && (
+          <div className="mb-3 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl flex items-start space-x-2 text-xs text-rose-700 dark:text-rose-300">
+            <AlertCircle size={16} className="shrink-0 mt-0.5" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+        {successMsg && (
+          <div className="mb-3 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-start space-x-2 text-xs text-emerald-800 dark:text-emerald-200">
+            <Check size={16} className="shrink-0 mt-0.5" />
+            <span>{successMsg}</span>
+          </div>
+        )}
+
+        {/* FORMULARIO: INICIAR SESIÓN */}
+        {authMode === 'login' && (
+          <form onSubmit={handleLoginSubmit} className="space-y-3.5">
+            <div>
+              <label className="text-xs font-black text-ink dark:text-ink-light mb-1 block">
+                Usuario o Correo Institucional
+              </label>
+              <div className="relative">
+                <User size={16} className="absolute left-3.5 top-3.5 text-ink-muted" />
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="ej. jorge_utp o u2320732@utp.edu.pe"
+                  value={loginIdentifier}
+                  onChange={(e) => setLoginIdentifier(e.target.value)}
+                  className="w-full text-xs pl-10 pr-3 py-3 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-black text-ink dark:text-ink-light">
+                  Contraseña
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('recuperar');
+                    setErrorMsg('');
+                    setSuccessMsg('');
+                  }}
+                  className="text-[11px] text-accent hover:underline font-bold"
+                >
+                  ¿Olvidaste tu contraseña?
+                </button>
+              </div>
+              <div className="relative">
+                <Lock size={16} className="absolute left-3.5 top-3.5 text-ink-muted" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  placeholder="Tu contraseña secreta"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className="w-full text-xs pl-10 pr-10 py-3 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-3.5 text-ink-muted hover:text-ink"
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition mt-2"
+            >
+              {isLoading ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <>
+                  <span>Entrar a Kampuz</span>
+                  <ArrowRight size={16} />
+                </>
+              )}
+            </button>
+          </form>
+        )}
+
+        {/* FORMULARIO: CREAR CUENTA */}
+        {authMode === 'registro' && (
+          <form onSubmit={handleRegisterSubmit} className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
+                  Nombres
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Jorge"
+                  value={regNombre}
+                  onChange={(e) => setRegNombre(e.target.value)}
+                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
+                  Apellidos
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Zegarra"
+                  value={regApellido}
+                  onChange={(e) => setRegApellido(e.target.value)}
+                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
+                Nombre de usuario único
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-xs font-bold text-ink-muted">@</span>
+                <input
+                  type="text"
+                  required
+                  placeholder="jorge_utp"
+                  value={regUsuario}
+                  onChange={(e) => setRegUsuario(e.target.value)}
+                  className="w-full text-xs pl-7 pr-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light lowercase"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
+                Correo Institucional (@utp.edu.pe)
+              </label>
+              <div className="relative">
+                <Mail size={15} className="absolute left-3 top-3 text-ink-muted" />
+                <input
+                  type="email"
+                  required
+                  placeholder="u2320732@utp.edu.pe"
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                  className="w-full text-xs pl-9 pr-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-black text-ink dark:text-ink-light mb-1 block">
+                Crear Contraseña (mínimo 6 caracteres)
+              </label>
+              <div className="relative">
+                <Lock size={15} className="absolute left-3 top-3 text-ink-muted" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  placeholder="••••••••"
+                  value={regPassword}
+                  onChange={(e) => setRegPassword(e.target.value)}
+                  className="w-full text-xs pl-9 pr-9 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3 text-ink-muted hover:text-ink"
+                >
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-1 flex items-start space-x-2">
+              <input
+                type="checkbox"
+                id="terminos"
+                checked={regAceptaTerminos}
+                onChange={(e) => setRegAceptaTerminos(e.target.checked)}
+                className="w-4 h-4 mt-0.5 accent-accent rounded cursor-pointer shrink-0"
+              />
+              <label htmlFor="terminos" className="text-[11px] text-ink-soft dark:text-ink-muted leading-tight cursor-pointer">
+                Acepto los Términos de Servicio y la{' '}
+                <a href="/privacidad.html" target="_blank" rel="noopener noreferrer" className="text-accent font-bold hover:underline">
+                  Política de Privacidad
+                </a>.
+              </label>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading || !regAceptaTerminos}
+              className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
+            >
+              {isLoading ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <>
+                  <span>Crear cuenta y verificar</span>
+                  <ArrowRight size={16} />
+                </>
+              )}
+            </button>
+          </form>
+        )}
+
+        {/* FORMULARIO: RECUPERAR CONTRASEÑA */}
+        {authMode === 'recuperar' && (
+          <form onSubmit={handleForgotPasswordSubmit} className="space-y-3.5">
+            <div>
+              <h3 className="text-sm font-black text-ink dark:text-ink-light mb-1">
+                Recuperar tu contraseña
+              </h3>
+              <p className="text-xs text-ink-muted mb-3">
+                Te enviaremos un código de seguridad de 6 dígitos a tu correo institucional para que elijas una nueva contraseña.
+              </p>
+              <div className="relative">
+                <Mail size={16} className="absolute left-3.5 top-3.5 text-ink-muted" />
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="Tu usuario o correo @utp.edu.pe"
+                  value={resetIdentifier}
+                  onChange={(e) => setResetIdentifier(e.target.value)}
+                  className="w-full text-xs pl-10 pr-3 py-3 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-3.5 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
+            >
+              {isLoading ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <>
+                  <span>Enviar código de recuperación</span>
+                  <KeyRound size={16} />
+                </>
+              )}
+            </button>
+          </form>
+        )}
+
+        {/* Acceso Rápido Demo (solo si modo demo está encendido) */}
+        {isModoDemo && (
+          <div className="pt-4 border-t border-line dark:border-line-dark mt-4">
+            <button
+              type="button"
+              onClick={loginDirectoDemo}
+              className="w-full py-2 bg-slate-100 dark:bg-slate-800 text-ink-muted hover:text-ink text-xs font-bold rounded-xl transition flex items-center justify-center space-x-1"
+            >
+              <Sparkles size={14} className="text-amber-500" />
+              <span>Acceder con alumno de prueba (Demo)</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Pie de pantalla */}
+      <div className="pt-3 text-center">
+        <p className="text-[11px] text-ink-muted font-medium">
+          Comunidad exclusiva para estudiantes de la Universidad Tecnológica del Perú.
+        </p>
+      </div>
+    </div>
+  );
 }

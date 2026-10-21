@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ErrorConReintento from './ErrorConReintento';
 import {
   Shield,
   ShieldAlert,
@@ -17,7 +18,6 @@ import {
 import {
   NORMAS_CONVIVENCIA,
   enviarReporte,
-  bloquearUsuario,
   desbloquearUsuario,
   fetchUsuariosBloqueados,
   fetchReportesModeracion,
@@ -43,9 +43,11 @@ export default function CentroSeguridadModal({ isOpen, onClose, currentUser }) {
   // Moderación
   const [reportesModeracion, setReportesModeracion] = useState([]);
   const [isLoadingModeracion, setIsLoadingModeracion] = useState(false);
+  const [errorSeguridad, setErrorSeguridad] = useState('');
 
   useEffect(() => {
     if (!isOpen) return;
+    setErrorSeguridad('');
     if (subTab === 'bloqueados') {
       cargarBloqueados();
     } else if (subTab === 'moderacion') {
@@ -57,10 +59,9 @@ export default function CentroSeguridadModal({ isOpen, onClose, currentUser }) {
     if (!currentUser?.id) return;
     setIsLoadingBloqueados(true);
     try {
-      const data = await fetchUsuariosBloqueados(currentUser.id);
-      setBloqueados(data);
+      setBloqueados(await fetchUsuariosBloqueados());
     } catch (err) {
-      console.error(err);
+      setErrorSeguridad(err.message);
     } finally {
       setIsLoadingBloqueados(false);
     }
@@ -69,10 +70,9 @@ export default function CentroSeguridadModal({ isOpen, onClose, currentUser }) {
   const cargarModeracion = async () => {
     setIsLoadingModeracion(true);
     try {
-      const data = await fetchReportesModeracion();
-      setReportesModeracion(data);
+      setReportesModeracion(await fetchReportesModeracion());
     } catch (err) {
-      console.error(err);
+      setErrorSeguridad(err.message);
     } finally {
       setIsLoadingModeracion(false);
     }
@@ -82,12 +82,10 @@ export default function CentroSeguridadModal({ isOpen, onClose, currentUser }) {
     if (!currentUser?.id) return;
     setUnblockingId(bloqueadoId);
     try {
-      const res = await desbloquearUsuario(currentUser.id, bloqueadoId);
-      if (res.success) {
-        setBloqueados(prev => prev.filter(b => b.bloqueado_id !== bloqueadoId));
-      }
+      await desbloquearUsuario(bloqueadoId);
+      setBloqueados(prev => prev.filter(b => b.bloqueado_id !== bloqueadoId));
     } catch (err) {
-      console.error(err);
+      setErrorSeguridad(err.message);
     } finally {
       setUnblockingId(null);
     }
@@ -99,22 +97,18 @@ export default function CentroSeguridadModal({ isOpen, onClose, currentUser }) {
 
     setIsSendingReport(true);
     try {
-      const res = await enviarReporte({
-        autorId: currentUser.id,
+      await enviarReporte({
         tipo: reportTipo,
         objetoId: reportObjetoId.trim(),
         motivo: reportMotivo,
         detalle: reportDetalle.trim()
       });
-
-      if (res.success) {
-        setReportSuccess(true);
-        setReportObjetoId('');
-        setReportDetalle('');
-        setTimeout(() => setReportSuccess(false), 4000);
-      }
+      setReportSuccess(true);
+      setReportObjetoId('');
+      setReportDetalle('');
+      setTimeout(() => setReportSuccess(false), 4000);
     } catch (err) {
-      console.error(err);
+      setErrorSeguridad(err.message);
     } finally {
       setIsSendingReport(false);
     }
@@ -127,7 +121,7 @@ export default function CentroSeguridadModal({ isOpen, onClose, currentUser }) {
         prev.map(r => (r.id === reporteId ? { ...r, estado: nuevoEstado } : r))
       );
     } catch (err) {
-      console.error(err);
+      setErrorSeguridad(err.message);
     }
   };
 
@@ -207,6 +201,7 @@ export default function CentroSeguridadModal({ isOpen, onClose, currentUser }) {
 
         {/* Contenido scrolleable */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+          {errorSeguridad && <ErrorConReintento compacto mensaje={errorSeguridad} />}
           {/* 1. NORMAS */}
           {subTab === 'normas' && (
             <div className="space-y-3.5">

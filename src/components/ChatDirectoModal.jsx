@@ -10,15 +10,20 @@ import {
   X,
   Loader2,
   AlertCircle,
-  Sparkles
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import {
   fetchMensajesDirectos,
   enviarMensajeDirecto,
   marcarMensajesComoLeidos,
-  subscribeToConversacion
+  subscribeToConversacion,
+  fusionarMensaje
 } from '../lib/chat';
 import { reportarContenido, bloquearUsuario } from '../lib/explore';
+import ErrorConReintento from './ErrorConReintento';
+
+const nuevoTempId = () => `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 export default function ChatDirectoModal({
   conversacionId,
@@ -30,7 +35,7 @@ export default function ChatDirectoModal({
   const [mensajes, setMensajes] = useState([]);
   const [nuevoTexto, setNuevoTexto] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [isSending, setIsSending] = useState(false);
+  const [errorCarga, setErrorCarga] = useState('');
 
   // Menú de opciones (Reportar / Bloquear)
   const [showMenu, setShowMenu] = useState(false);
@@ -39,135 +44,119 @@ export default function ChatDirectoModal({
   const [reportDetalle, setReportDetalle] = useState('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [reportSuccess, setReportSuccess] = useState(false);
+  const [reportError, setReportError] = useState('');
 
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [isSubmittingBlock, setIsSubmittingBlock] = useState(false);
+  const [blockError, setBlockError] = useState('');
 
   const messagesEndRef = useRef(null);
   const menuRef = useRef(null);
+  const miId = currentUser?.id;
 
-  // Formatear hora (ej. 14:32)
   const formatHora = (isoDate) => {
     if (!isoDate) return '';
     try {
-      const d = new Date(isoDate);
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return new Date(isoDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } catch (e) {
       return '';
     }
   };
 
-  // Scroll al final
   const scrollToBottom = (smooth = true) => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({
-        behavior: smooth ? 'smooth' : 'auto'
-      });
+    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+  };
+
+  const marcarLeidos = () => {
+    marcarMensajesComoLeidos(conversacionId).catch((err) =>
+      console.warn('[Kampuz] No se pudo marcar como leído:', err.message)
+    );
+  };
+
+  const cargarHistorial = async () => {
+    setIsLoading(true);
+    setErrorCarga('');
+    try {
+      const historial = await fetchMensajesDirectos(conversacionId);
+      // Conserva los optimistas que aún no tienen respuesta del servidor
+      setMensajes((prev) => historial.reduce((lista, m) => fusionarMensaje(lista, m, { miId }), prev.filter((m) => m.optimista)));
+      setTimeout(() => scrollToBottom(false), 50);
+      marcarLeidos();
+    } catch (err) {
+      setErrorCarga(err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Cargar historial y suscribir a Realtime
+  // Historial + Realtime (Supabase). Sin BroadcastChannel ni localStorage.
   useEffect(() => {
-    if (!conversacionId) return;
+    if (!conversacionId) return undefined;
+    setMensajes([]);
+    cargarHistorial();
 
-    let isMounted = true;
-
-    async function loadChat() {
-      setIsLoading(true);
-      const historial = await fetchMensajesDirectos(conversacionId);
-      if (isMounted) {
-        setMensajes(historial);
-        setIsLoading(false);
-        setTimeout(() => scrollToBottom(false), 50);
+    const unsubscribe = subscribeToConversacion(conversacionId, {
+      onInsert: (nuevoMsg) => {
+        setMensajes((prev) => fusionarMensaje(prev, nuevoMsg, { miId }));
+        if (nuevoMsg.autor_id !== miId) marcarLeidos();
+        setTimeout(() => scrollToBottom(true), 80);
+      },
+      onUpdate: (actualizado) => {
+        setMensajes((prev) => prev.map((m) => (m.id === actualizado.id ? { ...m, ...actualizado } : m)));
       }
-      // Marcar como leídos
-      if (currentUser?.id) {
-        marcarMensajesComoLeidos(conversacionId, currentUser.id);
-      }
-    }
-
-    loadChat();
-
-    // Suscripción Realtime a nuevos mensajes
-    const unsubscribe = subscribeToConversacion(conversacionId, (nuevoMsg) => {
-      setMensajes((prev) => {
-        // Evitar duplicar si fue un envío optimista
-        const sinOptimista = prev.filter(
-          (m) => !(m.isOptimistic && m.texto === nuevoMsg.texto && m.autor_id === nuevoMsg.autor_id)
-        );
-        if (sinOptimista.some((m) => m.id === nuevoMsg.id)) {
-          return prev;
-        }
-        return [...sinOptimista, nuevoMsg];
-      });
-
-      // Si el mensaje es del otro usuario, marcarlo leído
-      if (nuevoMsg.autor_id !== currentUser?.id && currentUser?.id) {
-        marcarMensajesComoLeidos(conversacionId, currentUser.id);
-      }
-
-      setTimeout(() => scrollToBottom(true), 100);
     });
 
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, [conversacionId, currentUser?.id]);
+    return () => unsubscribe();
+  }, [conversacionId, miId]);
 
-  // Manejo de envío optimista
-  const handleEnviar = async (e) => {
-    if (e) e.preventDefault();
-    const texto = nuevoTexto.trim();
-    if (!texto || isSending) return;
-
-    const tempId = 'temp_' + Date.now();
-    const mensajeOptimista = {
-      id: tempId,
-      conversacion_id: conversacionId,
-      autor_id: currentUser.id,
-      texto,
-      leido: false,
-      creado_en: new Date().toISOString(),
-      isOptimistic: true
-    };
-
-    // Agregar optimistamente a la vista
-    setMensajes((prev) => [...prev, mensajeOptimista]);
-    setNuevoTexto('');
-    setTimeout(() => scrollToBottom(true), 50);
-
-    setIsSending(true);
+  // Envío optimista: aparece al instante con id temporal y se reemplaza por el del servidor.
+  const enviar = async (texto, tempId) => {
+    setMensajes((prev) => prev.map((m) => (m.id === tempId ? { ...m, error: false, enviando: true } : m)));
     try {
-      const res = await enviarMensajeDirecto({
-        conversacionId,
-        autorId: currentUser.id,
-        texto
-      });
-
-      if (res.success && res.mensaje) {
-        setMensajes((prev) =>
-          prev.map((m) => (m.id === tempId ? res.mensaje : m))
-        );
-      }
+      const guardado = await enviarMensajeDirecto({ conversacionId, texto });
+      setMensajes((prev) => fusionarMensaje(prev, guardado, { tempId, miId }));
     } catch (err) {
-      console.error('Error al enviar mensaje directo:', err);
-    } finally {
-      setIsSending(false);
+      setMensajes((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, enviando: false, error: true, errorMsg: err.message } : m))
+      );
     }
   };
 
-  // Reportar usuario o conversación
+  const handleEnviar = (e) => {
+    if (e) e.preventDefault();
+    const texto = nuevoTexto.trim();
+    if (!texto) return;
+
+    const tempId = nuevoTempId();
+    setMensajes((prev) => [
+      ...prev,
+      {
+        id: tempId,
+        conversacion_id: conversacionId,
+        autor_id: miId,
+        texto,
+        leido: false,
+        creado_en: new Date().toISOString(),
+        optimista: true,
+        enviando: true
+      }
+    ]);
+    setNuevoTexto('');
+    setTimeout(() => scrollToBottom(true), 50);
+    enviar(texto, tempId);
+  };
+
+  const descartarMensaje = (tempId) => setMensajes((prev) => prev.filter((m) => m.id !== tempId));
+
   const handleConfirmReport = async () => {
     if (!reportDetalle.trim()) return;
     setIsSubmittingReport(true);
+    setReportError('');
     try {
-      const motivoCompleto = `${reportMotivo}: ${reportDetalle.trim()}`;
       await reportarContenido({
-        autorId: currentUser.id,
         tipo: 'mensaje_directo',
         objetoId: conversacionId,
-        motivo: motivoCompleto
+        motivo: `${reportMotivo}: ${reportDetalle.trim()}`
       });
       setReportSuccess(true);
       setTimeout(() => {
@@ -177,26 +166,23 @@ export default function ChatDirectoModal({
         setReportDetalle('');
       }, 1500);
     } catch (err) {
-      console.error(err);
+      setReportError(err.message);
     } finally {
       setIsSubmittingReport(false);
     }
   };
 
-  // Bloquear usuario
   const handleConfirmBlock = async () => {
     setIsSubmittingBlock(true);
+    setBlockError('');
     try {
-      await bloquearUsuario({
-        bloqueadorId: currentUser.id,
-        bloqueadoId: otherUser.id
-      });
+      await bloquearUsuario({ bloqueadoId: otherUser.id });
       setShowBlockModal(false);
       setShowMenu(false);
       if (onUserBlocked) onUserBlocked(otherUser.id);
       onClose();
     } catch (err) {
-      console.error(err);
+      setBlockError(err.message);
     } finally {
       setIsSubmittingBlock(false);
     }
@@ -298,6 +284,8 @@ export default function ChatDirectoModal({
               <Loader2 size={24} className="animate-spin text-accent" />
               <p className="text-xs font-semibold">Cargando mensajes directos...</p>
             </div>
+          ) : errorCarga ? (
+            <ErrorConReintento mensaje={errorCarga} onReintentar={cargarHistorial} />
           ) : mensajes.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center p-6 space-y-2">
               <div className="w-12 h-12 rounded-2xl bg-accent-soft text-accent flex items-center justify-center">
@@ -335,8 +323,12 @@ export default function ChatDirectoModal({
                     >
                       <span>{hora}</span>
                       {esPropio && (
-                        <span>
-                          {m.leido ? (
+                        <span title={m.enviando ? 'Enviando' : m.leido ? 'Leído' : 'Enviado'}>
+                          {m.enviando ? (
+                            <Loader2 size={12} className="animate-spin text-white/70" />
+                          ) : m.error ? (
+                            <AlertCircle size={13} className="text-rose-200" />
+                          ) : m.leido ? (
                             <CheckCheck size={13} className="text-sky-300" />
                           ) : (
                             <Check size={13} className="text-white/70" />
@@ -345,6 +337,18 @@ export default function ChatDirectoModal({
                       )}
                     </div>
                   </div>
+                  {m.error && (
+                    <div className="flex items-center space-x-2 mt-1 text-[11px] text-semantic-danger font-semibold">
+                      <span>No se envió.</span>
+                      <button onClick={() => enviar(m.texto, m.id)} className="underline font-bold flex items-center space-x-0.5">
+                        <RefreshCw size={11} />
+                        <span>Reintentar</span>
+                      </button>
+                      <button onClick={() => descartarMensaje(m.id)} className="text-ink-muted underline">
+                        Descartar
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })
@@ -363,20 +367,15 @@ export default function ChatDirectoModal({
             onChange={(e) => setNuevoTexto(e.target.value)}
             placeholder="Escribe un mensaje académico..."
             className="flex-1 bg-surface dark:bg-surface-dark px-4 py-2.5 text-sm font-medium text-ink dark:text-ink-light border border-line dark:border-line-dark rounded-2xl focus:outline-none focus:border-brand-primary"
-            maxLength={1000}
-            disabled={isSending}
+            maxLength={2000}
           />
           <button
             type="submit"
-            disabled={!nuevoTexto.trim() || isSending}
+            disabled={!nuevoTexto.trim()}
             className="w-10 h-10 rounded-2xl bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-40 text-white flex items-center justify-center shrink-0 shadow-sm transition active:scale-95"
             title="Enviar mensaje"
           >
-            {isSending ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
-              <Send size={18} />
-            )}
+            <Send size={18} />
           </button>
         </form>
       </div>
@@ -436,6 +435,8 @@ export default function ChatDirectoModal({
                   />
                 </div>
 
+                {reportError && <ErrorConReintento compacto mensaje={reportError} />}
+
                 <div className="flex items-center justify-end space-x-2 pt-1">
                   <button
                     onClick={() => setShowReportModal(false)}
@@ -473,6 +474,8 @@ export default function ChatDirectoModal({
                 Este estudiante no podrá enviarte mensajes, solicitudes ni ver tu perfil en Explorar.
               </p>
             </div>
+
+            {blockError && <ErrorConReintento compacto mensaje={blockError} />}
 
             <div className="flex items-center space-x-2 pt-2">
               <button

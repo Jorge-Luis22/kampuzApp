@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useStore } from '../data/store';
 import { CARRERAS_UTP, INTERESES_DISPONIBLES } from '../data/mockData';
 import {
@@ -7,11 +7,12 @@ import {
   enviarSolicitudMensaje,
   responderSolicitud,
   reportarContenido,
-  bloquearUsuario
+  bloquearUsuario,
+  subscribeToSolicitudes
 } from '../lib/explore';
-import { fetchConversaciones, getOrCreateConversacion } from '../lib/chat';
-import { subscribeToCampusEvents } from '../lib/campusStorage';
+import { fetchConversaciones, conversacionCon, subscribeToMisMensajes } from '../lib/chat';
 import ChatDirectoModal from '../components/ChatDirectoModal';
+import ErrorConReintento from '../components/ErrorConReintento';
 import {
   Search,
   UserPlus,
@@ -39,16 +40,20 @@ export default function ExplorarView() {
   // Perfiles de estudiantes
   const [perfiles, setPerfiles] = useState([]);
   const [isLoadingPerfiles, setIsLoadingPerfiles] = useState(true);
+  const [errorPerfiles, setErrorPerfiles] = useState('');
 
   // Solicitudes recibidas y enviadas
   const [solicitudesRecibidas, setSolicitudesRecibidas] = useState([]);
   const [solicitudesEnviadas, setSolicitudesEnviadas] = useState([]);
   const [tipoSolTab, setTipoSolTab] = useState('recibidas'); // 'recibidas' | 'enviadas'
   const [isLoadingSolicitudes, setIsLoadingSolicitudes] = useState(false);
+  const [errorSolicitudes, setErrorSolicitudes] = useState('');
+  const [respondiendoId, setRespondiendoId] = useState(null);
 
   // Conversaciones directas activas
   const [conversaciones, setConversaciones] = useState([]);
   const [isLoadingChats, setIsLoadingChats] = useState(false);
+  const [errorChats, setErrorChats] = useState('');
 
   // Modal: Perfil y Solicitud (M08)
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -61,22 +66,24 @@ export default function ExplorarView() {
   const [activeChat, setActiveChat] = useState(null); // { conversacionId, otherUser }
 
   // Modal: Reportar y Bloquear (M33)
-  const [targetUserOption, setTargetUserOption] = useState(null); // student being reported/blocked
+  const [targetUserOption, setTargetUserOption] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportMotivo, setReportMotivo] = useState('Acoso o mensaje no deseado');
   const [reportDetalle, setReportDetalle] = useState('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [reportSuccess, setReportSuccess] = useState(false);
+  const [reportError, setReportError] = useState('');
 
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [isSubmittingBlock, setIsSubmittingBlock] = useState(false);
+  const [blockError, setBlockError] = useState('');
 
-  // Cargar perfiles reales
-  const cargarPerfiles = async () => {
+  // Cargar perfiles reales (Supabase)
+  const cargarPerfiles = useCallback(async () => {
     setIsLoadingPerfiles(true);
+    setErrorPerfiles('');
     try {
       const data = await fetchPerfilesExplorar({
-        currentUserId: user?.id,
         searchTerm,
         carrera: filtroCarrera,
         ciclo: filtroCiclo,
@@ -84,59 +91,62 @@ export default function ExplorarView() {
       });
       setPerfiles(data);
     } catch (err) {
-      console.error('Error al cargar perfiles:', err);
+      setErrorPerfiles(err.message);
     } finally {
       setIsLoadingPerfiles(false);
     }
-  };
+  }, [searchTerm, filtroCarrera, filtroCiclo, filtroInteres]);
 
-  // Cargar solicitudes
-  const cargarSolicitudes = async () => {
-    if (!user?.id) return;
-    setIsLoadingSolicitudes(true);
+  const cargarSolicitudes = useCallback(async ({ silencioso = false } = {}) => {
+    if (!silencioso) setIsLoadingSolicitudes(true);
+    setErrorSolicitudes('');
     try {
-      const { recibidas, enviadas } = await fetchSolicitudes(user.id);
+      const { recibidas, enviadas } = await fetchSolicitudes();
       setSolicitudesRecibidas(recibidas);
       setSolicitudesEnviadas(enviadas);
     } catch (err) {
-      console.error('Error al cargar solicitudes:', err);
+      setErrorSolicitudes(err.message);
     } finally {
       setIsLoadingSolicitudes(false);
     }
-  };
+  }, []);
 
-  // Cargar conversaciones
-  const cargarConversaciones = async () => {
-    if (!user?.id) return;
-    setIsLoadingChats(true);
+  const cargarConversaciones = useCallback(async ({ silencioso = false } = {}) => {
+    if (!silencioso) setIsLoadingChats(true);
+    setErrorChats('');
     try {
-      const data = await fetchConversaciones(user.id);
-      setConversaciones(data);
+      setConversaciones(await fetchConversaciones());
     } catch (err) {
-      console.error('Error al cargar conversaciones:', err);
+      setErrorChats(err.message);
     } finally {
       setIsLoadingChats(false);
     }
-  };
+  }, []);
 
+  // Búsqueda con pequeña espera para no consultar en cada tecla
   useEffect(() => {
-    cargarPerfiles();
-  }, [searchTerm, filtroCarrera, filtroCiclo, filtroInteres, user?.id]);
+    const t = setTimeout(cargarPerfiles, searchTerm ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [cargarPerfiles, user?.id]);
 
-  // Suscripción a eventos en tiempo real entre pestañas y campus
+  // Contadores de las pestañas desde el inicio
   useEffect(() => {
-    const unsub = subscribeToCampusEvents((evt) => {
-      if (evt?.tipo === 'usuario_actualizado') {
-        cargarPerfiles();
-      } else if (evt?.tipo === 'solicitud_nueva' || evt?.tipo === 'solicitud_respondida') {
-        cargarSolicitudes();
-        cargarConversaciones();
-      } else if (evt?.tipo === 'conversacion_creada' || evt?.tipo === 'mensaje_directo') {
-        cargarConversaciones();
-      }
+    cargarSolicitudes({ silencioso: true });
+    cargarConversaciones({ silencioso: true });
+  }, [cargarSolicitudes, cargarConversaciones, user?.id]);
+
+  // Avisos en vivo (Supabase Realtime): solicitudes nuevas/aceptadas y mensajes nuevos
+  useEffect(() => {
+    const unsubSol = subscribeToSolicitudes(() => {
+      cargarSolicitudes({ silencioso: true });
+      cargarConversaciones({ silencioso: true });
     });
-    return unsub;
-  }, [user?.id]);
+    const unsubChats = subscribeToMisMensajes(() => cargarConversaciones({ silencioso: true }));
+    return () => {
+      unsubSol();
+      unsubChats();
+    };
+  }, [cargarSolicitudes, cargarConversaciones, user?.id]);
 
   useEffect(() => {
     if (activeSubTab === 'solicitudes') {
@@ -144,36 +154,25 @@ export default function ExplorarView() {
     } else if (activeSubTab === 'chats') {
       cargarConversaciones();
     }
-  }, [activeSubTab, user?.id]);
+  }, [activeSubTab, cargarSolicitudes, cargarConversaciones]);
 
   // Enviar solicitud con motivo académico (Spec 6.4)
   const handleEnviarSolicitud = async () => {
-    if (!motivoSolicitud.trim() || !selectedStudent || !user?.id) return;
+    if (!motivoSolicitud.trim() || !selectedStudent) return;
     setIsSendingSolicitud(true);
     setSolicitudError('');
 
     try {
-      const res = await enviarSolicitudMensaje({
-        deId: user.id,
-        aId: selectedStudent.id,
-        motivo: motivoSolicitud.trim()
-      });
-
-      if (!res.success) {
-        setSolicitudError(res.error || 'No se pudo enviar la solicitud.');
-        setIsSendingSolicitud(false);
-        return;
-      }
-
+      await enviarSolicitudMensaje({ aId: selectedStudent.id, motivo: motivoSolicitud.trim() });
       setSolicitudEnviadaSuccess(true);
+      cargarSolicitudes({ silencioso: true });
       setTimeout(() => {
         setSelectedStudent(null);
         setSolicitudEnviadaSuccess(false);
         setMotivoSolicitud('');
-        cargarSolicitudes();
       }, 1300);
     } catch (err) {
-      setSolicitudError('Error de red al enviar la solicitud.');
+      setSolicitudError(err.message);
     } finally {
       setIsSendingSolicitud(false);
     }
@@ -181,56 +180,50 @@ export default function ExplorarView() {
 
   // Aceptar o ignorar solicitud
   const handleResponderSolicitud = async (solicitud, accion) => {
+    setRespondiendoId(solicitud.id);
+    setErrorSolicitudes('');
     try {
-      const res = await responderSolicitud({
+      const conversacionId = await responderSolicitud({
         solicitudId: solicitud.id,
-        accion,
-        deId: solicitud.de_id,
-        aId: solicitud.a_id
+        aceptar: accion === 'aceptada'
       });
-
-      if (res.success && accion === 'aceptada' && res.conversacion) {
-        // Abrir chat directo automáticamente si fue aceptada
-        setActiveChat({
-          conversacionId: res.conversacion.id,
-          otherUser: solicitud.otroUsuario
-        });
+      if (accion === 'aceptada' && conversacionId) {
+        setActiveChat({ conversacionId, otherUser: solicitud.otroUsuario });
       }
-
-      cargarSolicitudes();
-      cargarConversaciones();
+      await Promise.all([cargarSolicitudes({ silencioso: true }), cargarConversaciones({ silencioso: true })]);
     } catch (err) {
-      console.error(err);
+      setErrorSolicitudes(err.message);
+    } finally {
+      setRespondiendoId(null);
     }
   };
 
   // Abrir chat directo con un estudiante ya conectado
   const handleAbrirChatConEstudiante = async (estudiante) => {
-    if (!user?.id || !estudiante?.id) return;
+    if (!estudiante?.id) return;
+    setErrorSolicitudes('');
     try {
-      const res = await getOrCreateConversacion(user.id, estudiante.id);
-      if (res.success && res.conversacion) {
-        setActiveChat({
-          conversacionId: res.conversacion.id,
-          otherUser: estudiante
-        });
+      const conversacionId = await conversacionCon(estudiante.id);
+      if (conversacionId) {
+        setActiveChat({ conversacionId, otherUser: estudiante });
+      } else {
+        setErrorSolicitudes('Aún no hay un chat abierto con este estudiante.');
       }
     } catch (err) {
-      console.error(err);
+      setErrorSolicitudes(err.message);
     }
   };
 
   // Confirmar reporte
   const handleReportarUsuario = async () => {
-    if (!reportDetalle.trim() || !targetUserOption || !user?.id) return;
+    if (!reportDetalle.trim() || !targetUserOption) return;
     setIsSubmittingReport(true);
+    setReportError('');
     try {
-      const motivoCompleto = `${reportMotivo}: ${reportDetalle.trim()}`;
       await reportarContenido({
-        autorId: user.id,
         tipo: 'perfil',
         objetoId: targetUserOption.id,
-        motivo: motivoCompleto
+        motivo: `${reportMotivo}: ${reportDetalle.trim()}`
       });
       setReportSuccess(true);
       setTimeout(() => {
@@ -240,7 +233,7 @@ export default function ExplorarView() {
         setTargetUserOption(null);
       }, 1400);
     } catch (err) {
-      console.error(err);
+      setReportError(err.message);
     } finally {
       setIsSubmittingReport(false);
     }
@@ -248,19 +241,19 @@ export default function ExplorarView() {
 
   // Confirmar bloqueo
   const handleBloquearUsuario = async () => {
-    if (!targetUserOption || !user?.id) return;
+    if (!targetUserOption) return;
     setIsSubmittingBlock(true);
+    setBlockError('');
     try {
-      await bloquearUsuario({
-        bloqueadorId: user.id,
-        bloqueadoId: targetUserOption.id
-      });
+      await bloquearUsuario({ bloqueadoId: targetUserOption.id });
       setShowBlockModal(false);
       setTargetUserOption(null);
       setSelectedStudent(null);
       cargarPerfiles();
+      cargarSolicitudes({ silencioso: true });
+      cargarConversaciones({ silencioso: true });
     } catch (err) {
-      console.error(err);
+      setBlockError(err.message);
     } finally {
       setIsSubmittingBlock(false);
     }
@@ -374,10 +367,34 @@ export default function ExplorarView() {
               <Loader2 size={24} className="animate-spin text-accent" />
               <p className="text-xs font-medium">Buscando compañeros en sede...</p>
             </div>
+          ) : errorPerfiles ? (
+            <ErrorConReintento mensaje={errorPerfiles} onReintentar={cargarPerfiles} />
           ) : perfiles.length === 0 ? (
             <div className="text-center py-10 px-4 bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark space-y-2">
-              <p className="text-sm font-bold text-ink dark:text-ink-light">No encontramos compañeros con estos filtros</p>
-              <p className="text-xs text-ink-muted">Prueba cambiando la carrera o el ciclo seleccionado.</p>
+              {searchTerm || filtroCarrera || filtroCiclo || filtroInteres ? (
+                <>
+                  <p className="text-sm font-bold text-ink dark:text-ink-light">No encontramos compañeros con estos filtros</p>
+                  <p className="text-xs text-ink-muted">Prueba cambiando la carrera o el ciclo seleccionado.</p>
+                  <button
+                    onClick={() => {
+                      setSearchTerm('');
+                      setFiltroCarrera('');
+                      setFiltroCiclo('');
+                      setFiltroInteres('');
+                    }}
+                    className="mt-1 px-4 py-2 bg-brand-primary text-white text-xs font-extrabold rounded-xl shadow-sm"
+                  >
+                    Quitar filtros
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-bold text-ink dark:text-ink-light">Aún no hay más compañeros en Kampuz</p>
+                  <p className="text-xs text-ink-muted">
+                    Invita a alguien de tu salón a registrarse con su correo @utp.edu.pe. Apenas cree su cuenta, aparecerá aquí.
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -515,6 +532,10 @@ export default function ExplorarView() {
             </button>
           </div>
 
+          {errorSolicitudes && (
+            <ErrorConReintento compacto mensaje={errorSolicitudes} onReintentar={() => cargarSolicitudes()} />
+          )}
+
           {isLoadingSolicitudes ? (
             <div className="flex flex-col items-center justify-center py-10 text-ink-muted">
               <Loader2 size={22} className="animate-spin text-accent" />
@@ -563,17 +584,22 @@ export default function ExplorarView() {
                     <div className="flex items-center justify-end space-x-2 pt-1">
                       <button
                         onClick={() => handleResponderSolicitud(sol, 'rechazada')}
-                        className="px-3 py-1.5 text-xs font-bold text-ink-muted hover:text-ink"
+                        disabled={respondiendoId === sol.id}
+                        className="px-3 py-1.5 text-xs font-bold text-ink-muted hover:text-ink disabled:opacity-50"
                       >
                         Ignorar
                       </button>
                       <button
                         onClick={() => handleResponderSolicitud(sol, 'aceptada')}
-                        className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-xs font-black rounded-xl shadow-sm transition"
+                        disabled={respondiendoId === sol.id}
+                        className="px-4 py-2 bg-accent hover:bg-accent-hover disabled:opacity-60 text-white text-xs font-black rounded-xl shadow-sm transition flex items-center space-x-1"
                       >
-                        Aceptar Conexión
+                        {respondiendoId === sol.id && <Loader2 size={13} className="animate-spin" />}
+                        <span>Aceptar Conexión</span>
                       </button>
                     </div>
+                  ) : sol.estado === 'rechazada' ? (
+                    <div className="pt-1.5 text-xs text-ink-muted font-semibold">Ignoraste esta solicitud.</div>
                   ) : (
                     <div className="pt-1.5 flex items-center justify-between text-xs">
                       <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center space-x-1">
@@ -674,7 +700,7 @@ export default function ExplorarView() {
               Conversaciones Privadas
             </h3>
             <button
-              onClick={cargarConversaciones}
+              onClick={() => cargarConversaciones()}
               className="text-xs text-brand-primary flex items-center space-x-1 font-bold"
             >
               <RefreshCw size={12} className={isLoadingChats ? 'animate-spin' : ''} />
@@ -687,6 +713,8 @@ export default function ExplorarView() {
               <Loader2 size={24} className="animate-spin text-accent" />
               <p className="text-xs font-semibold">Cargando tus conversaciones...</p>
             </div>
+          ) : errorChats ? (
+            <ErrorConReintento mensaje={errorChats} onReintentar={() => cargarConversaciones()} />
           ) : conversaciones.length === 0 ? (
             <div className="text-center py-12 bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark p-6 space-y-2">
               <MessageSquare size={32} className="mx-auto text-ink-muted/50" />
@@ -970,11 +998,14 @@ export default function ExplorarView() {
                   />
                 </div>
 
+                {reportError && <ErrorConReintento compacto mensaje={reportError} />}
+
                 <div className="flex items-center justify-end space-x-2 pt-1">
                   <button
                     onClick={() => {
                       setShowReportModal(false);
                       setTargetUserOption(null);
+                      setReportError('');
                     }}
                     className="px-3 py-2 text-xs font-bold text-ink-muted hover:text-ink"
                   >
@@ -1011,11 +1042,14 @@ export default function ExplorarView() {
               </p>
             </div>
 
+            {blockError && <ErrorConReintento compacto mensaje={blockError} />}
+
             <div className="flex items-center space-x-2 pt-2">
               <button
                 onClick={() => {
                   setShowBlockModal(false);
                   setTargetUserOption(null);
+                  setBlockError('');
                 }}
                 className="flex-1 py-2.5 text-xs font-bold text-ink-muted hover:text-ink bg-slate-100 dark:bg-slate-800 rounded-xl"
               >

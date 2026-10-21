@@ -1,11 +1,22 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../data/store';
+import { fetchBandejaEncuestas } from '../lib/surveys';
 import { Home, Compass, MessageSquare, ClipboardList, User } from 'lucide-react';
 
 export default function BottomNav() {
-  const { activeTab, setActiveTab, encuestasBandeja } = useStore();
+  const { activeTab, setActiveTab, user } = useStore();
+  const [pendientesCount, setPendientesCount] = useState(0);
 
-  const pendientesCount = encuestasBandeja.filter(e => e.estado === 'pendiente').length;
+  // Encuestas pendientes reales; se actualiza al cambiar de pestaña
+  useEffect(() => {
+    let vigente = true;
+    fetchBandejaEncuestas()
+      .then((bandeja) => vigente && setPendientesCount(bandeja.filter((e) => e.estado === 'pendiente').length))
+      .catch(() => {}); // el contador es secundario: la bandeja muestra su propio error
+    return () => {
+      vigente = false;
+    };
+  }, [activeTab, user?.id]);
 
   const tabs = [
     { id: 'inicio', label: 'Inicio', icon: Home },

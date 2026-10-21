@@ -1,278 +1,146 @@
-import { supabase, isSupabaseConfigured } from './supabase.js';
-import {
-  getConversacionesStorage,
-  getOrCreateConversacionStorage,
-  getMensajesDirectosStorage,
-  saveMensajeDirectoStorage,
-  marcarMensajesComoLeidosStorage,
-  subscribeToCampusEvents,
-  findRegisteredUser,
-  getRegisteredUsers
-} from './campusStorage.js';
+import { supabase, ejecutar, rpc, uidActual } from './supabase.js';
 
-const withTimeout = (promise, ms = 2000) => {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), ms))
-  ]);
-};
+// =============================================================================
+// Chat 1 a 1 (M10). Solo Supabase: la conversación existe únicamente si una
+// solicitud fue aceptada (RPC responder_solicitud). Realtime en mensajes_directos.
+// =============================================================================
+
+const CAMPOS_MENSAJE = 'id, conversacion_id, autor_id, texto, leido, creado_en';
 
 /**
- * Obtiene o crea la conversación directa 1 a 1 entre dos usuarios.
- * Normaliza los IDs ordenados para garantizar un único registro por pareja de interlocutores.
+ * Bandeja de chats con interlocutor, último mensaje y no leídos (una sola llamada).
  */
-export async function getOrCreateConversacion(userId, otherUserId) {
-  if (!userId || !otherUserId || userId === otherUserId) {
-    return { success: false, error: 'Parámetros inválidos para conversación.' };
-  }
-
-  // 1. Crear u obtener siempre del almacén local sincronizado
-  const localConv = getOrCreateConversacionStorage(userId, otherUserId);
-
-  // 2. Si Supabase está disponible, sincronizar
-  if (isSupabaseConfigured) {
-    const userA = userId < otherUserId ? userId : otherUserId;
-    const userB = userId < otherUserId ? otherUserId : userId;
-
-    try {
-      const { data: existente } = await withTimeout(
-        supabase
-          .from('conversaciones')
-          .select('*')
-          .eq('usuario_a_id', userA)
-          .eq('usuario_b_id', userB)
-          .maybeSingle(),
-        1800
-      );
-
-      if (existente) {
-        return { success: true, conversacion: existente };
-      }
-
-      const { data: creada, error: insertErr } = await withTimeout(
-        supabase
-          .from('conversaciones')
-          .insert({
-            usuario_a_id: userA,
-            usuario_b_id: userB,
-            abierta_en: new Date().toISOString(),
-            ultimo_mensaje_en: new Date().toISOString()
-          })
-          .select()
-          .single(),
-        1800
-      );
-
-      if (!insertErr && creada) {
-        return { success: true, conversacion: creada };
-      }
-    } catch (err) {}
-  }
-
-  return { success: true, conversacion: localConv };
+export async function fetchConversaciones() {
+  const filas = (await rpc('mis_conversaciones')) || [];
+  const uid = await uidActual();
+  return filas.map((c) => ({
+    id: c.id,
+    otherUser: {
+      id: c.otro_id,
+      nombre: c.otro_nombre,
+      apellido: c.otro_apellido,
+      usuario: c.otro_usuario,
+      foto_url: c.otro_foto_url,
+      carrera: c.otro_carrera,
+      ciclo: c.otro_ciclo,
+      sede: c.otro_sede
+    },
+    ultimoMensaje: c.ultimo_texto
+      ? `${c.ultimo_autor_id === uid ? 'Tú: ' : ''}${c.ultimo_texto}`
+      : 'Conexión aceptada. ¡Saluda!',
+    ultimoMensajeHora: c.ultimo_en,
+    noLeidos: c.no_leidos || 0
+  }));
 }
 
 /**
- * Carga la lista de conversaciones del alumno con el perfil del interlocutor,
- * el último mensaje enviado/recibido y el conteo de no leídos.
+ * Id de la conversación con otro alumno, o null si no están conectados.
  */
-export async function fetchConversaciones(userId) {
-  if (!userId) return [];
-
-  // 1. Obtener conversaciones locales
-  const locales = getConversacionesStorage().filter(
-    c => c.usuario_a_id === userId || c.usuario_b_id === userId
+export async function conversacionCon(otroId) {
+  const uid = await uidActual();
+  const [a, b] = uid < otroId ? [uid, otroId] : [otroId, uid];
+  const fila = await ejecutar(
+    supabase.from('conversaciones').select('id').eq('usuario_a_id', a).eq('usuario_b_id', b).maybeSingle()
   );
-
-  let convs = [...locales];
-
-  // 2. Si Supabase responde, fusionar
-  if (isSupabaseConfigured) {
-    try {
-      const { data: remotos } = await withTimeout(
-        supabase
-          .from('conversaciones')
-          .select('*')
-          .or(`usuario_a_id.eq.${userId},usuario_b_id.eq.${userId}`)
-          .order('ultimo_mensaje_en', { ascending: false }),
-        2000
-      );
-
-      if (remotos && remotos.length > 0) {
-        const ids = new Set(convs.map(c => c.id));
-        for (const r of remotos) {
-          if (!ids.has(r.id)) {
-            convs.push(r);
-          }
-        }
-      }
-    } catch (err) {}
-  }
-
-  // Enriquecer cada conversación
-  const enriquecidas = convs.map(c => {
-    const otherUserId = c.usuario_a_id === userId ? c.usuario_b_id : c.usuario_a_id;
-
-    // Buscar perfil del interlocutor
-    const perfil = findRegisteredUser(otherUserId);
-
-    // Obtener mensajes de la conversación
-    const msgs = getMensajesDirectosStorage(c.id);
-    const ultimoMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
-
-    const noLeidos = msgs.filter(m => m.autor_id !== userId && !m.leido).length;
-
-    return {
-      id: c.id,
-      otherUser: perfil || {
-        id: otherUserId,
-        nombre: 'Compañero UTP',
-        apellido: '',
-        usuario: 'estudiante',
-        carrera: 'Campus',
-        ciclo: 1,
-        sede: 'Lima Sur'
-      },
-      ultimoMensaje: ultimoMsg ? ultimoMsg.texto : 'Conversación iniciada',
-      ultimoMensajeHora: ultimoMsg ? ultimoMsg.creado_en : c.abierta_en,
-      noLeidos,
-      raw: c
-    };
-  });
-
-  return enriquecidas.sort((a, b) => new Date(b.ultimoMensajeHora) - new Date(a.ultimoMensajeHora));
+  return fila?.id || null;
 }
 
-/**
- * Carga el historial de mensajes de una conversación
- */
 export async function fetchMensajesDirectos(conversacionId) {
-  if (!conversacionId) return [];
-
-  // 1. Mensajes locales
-  let mensajes = getMensajesDirectosStorage(conversacionId);
-
-  // 2. Supabase si está disponible
-  if (isSupabaseConfigured) {
-    try {
-      const { data, error } = await withTimeout(
-        supabase
-          .from('mensajes_directos')
-          .select('*')
-          .eq('conversacion_id', conversacionId)
-          .order('creado_en', { ascending: true }),
-        2000
-      );
-
-      if (!error && data?.length) {
-        const ids = new Set(mensajes.map(m => m.id));
-        for (const m of data) {
-          if (!ids.has(m.id)) mensajes.push(m);
-        }
-      }
-    } catch (err) {}
-  }
-
-  return mensajes.sort((a, b) => new Date(a.creado_en) - new Date(b.creado_en));
+  const filas = await ejecutar(
+    supabase
+      .from('mensajes_directos')
+      .select(CAMPOS_MENSAJE)
+      .eq('conversacion_id', conversacionId)
+      .order('creado_en', { ascending: false })
+      .limit(300)
+  );
+  return (filas || []).reverse();
 }
 
 /**
- * Envía un mensaje directo dentro de una conversación
+ * Inserta el mensaje y devuelve la fila del servidor (con su id definitivo).
  */
-export async function enviarMensajeDirecto({ conversacionId, autorId, texto }) {
-  if (!conversacionId || !autorId || !texto?.trim()) {
-    return { success: false, error: 'Datos incompletos para enviar mensaje.' };
-  }
+export async function enviarMensajeDirecto({ conversacionId, texto }) {
+  const uid = await uidActual();
+  return ejecutar(
+    supabase
+      .from('mensajes_directos')
+      .insert({ conversacion_id: conversacionId, autor_id: uid, texto: texto.trim() })
+      .select(CAMPOS_MENSAJE)
+      .single()
+  );
+}
 
-  // 1. Guardar de inmediato en almacenamiento local sincronizado
-  const mensajeLocal = saveMensajeDirectoStorage({
-    conversacionId,
-    autorId,
-    texto: texto.trim()
-  });
-
-  // 2. Intentar enviar a Supabase en paralelo
-  if (isSupabaseConfigured) {
-    withTimeout(
-      supabase.from('mensajes_directos').insert({
-        conversacion_id: conversacionId,
-        autor_id: autorId,
-        texto: texto.trim(),
-        leido: false
-      }),
-      2000
-    ).catch(() => {});
-  }
-
-  return { success: true, mensaje: mensajeLocal };
+export async function marcarMensajesComoLeidos(conversacionId) {
+  const uid = await uidActual();
+  await ejecutar(
+    supabase
+      .from('mensajes_directos')
+      .update({ leido: true })
+      .eq('conversacion_id', conversacionId)
+      .neq('autor_id', uid)
+      .eq('leido', false)
+  );
 }
 
 /**
- * Marca los mensajes no leídos recibidos en esta conversación como leídos
+ * Une un mensaje a la lista sin duplicar:
+ * - si ya está su id definitivo, solo actualiza sus campos (p. ej. "leído");
+ * - si viene la respuesta de mi envío (tempId), reemplaza el mensaje optimista;
+ * - si llega por Realtime mi propio mensaje antes que la respuesta HTTP, reemplaza
+ *   el optimista pendiente con el mismo texto.
  */
-export async function marcarMensajesComoLeidos(conversacionId, userId) {
-  if (!conversacionId || !userId) return;
-
-  marcarMensajesComoLeidosStorage(conversacionId, userId);
-
-  if (isSupabaseConfigured) {
-    withTimeout(
-      supabase
-        .from('mensajes_directos')
-        .update({ leido: true })
-        .eq('conversacion_id', conversacionId)
-        .neq('autor_id', userId)
-        .eq('leido', false),
-      1500
-    ).catch(() => {});
+export function fusionarMensaje(lista, mensaje, { tempId = null, miId = null } = {}) {
+  if (lista.some((m) => m.id === mensaje.id)) {
+    const sinTemp = tempId ? lista.filter((m) => m.id !== tempId) : lista;
+    return sinTemp.map((m) => (m.id === mensaje.id ? { ...m, ...mensaje } : m));
   }
+
+  let idx = tempId ? lista.findIndex((m) => m.id === tempId) : -1;
+  if (idx === -1 && miId && mensaje.autor_id === miId) {
+    idx = lista.findIndex((m) => m.optimista && !m.error && m.texto === mensaje.texto);
+  }
+
+  if (idx >= 0) {
+    const copia = [...lista];
+    copia[idx] = mensaje;
+    return copia;
+  }
+  return [...lista, mensaje].sort((a, b) => new Date(a.creado_en) - new Date(b.creado_en));
 }
 
 /**
- * Se suscribe en tiempo real a los mensajes directos de una conversación
+ * Realtime de una conversación: mensajes nuevos y cambios de "leído".
  */
-export function subscribeToConversacion(conversacionId, onInsert) {
-  if (!conversacionId) return () => {};
-
-  // 1. Suscripción local entre pestañas / ventanas
-  const unsubCampus = subscribeToCampusEvents((evt) => {
-    if (evt.tipo === 'mensaje_directo' && evt.payload?.conversacion_id === conversacionId) {
-      if (typeof onInsert === 'function') {
-        onInsert(evt.payload);
-      }
-    }
-  });
-
-  // 2. Suscripción a Supabase Realtime si está disponible
-  let supabaseChannel = null;
-  if (isSupabaseConfigured) {
-    try {
-      supabaseChannel = supabase
-        .channel(`chat_${conversacionId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'mensajes_directos',
-            filter: `conversacion_id=eq.${conversacionId}`
-          },
-          (payload) => {
-            if (payload?.new && typeof onInsert === 'function') {
-              onInsert(payload.new);
-            }
-          }
-        )
-        .subscribe();
-    } catch (e) {}
-  }
+export function subscribeToConversacion(conversacionId, { onInsert, onUpdate }) {
+  const canal = supabase
+    .channel(`chat_${conversacionId}_${Math.random().toString(36).slice(2, 8)}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'mensajes_directos', filter: `conversacion_id=eq.${conversacionId}` },
+      (payload) => payload?.new && onInsert?.(payload.new)
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'mensajes_directos', filter: `conversacion_id=eq.${conversacionId}` },
+      (payload) => payload?.new && onUpdate?.(payload.new)
+    )
+    .subscribe();
 
   return () => {
-    unsubCampus();
-    if (supabaseChannel) {
-      try {
-        supabase.removeChannel(supabaseChannel);
-      } catch (e) {}
-    }
+    supabase.removeChannel(canal);
+  };
+}
+
+/**
+ * Realtime de todos mis chats (RLS filtra a mis conversaciones): para la bandeja y el contador.
+ */
+export function subscribeToMisMensajes(onCambio) {
+  const canal = supabase
+    .channel(`mis_chats_${Math.random().toString(36).slice(2, 8)}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes_directos' }, () => onCambio())
+    .subscribe();
+  return () => {
+    supabase.removeChannel(canal);
   };
 }

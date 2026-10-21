@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../data/store';
-import { CURSOS_ENFERMERIA } from '../data/mockData';
 import {
   fetchEspacios,
   unirseAEspacio,
@@ -9,18 +8,20 @@ import {
   proponerNuevoEspacio,
   fetchMensajesEspacio,
   enviarMensajeEspacio,
-  subscribeToMensajesEspacio
+  subscribeToMensajesEspacio,
+  fusionarMensajeEspacio,
+  fetchCursosDeCarrera
 } from '../lib/spaces';
 import {
   fetchConsultasCarrera,
-  crearOConsultarAgrupada,
+  crearConsulta,
   validarPermisoOrientar,
-  publicarOrientacionDB,
-  valorarRespuestaDB,
+  publicarOrientacion,
+  valorarRespuesta,
   moderarConsultaTexto
 } from '../lib/consultas';
+import ErrorConReintento from '../components/ErrorConReintento';
 import {
-  Users,
   MessageSquare,
   Sparkles,
   Clock,
@@ -28,380 +29,263 @@ import {
   ArrowLeft,
   Send,
   ExternalLink,
-  ShieldAlert,
-  Award,
   HelpCircle,
   ThumbsUp,
   AlertTriangle,
-  ChevronRight,
   CheckCircle2,
   Lock,
   Flame,
-  Search,
   UserPlus,
   Loader2,
   Check,
-  Calendar
+  RefreshCw
 } from 'lucide-react';
+
+const nuevoTempId = () => `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 export default function GruposView() {
   const {
     user,
-    espacios: fallbackEspacios,
-    consultas: fallbackConsultas,
     activeEspacioId,
     setActiveEspacioId,
     activeConsultaId,
-    setActiveConsultaId
+    setActiveConsultaId,
+    refrescarHabilidades
   } = useStore();
 
   const [espaciosList, setEspaciosList] = useState([]);
   const [isLoadingEspacios, setIsLoadingEspacios] = useState(true);
+  const [errorEspacios, setErrorEspacios] = useState('');
+  const [errorAccion, setErrorAccion] = useState('');
+  const [accionEnCurso, setAccionEnCurso] = useState(null);
 
-  // Consultas académicas (Fase 7 - M19–M22)
+  // Consultas académicas (M19–M22)
   const [consultasList, setConsultasList] = useState([]);
   const [isLoadingConsultas, setIsLoadingConsultas] = useState(false);
+  const [errorConsultas, setErrorConsultas] = useState('');
+  const [cursosCarrera, setCursosCarrera] = useState([]);
 
   const [activeCategory, setActiveCategory] = useState('todos'); // 'todos' | 'cohorte' | 'carrera' | 'talleres'
   const [showProponerModal, setShowProponerModal] = useState(false);
   const [propNombre, setPropNombre] = useState('');
   const [propDesc, setPropDesc] = useState('');
   const [isSubmittingProp, setIsSubmittingProp] = useState(false);
+  const [errorPropuesta, setErrorPropuesta] = useState('');
 
   // Chat de espacio (Realtime)
   const [mensajesEspacio, setMensajesEspacio] = useState([]);
   const [chatTexto, setChatTexto] = useState('');
   const [isLoadingChat, setIsLoadingChat] = useState(false);
-  const [isSendingMsg, setIsSendingMsg] = useState(false);
+  const [errorChat, setErrorChat] = useState('');
   const chatBottomRef = useRef(null);
 
-  // Flujo 1: Modal Hacer Consulta (M19)
+  // Hacer consulta (M19)
   const [showCrearConsultaModal, setShowCrearConsultaModal] = useState(false);
-  const [cursoConsulta, setCursoConsulta] = useState(CURSOS_ENFERMERIA[0]);
+  const [cursoConsulta, setCursoConsulta] = useState('');
   const [temaConsulta, setTemaConsulta] = useState('');
   const [textoConsulta, setTextoConsulta] = useState('');
   const [moderationWarning, setModerationWarning] = useState(null);
   const [isSubmittingConsulta, setIsSubmittingConsulta] = useState(false);
 
-  // Flujo 1: Modal Responder Consulta (M21)
+  // Responder consulta (M21)
   const [showResponderModal, setShowResponderModal] = useState(false);
   const [textoRespuesta, setTextoRespuesta] = useState('');
   const [modoRespuesta, setModoRespuesta] = useState('mensaje'); // 'mensaje' | 'llamada'
   const [errorRespuesta, setErrorRespuesta] = useState(null);
   const [isSubmittingRespuesta, setIsSubmittingRespuesta] = useState(false);
 
-  // Asegura que los espacios de la carrera del estudiante estén siempre activos
-  const asegurarEspaciosDeCarrera = (lista) => {
-    if (!user?.carrera) return lista;
-    const miCarrera = user.carrera;
-    const miCiclo = user.ciclo || 1;
-
-    const tieneCohorte = lista.some(e => e.tipo === 'carrera_ciclo' && e.carrera?.toLowerCase().trim() === miCarrera.toLowerCase().trim());
-    const tieneCarrera = lista.some(e => e.tipo === 'carrera' && e.carrera?.toLowerCase().trim() === miCarrera.toLowerCase().trim());
-
-    const nuevos = [...lista];
-
-    if (!tieneCohorte) {
-      nuevos.unshift({
-        id: `esp_cohorte_${miCarrera.toLowerCase().replace(/[^a-z0-9]/g, '_')}_c${miCiclo}`,
-        tipo: 'carrera_ciclo',
-        nombre: `${miCarrera} — ${miCiclo}.° Ciclo`,
-        descripcion: `Espacio cerrado exclusivo para compañeros de ${miCarrera} que cursan el ${miCiclo}.° ciclo en sede ${user.sede || 'Lima Sur'}.`,
-        carrera: miCarrera,
-        ciclo: miCiclo,
-        sede: user.sede || 'Lima Sur',
-        esMiembro: true,
-        miembrosCount: 38,
-        portadaUrl: '/fotos/espacio_enfermeria.jpg',
-        oficial: true
-      });
-    }
-
-    if (!tieneCarrera) {
-      nuevos.splice(1, 0, {
-        id: `esp_carrera_${miCarrera.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-        tipo: 'carrera',
-        nombre: `${miCarrera} — Toda la Carrera`,
-        descripcion: `Espacio de carrera abierto para estudiantes del 1.° al 10.° ciclo de ${miCarrera}. Aquí viven las consultas académicas agrupadas y sesiones de estudio.`,
-        carrera: miCarrera,
-        sede: user.sede || 'Lima Sur',
-        esMiembro: true,
-        miembrosCount: 184,
-        portadaUrl: '/fotos/espacio_futsal.jpg',
-        oficial: true
-      });
-    }
-
-    return nuevos;
-  };
-
-  // Cargar espacios desde Supabase (con fallback)
-  const cargarEspacios = async () => {
+  const cargarEspacios = useCallback(async () => {
     setIsLoadingEspacios(true);
+    setErrorEspacios('');
     try {
-      const data = await fetchEspacios(user?.id);
-      if (data && data.length > 0) {
-        setEspaciosList(asegurarEspaciosDeCarrera(data));
-      } else {
-        // Fallback a los espacios locales
-        const fallbackConEstado = fallbackEspacios.map(e => ({
-          ...e,
-          esMiembro: e.tipo === 'carrera_ciclo' || e.tipo === 'carrera',
-          yaApoye: false,
-          apoyos: e.apoyosCount || 0,
-          umbral: e.umbralRequerido || 15
-        }));
-        setEspaciosList(asegurarEspaciosDeCarrera(fallbackConEstado));
-      }
+      setEspaciosList(await fetchEspacios());
     } catch (err) {
-      console.warn('Error cargando espacios:', err);
-      setEspaciosList(asegurarEspaciosDeCarrera(fallbackEspacios));
+      setErrorEspacios(err.message);
     } finally {
       setIsLoadingEspacios(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     cargarEspacios();
-  }, [user?.id, user?.carrera, user?.ciclo]);
+  }, [cargarEspacios, user?.id, user?.carrera, user?.ciclo]);
 
-  // Selected space detail
-  const currentEspacio = espaciosList.find(e => e.id === activeEspacioId) || fallbackEspacios.find(e => e.id === activeEspacioId);
+  const currentEspacio = espaciosList.find((e) => e.id === activeEspacioId);
 
-  // Cargar consultas cuando se abre un espacio de carrera
-  const cargarConsultas = async (carrera) => {
-    if (!carrera) return;
+  const cargarConsultas = useCallback(async () => {
     setIsLoadingConsultas(true);
+    setErrorConsultas('');
     try {
-      const data = await fetchConsultasCarrera(carrera);
-      if (data && data.length > 0) {
-        setConsultasList(data);
-      } else {
-        setConsultasList(fallbackConsultas);
-      }
+      setConsultasList(await fetchConsultasCarrera(user?.id));
     } catch (err) {
-      setConsultasList(fallbackConsultas);
+      setErrorConsultas(err.message);
     } finally {
       setIsLoadingConsultas(false);
     }
-  };
+  }, [user?.id]);
 
+  // Las consultas viven en el espacio de carrera (todos los ciclos), spec 7.1
   useEffect(() => {
-    if (currentEspacio?.carrera) {
-      cargarConsultas(currentEspacio.carrera);
+    if (currentEspacio?.tipo === 'carrera') {
+      cargarConsultas();
+      fetchCursosDeCarrera(user?.carrera)
+        .then(setCursosCarrera)
+        .catch(() => setCursosCarrera([]));
     }
-  }, [currentEspacio?.carrera]);
+  }, [currentEspacio?.id, currentEspacio?.tipo, cargarConsultas, user?.carrera]);
 
-  const consultasParaMostrar = consultasList.length > 0 ? consultasList : fallbackConsultas;
-  const currentConsulta = consultasParaMostrar.find(c => c.id === activeConsultaId);
+  const currentConsulta = consultasList.find((c) => c.id === activeConsultaId);
 
-  // Cargar mensajes y suscribirse a Realtime cuando se abre un espacio
-  useEffect(() => {
-    if (!activeEspacioId) return;
-
-    let isMounted = true;
+  const cargarChat = useCallback(async (espacioId) => {
     setIsLoadingChat(true);
+    setErrorChat('');
+    try {
+      const historial = await fetchMensajesEspacio(espacioId);
+      setMensajesEspacio((prev) =>
+        historial.reduce((lista, m) => fusionarMensajeEspacio(lista, m, { miId: user?.id }), prev.filter((m) => m.optimista))
+      );
+      setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'auto' }), 50);
+    } catch (err) {
+      setErrorChat(err.message);
+    } finally {
+      setIsLoadingChat(false);
+    }
+  }, [user?.id]);
 
-    fetchMensajesEspacio(activeEspacioId).then((mensajesDb) => {
-      if (isMounted) {
-        if (mensajesDb && mensajesDb.length > 0) {
-          setMensajesEspacio(mensajesDb);
-        } else if (currentEspacio?.mensajes) {
-          // Mensajes mock iniciales si no hay mensajes en DB
-          setMensajesEspacio(currentEspacio.mensajes.map(m => ({
-            id: m.id,
-            espacioId: activeEspacioId,
-            autorId: m.esMio ? user?.id : 'mock',
-            autorNombre: m.autor,
-            texto: m.texto,
-            creadoEn: new Date().toISOString()
-          })));
-        } else {
-          setMensajesEspacio([]);
-        }
-        setIsLoadingChat(false);
-        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'auto' }), 50);
-      }
-    });
+  // Chat grupal: historial + Realtime (solo si soy miembro; RLS no deja leer si no)
+  useEffect(() => {
+    if (!activeEspacioId || !currentEspacio?.esMiembro) {
+      setMensajesEspacio([]);
+      return undefined;
+    }
+    setMensajesEspacio([]);
+    cargarChat(activeEspacioId);
 
-    // Suscripción Realtime
     const unsubscribe = subscribeToMensajesEspacio(activeEspacioId, (nuevoMsg) => {
-      setMensajesEspacio(prev => {
-        if (prev.some(m => m.id === nuevoMsg.id)) return prev;
-        return [...prev, nuevoMsg];
-      });
+      setMensajesEspacio((prev) => fusionarMensajeEspacio(prev, nuevoMsg, { miId: user?.id }));
       setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     });
 
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, [activeEspacioId]);
+    return () => unsubscribe();
+  }, [activeEspacioId, currentEspacio?.esMiembro, cargarChat, user?.id]);
 
-  // Espacios filtrados por carrera del usuario y por categoría seleccionada
-  const espaciosFiltrados = espaciosList.filter(e => {
-    // Aislamiento de carrera: si el espacio es de cohorte o de carrera, solo mostrar el de la carrera del estudiante
-    if (e.tipo === 'carrera_ciclo' || e.tipo === 'carrera') {
-      if (user?.carrera && e.carrera && e.carrera.toLowerCase().trim() !== user.carrera.toLowerCase().trim()) {
-        return false;
-      }
-    }
-
+  const espaciosFiltrados = espaciosList.filter((e) => {
     if (activeCategory === 'cohorte') return e.tipo === 'carrera_ciclo';
     if (activeCategory === 'carrera') return e.tipo === 'carrera';
     if (activeCategory === 'talleres') return e.tipo === 'taller' || e.tipo === 'interes';
     return true;
   });
 
-  // Manejar unirse o salir de un espacio
   const handleToggleMembresia = async (espacio) => {
-    if (!user?.id) return;
-    if (espacio.esMiembro) {
-      await salirDeEspacio(user.id, espacio.id);
-      setEspaciosList(prev => prev.map(e => e.id === espacio.id ? { ...e, esMiembro: false, miembrosCount: Math.max(0, (e.miembrosCount || 1) - 1) } : e));
-    } else {
-      await unirseAEspacio(user.id, espacio.id);
-      setEspaciosList(prev => prev.map(e => e.id === espacio.id ? { ...e, esMiembro: true, miembrosCount: (e.miembrosCount || 0) + 1 } : e));
-    }
-  };
-
-  // Manejar apoyar una propuesta (M16)
-  const handleApoyarPropuesta = async (espacioId) => {
-    if (!user?.id) return;
+    setAccionEnCurso(espacio.id);
+    setErrorAccion('');
     try {
-      const res = await apoyarPropuestaEspacio(user.id, espacioId);
-      if (res.success) {
-        setEspaciosList(prev =>
-          prev.map(e => {
-            if (e.id === espacioId) {
-              const nuevosApoyos = (e.apoyos || 0) + 1;
-              const nuevoEstado = nuevosApoyos >= (e.umbral || 15) ? 'visible' : e.estado;
-              return {
-                ...e,
-                apoyos: nuevosApoyos,
-                yaApoye: true,
-                estado: nuevoEstado
-              };
-            }
-            return e;
-          })
-        );
+      if (espacio.esMiembro) {
+        await salirDeEspacio(espacio.id);
+      } else {
+        await unirseAEspacio(espacio.id);
       }
+      await cargarEspacios();
     } catch (err) {
-      console.error(err);
+      setErrorAccion(err.message);
+    } finally {
+      setAccionEnCurso(null);
     }
   };
 
-  // Proponer nuevo grupo con umbral dinámico (M16)
+  const handleApoyarPropuesta = async (espacioId) => {
+    setAccionEnCurso(espacioId);
+    setErrorAccion('');
+    try {
+      await apoyarPropuestaEspacio(espacioId);
+      await cargarEspacios();
+    } catch (err) {
+      setErrorAccion(err.message);
+    } finally {
+      setAccionEnCurso(null);
+    }
+  };
+
+  // Proponer grupo: el servidor fija el umbral max(15, 3% de la base) (M16)
   const handleProponerSubmit = async (e) => {
     e.preventDefault();
-    if (!propNombre.trim() || !user?.id) return;
+    if (!propNombre.trim()) return;
     setIsSubmittingProp(true);
-
+    setErrorPropuesta('');
     try {
-      const res = await proponerNuevoEspacio({
-        userId: user.id,
-        nombre: propNombre.trim(),
-        descripcion: propDesc.trim(),
-        sede: user.sede || 'Lima Sur'
-      });
-
-      if (res.success && res.espacio) {
-        setShowProponerModal(false);
-        setPropNombre('');
-        setPropDesc('');
-        cargarEspacios();
-        setActiveEspacioId(res.espacio.id);
-      }
+      const nuevoId = await proponerNuevoEspacio({ nombre: propNombre.trim(), descripcion: propDesc.trim() });
+      setShowProponerModal(false);
+      setPropNombre('');
+      setPropDesc('');
+      await cargarEspacios();
+      setActiveEspacioId(nuevoId);
     } catch (err) {
-      console.error(err);
+      setErrorPropuesta(err.message);
     } finally {
       setIsSubmittingProp(false);
     }
   };
 
-  // Enviar mensaje en chat grupal en tiempo real (M12–M15)
-  const handleSendMessage = async (e) => {
+  // Chat grupal con envío optimista; el id temporal se reemplaza por el del servidor
+  const enviarChat = async (texto, tempId) => {
+    setMensajesEspacio((prev) => prev.map((m) => (m.id === tempId ? { ...m, error: false } : m)));
+    try {
+      const guardado = await enviarMensajeEspacio({ espacioId: activeEspacioId, texto });
+      setMensajesEspacio((prev) => fusionarMensajeEspacio(prev, guardado, { tempId, miId: user?.id }));
+    } catch (err) {
+      setMensajesEspacio((prev) => prev.map((m) => (m.id === tempId ? { ...m, error: true, errorMsg: err.message } : m)));
+    }
+  };
+
+  const handleSendMessage = (e) => {
     e.preventDefault();
     const texto = chatTexto.trim();
-    if (!texto || !activeEspacioId || isSendingMsg) return;
-
-    const mensajeOptimista = {
-      id: 'temp_' + Date.now(),
-      espacioId: activeEspacioId,
-      autorId: user?.id,
-      autorNombre: `${user?.nombre || 'Tú'} ${user?.apellido || ''}`.trim(),
-      autorFoto: user?.fotoUrl || null,
-      autorCarrera: user?.carrera || '',
-      autorCiclo: user?.ciclo || '',
-      autorRol: user?.rol || 'alumno',
-      texto,
-      creadoEn: new Date().toISOString(),
-      isOptimistic: true
-    };
-
-    setMensajesEspacio(prev => [...prev, mensajeOptimista]);
+    if (!texto || !activeEspacioId) return;
+    const tempId = nuevoTempId();
+    setMensajesEspacio((prev) => [
+      ...prev,
+      {
+        id: tempId,
+        espacioId: activeEspacioId,
+        autorId: user?.id,
+        autorNombre: `${user?.nombre || 'Tú'} ${user?.apellido || ''}`.trim(),
+        texto,
+        creadoEn: new Date().toISOString(),
+        optimista: true
+      }
+    ]);
     setChatTexto('');
     setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
-
-    setIsSendingMsg(true);
-    try {
-      await enviarMensajeEspacio({
-        espacioId: activeEspacioId,
-        autorId: user.id,
-        texto
-      });
-    } catch (err) {
-      console.error('Error al enviar mensaje grupal:', err);
-    } finally {
-      setIsSendingMsg(false);
-    }
+    enviarChat(texto, tempId);
   };
 
   const handleTextoConsultaChange = (val) => {
     setTextoConsulta(val);
     const mod = moderarConsultaTexto(val);
-    if (mod.bloqueado) {
-      setModerationWarning(mod.motivo);
-    } else {
-      setModerationWarning(null);
-    }
+    setModerationWarning(mod.bloqueado ? mod.motivo : null);
+  };
+
+  const abrirCrearConsulta = () => {
+    setCursoConsulta('');
+    setTemaConsulta('');
+    setTextoConsulta('');
+    setModerationWarning(null);
+    setShowCrearConsultaModal(true);
   };
 
   const handleCrearConsultaSubmit = async (e) => {
     e.preventDefault();
-    if (!temaConsulta.trim() || !textoConsulta.trim() || !user?.id) return;
+    if (!cursoConsulta.trim() || !temaConsulta.trim() || !textoConsulta.trim()) return;
     setIsSubmittingConsulta(true);
     setModerationWarning(null);
-
     try {
-      const carreraActual = currentEspacio?.carrera || user?.carrera || 'Enfermería';
-      const res = await crearOConsultarAgrupada({
-        carrera: carreraActual,
-        curso: cursoConsulta,
-        tema: temaConsulta,
-        texto: textoConsulta,
-        user
-      });
-
-      if (!res.exito) {
-        setModerationWarning(res.motivo);
-        setIsSubmittingConsulta(false);
-        return;
-      }
-
+      const res = await crearConsulta({ curso: cursoConsulta, tema: temaConsulta, texto: textoConsulta });
       setShowCrearConsultaModal(false);
-      setTemaConsulta('');
-      setTextoConsulta('');
-      setModerationWarning(null);
-
-      await cargarConsultas(carreraActual);
-      if (res.consultaId) {
-        setActiveConsultaId(res.consultaId);
-      }
+      await cargarConsultas();
+      if (res?.grupo_id) setActiveConsultaId(res.grupo_id);
     } catch (err) {
-      console.error(err);
+      // Incluye el bloqueo de moderación del servidor
+      setModerationWarning(err.message);
     } finally {
       setIsSubmittingConsulta(false);
     }
@@ -409,55 +293,124 @@ export default function GruposView() {
 
   const handleResponderSubmit = async (e) => {
     e.preventDefault();
-    if (!textoRespuesta.trim() || !activeConsultaId || !user?.id || isSubmittingRespuesta) return;
+    if (!textoRespuesta.trim() || !activeConsultaId || isSubmittingRespuesta) return;
     setIsSubmittingRespuesta(true);
     setErrorRespuesta(null);
-
     try {
-      const res = await publicarOrientacionDB({
-        consultaId: activeConsultaId,
-        user,
-        texto: textoRespuesta,
-        modo: modoRespuesta,
-        nAlumnos: currentConsulta?.nAlumnos || 1
-      });
-
-      if (!res.exito) {
-        setErrorRespuesta(res.motivo);
-        setIsSubmittingRespuesta(false);
-        return;
-      }
-
+      await publicarOrientacion({ grupoId: activeConsultaId, texto: textoRespuesta, modo: modoRespuesta });
       setShowResponderModal(false);
       setTextoRespuesta('');
-      setErrorRespuesta(null);
-
-      if (currentEspacio?.carrera) {
-        await cargarConsultas(currentEspacio.carrera);
-      }
+      await cargarConsultas();
     } catch (err) {
-      setErrorRespuesta('Error al publicar orientación.');
+      setErrorRespuesta(err.message);
     } finally {
       setIsSubmittingRespuesta(false);
     }
   };
 
-  const handleValorarRespuesta = async (consultaId, asesoriaId) => {
-    if (!user?.id) return;
+  const handleValorarRespuesta = async (asesoriaId, util = true) => {
+    setAccionEnCurso(asesoriaId);
+    setErrorAccion('');
     try {
-      await valorarRespuestaDB({
-        asesoriaId,
-        consultaId,
-        user,
-        sirvio: true
-      });
-      if (currentEspacio?.carrera) {
-        await cargarConsultas(currentEspacio.carrera);
-      }
+      await valorarRespuesta({ asesoriaId, util });
+      await cargarConsultas();
+      refrescarHabilidades?.();
     } catch (err) {
-      console.error(err);
+      setErrorAccion(err.message);
+    } finally {
+      setAccionEnCurso(null);
     }
   };
+
+  // Modal "Nueva consulta" (M19): se usa dentro del espacio de carrera
+  const modalCrearConsulta = showCrearConsultaModal && (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 animate-fadeIn">
+        <h3 className="text-sm font-black text-ink dark:text-ink-light">
+          Nueva Consulta en {user?.carrera || 'tu Carrera'}
+        </h3>
+
+        <form onSubmit={handleCrearConsultaSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">Curso</label>
+            <input
+              type="text"
+              list="cursos-carrera"
+              placeholder="Ej: Farmacología Clínica"
+              value={cursoConsulta}
+              onChange={(e) => setCursoConsulta(e.target.value)}
+              className="w-full px-3 py-2 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
+              required
+            />
+            <datalist id="cursos-carrera">
+              {cursosCarrera.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">Tema específico</label>
+            <input
+              type="text"
+              placeholder="Ej: Cálculo de dosis y goteo"
+              value={temaConsulta}
+              onChange={(e) => setTemaConsulta(e.target.value)}
+              className="w-full px-3 py-2 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
+              required
+            />
+            <p className="text-[10px] text-ink-muted mt-1">
+              Si otro alumno pregunta por el mismo curso y tema, sus dudas se agrupan.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">Tu duda académica:</label>
+            <textarea
+              rows={2}
+              placeholder="Detalla qué tema necesitas comprender..."
+              value={textoConsulta}
+              onChange={(e) => handleTextoConsultaChange(e.target.value)}
+              className="w-full p-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-medium text-ink dark:text-ink-light resize-none"
+              required
+            />
+          </div>
+
+          {moderationWarning ? (
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-900 rounded-xl text-xs text-rose-800 dark:text-rose-300 space-y-1">
+              <div className="flex items-center space-x-1.5 font-bold">
+                <AlertTriangle size={14} />
+                <span>No se pudo publicar</span>
+              </div>
+              <p className="text-xs leading-snug">{moderationWarning}</p>
+            </div>
+          ) : (
+            <div className="p-2.5 bg-slate-100 dark:bg-surface-dark rounded-xl text-xs text-ink-muted">
+              <strong>Regla Kampuz:</strong> Se consulta sobre el curso y su contenido académico, no sobre personas ni docentes.
+            </div>
+          )}
+
+          <div className="flex items-center justify-end space-x-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setShowCrearConsultaModal(false)}
+              className="px-3 py-2 text-xs font-bold text-ink-muted hover:text-ink"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={!cursoConsulta.trim() || !temaConsulta.trim() || !textoConsulta.trim() || isSubmittingConsulta || !!moderarConsultaTexto(textoConsulta).bloqueado}
+              className="px-4 py-2 bg-brand-primary disabled:opacity-40 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center space-x-1"
+            >
+              {isSubmittingConsulta && <Loader2 size={13} className="animate-spin" />}
+              <span>Publicar Consulta</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 
   // --- VISTA DETALLE DE ESPACIO (M12, M13, M14, M15) ---
   if (currentEspacio && !currentConsulta) {
@@ -502,10 +455,29 @@ export default function GruposView() {
                   </a>
                 )}
 
-                {!isCohorte && !isEspacioCarrera && (
+                {!isCohorte && !isEspacioCarrera && currentEspacio.estado === 'oculto' && (
+                  currentEspacio.yaApoye ? (
+                    <span className="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-emerald-100 text-emerald-800 shadow-md flex items-center space-x-1">
+                      <CheckCircle2 size={13} />
+                      <span>Apoyado</span>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleApoyarPropuesta(currentEspacio.id)}
+                      disabled={accionEnCurso === currentEspacio.id}
+                      className="px-3 py-1.5 rounded-xl text-xs font-extrabold shadow-md transition flex items-center space-x-1 bg-accent text-white disabled:opacity-60"
+                    >
+                      <ThumbsUp size={13} />
+                      <span>Apoyar propuesta</span>
+                    </button>
+                  )
+                )}
+
+                {!isCohorte && !isEspacioCarrera && currentEspacio.estado !== 'oculto' && currentEspacio.creadorId !== user?.id && (
                   <button
                     onClick={() => handleToggleMembresia(currentEspacio)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold shadow-md transition flex items-center space-x-1 ${
+                    disabled={accionEnCurso === currentEspacio.id}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold shadow-md transition flex items-center space-x-1 disabled:opacity-60 ${
                       esMiembro
                         ? 'bg-slate-200 dark:bg-slate-800 text-ink dark:text-ink-light'
                         : 'bg-brand-primary text-white hover:bg-brand-primaryHover'
@@ -570,16 +542,30 @@ export default function GruposView() {
           )}
         </div>
 
+        {errorAccion && (
+          <div className="px-4 pt-3">
+            <ErrorConReintento compacto mensaje={errorAccion} />
+          </div>
+        )}
+
+        {currentEspacio.tipo === 'interes' && currentEspacio.estado === 'oculto' && (
+          <div className="px-4 py-2.5 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900 text-xs text-amber-900 dark:text-amber-200 font-semibold">
+            Propuesta en formación: {currentEspacio.apoyos}/{currentEspacio.umbral} apoyos.
+            {currentEspacio.umbral - currentEspacio.apoyos > 0 &&
+              ` Faltan ${currentEspacio.umbral - currentEspacio.apoyos} para que aparezca en Explorar.`}
+          </div>
+        )}
+
         {/* Consultas Agrupadas si es Espacio de Carrera (M19–M22) */}
         {isEspacioCarrera && (
           <div className="p-3.5 bg-brand-primary-soft/50 dark:bg-brand-dark/40 border-b border-line dark:border-line-dark">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-black uppercase text-brand-primary dark:text-teal-300 flex items-center space-x-1.5">
                 <HelpCircle size={15} />
-                <span>Consultas Agrupadas ({consultasParaMostrar.length})</span>
+                <span>Consultas Agrupadas ({consultasList.length})</span>
               </span>
               <button
-                onClick={() => setShowCrearConsultaModal(true)}
+                onClick={abrirCrearConsulta}
                 className="px-3 py-1.5 bg-brand-primary text-white text-xs font-bold rounded-xl flex items-center space-x-1 shadow-sm"
               >
                 <Plus size={13} />
@@ -587,8 +573,21 @@ export default function GruposView() {
               </button>
             </div>
 
+            {isLoadingConsultas && consultasList.length === 0 ? (
+              <div className="flex items-center space-x-2 text-xs text-ink-muted py-2">
+                <Loader2 size={14} className="animate-spin text-accent" />
+                <span>Cargando consultas...</span>
+              </div>
+            ) : errorConsultas ? (
+              <ErrorConReintento compacto mensaje={errorConsultas} onReintentar={cargarConsultas} />
+            ) : consultasList.length === 0 ? (
+              <p className="text-xs text-ink-muted bg-white dark:bg-surface-cardDark rounded-xl p-3 border border-line dark:border-line-dark">
+                Aún no hay consultas en tu carrera. ¿Tienes una duda de un curso? Publícala: alumnos de ciclos superiores pueden orientarte.
+              </p>
+            ) : null}
+
             <div className="space-y-2">
-              {consultasParaMostrar.map((c) => (
+              {consultasList.map((c) => (
                 <div
                   key={c.id}
                   onClick={() => setActiveConsultaId(c.id)}
@@ -611,7 +610,16 @@ export default function GruposView() {
 
         {/* Chat Messages (Realtime Supabase) */}
         <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-surface dark:bg-surface-dark">
-          {isLoadingChat ? (
+          {!esMiembro ? (
+            <div className="text-center py-12 text-ink-muted text-xs">
+              <Lock size={26} className="mx-auto mb-2 opacity-50 text-brand-primary" />
+              <p className="font-bold text-sm text-ink dark:text-ink-light">
+                {currentEspacio.estado === 'oculto' ? 'El chat se abre cuando la propuesta alcance sus apoyos' : 'Únete para ver y escribir en el chat'}
+              </p>
+            </div>
+          ) : errorChat ? (
+            <ErrorConReintento mensaje={errorChat} onReintentar={() => cargarChat(activeEspacioId)} />
+          ) : isLoadingChat && mensajesEspacio.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-ink-muted space-y-2">
               <Loader2 size={24} className="animate-spin text-accent" />
               <p className="text-xs font-semibold">Cargando chat grupal...</p>
@@ -653,8 +661,23 @@ export default function GruposView() {
                     {m.texto}
                   </div>
                   <span className="text-[10px] text-ink-muted mt-1 px-1 font-medium">
-                    {m.creadoEn ? new Date(m.creadoEn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                    {m.optimista && !m.error ? 'Enviando…' : m.creadoEn ? new Date(m.creadoEn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                   </span>
+                  {m.error && (
+                    <div className="flex items-center space-x-2 text-[11px] text-semantic-danger font-semibold">
+                      <span>No se envió.</span>
+                      <button onClick={() => enviarChat(m.texto, m.id)} className="underline font-bold flex items-center space-x-0.5">
+                        <RefreshCw size={11} />
+                        <span>Reintentar</span>
+                      </button>
+                      <button
+                        onClick={() => setMensajesEspacio((prev) => prev.filter((x) => x.id !== m.id))}
+                        className="text-ink-muted underline"
+                      >
+                        Descartar
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })
@@ -669,28 +692,23 @@ export default function GruposView() {
         >
           <input
             type="text"
-            placeholder={
-              !esMiembro && !isCohorte && !isEspacioCarrera
-                ? "Únete al espacio para escribir..."
-                : "Escribe un mensaje al grupo..."
-            }
+            placeholder={!esMiembro ? 'Únete al espacio para escribir...' : 'Escribe un mensaje al grupo...'}
             value={chatTexto}
+            maxLength={2000}
             onChange={(e) => setChatTexto(e.target.value)}
-            disabled={!esMiembro && !isCohorte && !isEspacioCarrera}
+            disabled={!esMiembro}
             className="flex-1 px-3.5 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-medium text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary"
           />
           <button
             type="submit"
-            disabled={!chatTexto.trim() || isSendingMsg}
+            disabled={!chatTexto.trim() || !esMiembro}
             className="p-2.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-40 text-white rounded-xl shadow-sm transition"
           >
-            {isSendingMsg ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
-              <Send size={18} />
-            )}
+            <Send size={18} />
           </button>
         </form>
+
+        {modalCrearConsulta}
       </div>
     );
   }
@@ -699,7 +717,7 @@ export default function GruposView() {
   if (currentConsulta) {
     const permisoOrientar = validarPermisoOrientar(user, currentConsulta);
     const puedoOrientar = permisoOrientar.puede;
-    const soyAutor = currentConsulta.autoresIds ? currentConsulta.autoresIds.includes(user?.id) : false;
+    const soyAutor = currentConsulta.soyAutor;
     const factorModo = modoRespuesta === 'llamada' ? 3 : 1;
     const estrellasPotenciales = currentConsulta.nAlumnos >= 2 ? factorModo * currentConsulta.nAlumnos : 0;
 
@@ -723,6 +741,7 @@ export default function GruposView() {
         </div>
 
         <div className="p-4 space-y-4">
+          {errorAccion && <ErrorConReintento compacto mensaje={errorAccion} />}
           {/* Main Query Card */}
           <div className="k-card p-4 space-y-2.5 border-2 border-line/80 dark:border-line-dark rounded-2xl bg-white dark:bg-surface-cardDark shadow-xs">
             <div className="flex justify-between items-start">
@@ -770,7 +789,7 @@ export default function GruposView() {
                   <div className="flex justify-between items-center">
                     <div className="flex items-center space-x-2.5">
                       <div className="w-8 h-8 rounded-full bg-accent-soft text-accent flex items-center justify-center font-black text-sm">
-                        {r.asesorNombre[0]}
+                        {(r.asesorNombre || 'C')[0]}
                       </div>
                       <div>
                         <h5 className="text-xs font-black text-ink dark:text-ink-light">
@@ -800,14 +819,24 @@ export default function GruposView() {
                   <div className="pt-2.5 border-t border-line dark:border-line-dark flex justify-between items-center text-xs">
                     <span className="text-ink-muted font-medium">{r.fecha}</span>
                     {!r.calificadoPorSolicitante ? (
-                      soyAutor && !r.esMio ? (
-                        <button
-                          onClick={() => handleValorarRespuesta(currentConsulta.id, r.id)}
-                          className="px-3 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-lg flex items-center space-x-1.5 shadow-sm"
-                        >
-                          <ThumbsUp size={12} />
-                          <span>Me sirvió</span>
-                        </button>
+                      soyAutor && (r.miValoracion === null || r.miValoracion === undefined) ? (
+                        <div className="flex items-center space-x-1.5">
+                          <button
+                            onClick={() => handleValorarRespuesta(r.id, false)}
+                            disabled={accionEnCurso === r.id}
+                            className="px-2.5 py-1 text-ink-muted font-bold rounded-lg disabled:opacity-50"
+                          >
+                            No me sirvió
+                          </button>
+                          <button
+                            onClick={() => handleValorarRespuesta(r.id, true)}
+                            disabled={accionEnCurso === r.id}
+                            className="px-3 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-lg flex items-center space-x-1.5 shadow-sm disabled:opacity-50"
+                          >
+                            <ThumbsUp size={12} />
+                            <span>Me sirvió</span>
+                          </button>
+                        </div>
                       ) : (
                         <span className="text-ink-muted font-semibold italic">
                           Esperando valoración de quien preguntó
@@ -904,7 +933,7 @@ export default function GruposView() {
                 </button>
                 <button
                   onClick={handleResponderSubmit}
-                  disabled={!textoRespuesta.trim()}
+                  disabled={!textoRespuesta.trim() || isSubmittingRespuesta}
                   className="px-4 py-2 bg-brand-primary disabled:opacity-40 text-white text-xs font-bold rounded-xl shadow-sm transition"
                 >
                   Publicar Orientación
@@ -962,8 +991,12 @@ export default function GruposView() {
         ))}
       </div>
 
+      {errorAccion && !currentEspacio && <ErrorConReintento compacto mensaje={errorAccion} />}
+
       {/* Group Cards 2-Column Grid */}
-      {isLoadingEspacios ? (
+      {errorEspacios ? (
+        <ErrorConReintento mensaje={errorEspacios} onReintentar={cargarEspacios} />
+      ) : isLoadingEspacios && espaciosList.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-ink-muted space-y-2 col-span-2">
           <Loader2 size={24} className="animate-spin text-accent" />
           <p className="text-xs font-semibold">Cargando comunidades de campus...</p>
@@ -1056,6 +1089,7 @@ export default function GruposView() {
                             </span>
                           ) : (
                             <button
+                              disabled={accionEnCurso === esp.id}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleApoyarPropuesta(esp.id);
@@ -1126,6 +1160,8 @@ export default function GruposView() {
                 />
               </div>
 
+              {errorPropuesta && <ErrorConReintento compacto mensaje={errorPropuesta} />}
+
               <div className="flex items-center justify-end space-x-2 pt-1">
                 <button
                   type="button"
@@ -1147,93 +1183,6 @@ export default function GruposView() {
         </div>
       )}
 
-      {/* Modal: Hacer Consulta de Carrera con Moderación (M19) */}
-      {showCrearConsultaModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 animate-fadeIn">
-            <h3 className="text-sm font-black text-ink dark:text-ink-light">
-              Nueva Consulta en {user?.carrera || 'tu Carrera'}
-            </h3>
-
-            <form onSubmit={handleCrearConsultaSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">
-                  Curso
-                </label>
-                <select
-                  value={cursoConsulta}
-                  onChange={(e) => setCursoConsulta(e.target.value)}
-                  className="w-full px-3 py-2 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
-                >
-                  {CURSOS_ENFERMERIA.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">
-                  Tema específico
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej: Cálculo de dosis y goteo"
-                  value={temaConsulta}
-                  onChange={(e) => setTemaConsulta(e.target.value)}
-                  className="w-full px-3 py-2 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">
-                  Tu duda académica:
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Detalla qué tema necesitas comprender..."
-                  value={textoConsulta}
-                  onChange={(e) => handleTextoConsultaChange(e.target.value)}
-                  className="w-full p-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-medium text-ink dark:text-ink-light resize-none"
-                  required
-                />
-              </div>
-
-              {/* Live Moderation Warning */}
-              {moderationWarning ? (
-                <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-900 rounded-xl text-xs text-rose-800 dark:text-rose-300 space-y-1">
-                  <div className="flex items-center space-x-1.5 font-bold">
-                    <AlertTriangle size={14} />
-                    <span>Aviso de Moderación Automática</span>
-                  </div>
-                  <p className="text-xs leading-snug">{moderationWarning}</p>
-                </div>
-              ) : (
-                <div className="p-2.5 bg-slate-100 dark:bg-surface-dark rounded-xl text-xs text-ink-muted">
-                  <strong>Regla Kampuz:</strong> Se consulta sobre el curso y su contenido académico, no sobre personas ni docentes.
-                </div>
-              )}
-
-              <div className="flex items-center justify-end space-x-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowCrearConsultaModal(false)}
-                  className="px-3 py-2 text-xs font-bold text-ink-muted hover:text-ink"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={!temaConsulta.trim() || !textoConsulta.trim() || !!moderationWarning}
-                  className="px-4 py-2 bg-brand-primary disabled:opacity-40 text-white text-xs font-bold rounded-xl shadow-sm transition"
-                >
-                  Publicar Consulta
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

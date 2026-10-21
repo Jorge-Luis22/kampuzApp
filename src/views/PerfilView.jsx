@@ -6,13 +6,16 @@ import {
   INTERESES_DISPONIBLES
 } from '../data/mockData';
 import {
-  uploadAvatar,
-  updateProfile,
-  updateConsentimiento,
-  calcularHabilidadesReales,
+  subirAvatar,
+  actualizarPerfil,
+  actualizarConsentimiento,
+  fetchConsentimientos,
+  agregarCertificado,
+  clasificarCertificado,
   eliminarCuentaUsuario
 } from '../lib/profile';
 import CentroSeguridadModal from '../components/CentroSeguridadModal';
+import ErrorConReintento from '../components/ErrorConReintento';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -62,15 +65,13 @@ export default function PerfilView() {
   const {
     user,
     setUser,
-    toggleConsentimiento,
-    agregarCertificado,
     cerrarSesion,
     setActiveTab,
-    setCurrentScreen
+    setCurrentScreen,
+    refrescarHabilidades
   } = useStore();
 
   const [activeTabSub, setActiveTabSub] = useState('habilidades'); // 'habilidades' | 'certificados' | 'privacidad'
-  const [selectedMedalla, setSelectedMedalla] = useState(null);
   const [selectedHabilidadKey, setSelectedHabilidadKey] = useState(null);
 
   // Centro de Seguridad (M33) y Borrado de Cuenta (Google Play Store compliance)
@@ -90,18 +91,12 @@ export default function PerfilView() {
     setDeleteError('');
 
     try {
-      const res = await eliminarCuentaUsuario();
-      if (!res.success) {
-        setDeleteError(res.error || 'Error al procesar la eliminación de cuenta.');
-        setIsDeletingAccount(false);
-        return;
-      }
-
+      await eliminarCuentaUsuario();
       setShowDeleteAccountModal(false);
       setUser(null);
       setCurrentScreen('m01_bienvenida');
     } catch (err) {
-      setDeleteError(err.message || 'Error inesperado al eliminar la cuenta.');
+      setDeleteError(err.message);
       setIsDeletingAccount(false);
     }
   };
@@ -109,13 +104,18 @@ export default function PerfilView() {
   // Modal Editar Perfil
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
-  const currentStatus = user?.estado_en_vivo || 'En campus';
+  const estadoActual = ESTADOS_DISCORD.find((st) => st.id === user?.estadoEnVivo) || null;
+  const currentStatus = estadoActual?.label || 'Sin estado';
+  const [errorEstado, setErrorEstado] = useState('');
 
-  const handleSelectStatus = async (statusLabel) => {
+  const handleSelectStatus = async (estadoId) => {
     setShowStatusMenu(false);
-    setUser(prev => ({ ...prev, estado_en_vivo: statusLabel }));
-    if (user?.id) {
-      await updateProfile(user.id, { estado_en_vivo: statusLabel, estadoEnVivo: statusLabel });
+    setErrorEstado('');
+    try {
+      const perfil = await actualizarPerfil({ estadoEnVivo: estadoId });
+      setUser((prev) => ({ ...prev, estadoEnVivo: perfil.estadoEnVivo }));
+    } catch (err) {
+      setErrorEstado(err.message);
     }
   };
 
@@ -142,32 +142,35 @@ export default function PerfilView() {
 
   // Modal Agregar Certificado (M31)
   const [showAddCertModal, setShowAddCertModal] = useState(false);
-  const [certHabilidad, setCertHabilidad] = useState('Primeros Auxilios y Triage Clínico');
-  const [certEmisor, setCertEmisor] = useState('Cruz Roja / IFRC');
-  const [certHoras, setCertHoras] = useState(25);
-  const [certUrl, setCertUrl] = useState('https://campus.salud.pe/cert/2026-9921');
-  const [certEvaluacion, setCertEvaluacion] = useState(true);
+  const [certHabilidad, setCertHabilidad] = useState('');
+  const [certEmisor, setCertEmisor] = useState('');
+  const [certHoras, setCertHoras] = useState('');
+  const [certUrl, setCertUrl] = useState('');
+  const [certEvaluacion, setCertEvaluacion] = useState(false);
+  const [isSavingCert, setIsSavingCert] = useState(false);
+  const [certError, setCertError] = useState('');
 
-  // Registro de fechas de consentimientos (M32)
-  const [consentTimestamps, setConsentTimestamps] = useState({
-    cuenta: 'Otorgado al registrar la cuenta',
-    encuestas: 'Otorgado en registro',
-    metricas: 'Otorgado en registro',
-    perfil_universidad: user?.consentimientos?.perfil_universidad ? 'Otorgado' : 'Revocado / Inactivo'
-  });
+  // Consentimientos reales (M32): se leen de la tabla consentimientos
+  const [consentimientos, setConsentimientos] = useState(null);
+  const [consentError, setConsentError] = useState('');
+  const [consentGuardando, setConsentGuardando] = useState(null);
 
-  // Calcular habilidades reales desde la base de datos (Spec 5.1 & 5.3)
-  useEffect(() => {
-    if (user?.id && user.id !== 'usr_luz') {
-      calcularHabilidadesReales(user.id).then(habilidadesCalc => {
-        if (habilidadesCalc) {
-          setUser(prev => ({
-            ...prev,
-            habilidades: habilidadesCalc
-          }));
-        }
-      });
+  const cargarConsentimientos = async () => {
+    setConsentError('');
+    try {
+      setConsentimientos(await fetchConsentimientos());
+    } catch (err) {
+      setConsentError(err.message);
     }
+  };
+
+  useEffect(() => {
+    if (activeTabSub === 'privacidad') cargarConsentimientos();
+  }, [activeTabSub, user?.id]);
+
+  // Las habilidades se recalculan en el servidor al abrir el perfil (spec 5.3)
+  useEffect(() => {
+    refrescarHabilidades?.();
   }, [user?.id]);
 
   // Sincronizar estado al abrir modal de edición
@@ -199,13 +202,12 @@ export default function PerfilView() {
 
     setIsUploadingPhoto(true);
     setEditErrorMsg('');
+    e.target.value = '';
     try {
-      const publicUrl = await uploadAvatar(user.id, file);
-      setAvatarPreview(publicUrl);
-      setUser(prev => ({ ...prev, fotoUrl: publicUrl }));
+      // Solo Supabase Storage. Si falla, se muestra el error y se puede reintentar.
+      setAvatarPreview(await subirAvatar(file));
     } catch (err) {
-      console.error(err);
-      setEditErrorMsg('No se pudo subir la foto: ' + (err.message || 'error de red.'));
+      setEditErrorMsg(err.message);
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -225,8 +227,14 @@ export default function PerfilView() {
     setIsSavingProfile(true);
     setEditErrorMsg('');
 
+    if (!editFormData.nombre.trim() || !editFormData.apellido.trim()) {
+      setEditErrorMsg('Ingresa tu nombre y apellido reales.');
+      setIsSavingProfile(false);
+      return;
+    }
+
     try {
-      const res = await updateProfile(user.id, {
+      const perfil = await actualizarPerfil({
         nombre: editFormData.nombre,
         apellido: editFormData.apellido,
         bio: editFormData.bio,
@@ -237,55 +245,59 @@ export default function PerfilView() {
         enlaces: editFormData.enlaces,
         fotoUrl: avatarPreview
       });
-
-      if (!res.success) {
-        setEditErrorMsg(res.error || 'Error al guardar los cambios.');
-        setIsSavingProfile(false);
-        return;
-      }
-
-      setUser(prev => ({
-        ...prev,
-        ...editFormData,
-        enlaces: editFormData.enlaces,
-        fotoUrl: avatarPreview
-      }));
-
+      // Se muestra lo que guardó el servidor, no lo que se escribió
+      setUser((prev) => ({ ...prev, ...perfil }));
       setShowEditProfileModal(false);
     } catch (err) {
-      setEditErrorMsg('Ocurrió un error al guardar.');
+      setEditErrorMsg(err.message);
     } finally {
       setIsSavingProfile(false);
     }
   };
 
   // Manejo de consentimiento con registro de fecha (M32)
+  // Otorgar o revocar: se guarda en Supabase con su fecha antes de mostrarlo
   const handleToggleConsentimientoReal = async (finalidad) => {
-    if (finalidad === 'cuenta') return;
-    const nuevoValor = !user.consentimientos?.[finalidad];
-
-    toggleConsentimiento(finalidad);
-
-    const res = await updateConsentimiento(user.id, finalidad, nuevoValor);
-    if (res.success) {
-      const fechaTexto = new Date().toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
-      setConsentTimestamps(prev => ({
-        ...prev,
-        [finalidad]: nuevoValor ? `Otorgado el ${fechaTexto}` : `Revocado el ${fechaTexto}`
-      }));
+    if (finalidad === 'cuenta' || !consentimientos) return;
+    setConsentGuardando(finalidad);
+    setConsentError('');
+    try {
+      setConsentimientos(await actualizarConsentimiento(finalidad, !consentimientos.valores[finalidad]));
+    } catch (err) {
+      setConsentError(err.message);
+    } finally {
+      setConsentGuardando(null);
     }
   };
 
-  const handleSubirCertificadoSubmit = (e) => {
+  const handleSubirCertificadoSubmit = async (e) => {
     e.preventDefault();
-    agregarCertificado({
-      habilidad: certHabilidad,
-      emisor: certEmisor,
-      horas: certHoras,
-      url: certUrl,
-      tieneEvaluacion: certEvaluacion
-    });
-    setShowAddCertModal(false);
+    if (!certHabilidad.trim() || !certEmisor.trim()) {
+      setCertError('Indica la habilidad y quién emitió el certificado.');
+      return;
+    }
+    setIsSavingCert(true);
+    setCertError('');
+    try {
+      await agregarCertificado({
+        habilidad: certHabilidad,
+        emisor: certEmisor,
+        horas: certHoras,
+        url: certUrl,
+        tieneEvaluacion: certEvaluacion
+      });
+      await refrescarHabilidades?.();
+      setShowAddCertModal(false);
+      setCertHabilidad('');
+      setCertEmisor('');
+      setCertHoras('');
+      setCertUrl('');
+      setCertEvaluacion(false);
+    } catch (err) {
+      setCertError(err.message);
+    } finally {
+      setIsSavingCert(false);
+    }
   };
 
   const selectedHab = selectedHabilidadKey ? user.habilidades?.[selectedHabilidadKey] : null;
@@ -331,8 +343,8 @@ export default function PerfilView() {
               {/* Discord Live Status Indicator on Avatar */}
               <div
                 className="absolute -bottom-1 -left-1 w-6 h-6 rounded-full border-2 border-white dark:border-surface-cardDark shadow-md flex items-center justify-center text-[10px]"
-                style={{ backgroundColor: ESTADOS_DISCORD.find(s => s.label === currentStatus)?.color || '#10B981' }}
-                title={`Estado en campus: ${currentStatus}`}
+                style={{ backgroundColor: estadoActual?.color || '#94A3B8', display: estadoActual ? 'flex' : 'none' }}
+                title={`Estado: ${currentStatus}`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-white" />
               </div>
@@ -386,7 +398,7 @@ export default function PerfilView() {
                 >
                   <span
                     className="w-2 h-2 rounded-full inline-block"
-                    style={{ backgroundColor: ESTADOS_DISCORD.find(s => s.label === currentStatus)?.color || '#10B981' }}
+                    style={{ backgroundColor: estadoActual?.color || '#94A3B8' }}
                   />
                   <span>{currentStatus}</span>
                   <span className="text-[10px] text-ink-muted">▾</span>
@@ -395,15 +407,31 @@ export default function PerfilView() {
                 {showStatusMenu && (
                   <div className="absolute left-0 mt-1.5 w-56 bg-white dark:bg-surface-cardDark border-2 border-line dark:border-line-dark rounded-2xl shadow-elevated p-1.5 z-40 space-y-1 animate-fadeIn">
                     <div className="px-2 py-1 text-[10px] font-black uppercase text-ink-muted">
-                      Estado en campus (En vivo)
+                      Estado (opcional, lo ven otros alumnos)
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectStatus(null)}
+                      className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-xl text-left text-xs font-bold transition ${
+                        !estadoActual
+                          ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20'
+                          : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-ink dark:text-ink-light'
+                      }`}
+                    >
+                      <span className="text-sm">⚪</span>
+                      <div className="flex-1">
+                        <div className="leading-tight">Sin estado</div>
+                        <div className="text-[10px] text-ink-muted font-normal">No mostrar nada</div>
+                      </div>
+                      {!estadoActual && <Check size={12} className="text-brand-primary" />}
+                    </button>
                     {ESTADOS_DISCORD.map(st => (
                       <button
                         key={st.id}
                         type="button"
-                        onClick={() => handleSelectStatus(st.label)}
+                        onClick={() => handleSelectStatus(st.id)}
                         className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-xl text-left text-xs font-bold transition ${
-                          currentStatus === st.label
+                          estadoActual?.id === st.id
                             ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20'
                             : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-ink dark:text-ink-light'
                         }`}
@@ -413,13 +441,15 @@ export default function PerfilView() {
                           <div className="leading-tight">{st.label}</div>
                           <div className="text-[10px] text-ink-muted font-normal">{st.desc}</div>
                         </div>
-                        {currentStatus === st.label && <Check size={12} className="text-brand-primary" />}
+                        {estadoActual?.id === st.id && <Check size={12} className="text-brand-primary" />}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
             </div>
+
+            {errorEstado && <div className="mt-2"><ErrorConReintento compacto mensaje={errorEstado} /></div>}
 
             {user.bio ? (
               <p className="text-xs text-ink-soft dark:text-ink-muted mt-2 font-medium leading-relaxed italic bg-surface dark:bg-surface-dark p-2.5 rounded-xl border border-line dark:border-line-dark">
@@ -729,7 +759,9 @@ export default function PerfilView() {
                         }`}>
                           {cert.nivel}
                         </span>
-                        <span className="text-[11px] text-accent font-bold">Verificable</span>
+                        <span className={`text-[11px] font-bold ${cert.url ? 'text-accent' : 'text-ink-muted'}`}>
+                          {cert.url ? 'Con enlace verificable' : 'Solo declarado'}
+                        </span>
                       </div>
                       <h3 className="text-sm font-black text-ink dark:text-ink-light mt-1">{cert.habilidad}</h3>
                       <p className="text-xs text-ink-muted">{cert.emisor} · {cert.horas} hrs</p>
@@ -792,7 +824,8 @@ export default function PerfilView() {
               </div>
               <input
                 type="checkbox"
-                checked={user?.consentimientos?.encuestas ?? true}
+                checked={Boolean(consentimientos?.valores?.encuestas)}
+                disabled={!consentimientos || consentGuardando === 'encuestas'}
                 onChange={() => handleToggleConsentimientoReal('encuestas')}
                 className="w-5 h-5 accent-accent rounded cursor-pointer shrink-0"
               />
@@ -810,7 +843,8 @@ export default function PerfilView() {
               </div>
               <input
                 type="checkbox"
-                checked={user?.consentimientos?.metricas ?? true}
+                checked={Boolean(consentimientos?.valores?.metricas)}
+                disabled={!consentimientos || consentGuardando === 'metricas'}
                 onChange={() => handleToggleConsentimientoReal('metricas')}
                 className="w-5 h-5 accent-accent rounded cursor-pointer shrink-0"
               />
@@ -828,7 +862,8 @@ export default function PerfilView() {
               </div>
               <input
                 type="checkbox"
-                checked={user?.consentimientos?.perfil_universidad ?? false}
+                checked={Boolean(consentimientos?.valores?.perfil_universidad)}
+                disabled={!consentimientos || consentGuardando === 'perfil_universidad'}
                 onChange={() => handleToggleConsentimientoReal('perfil_universidad')}
                 className="w-5 h-5 accent-accent rounded cursor-pointer shrink-0"
               />
@@ -1176,7 +1211,8 @@ export default function PerfilView() {
                   <input
                     type="number"
                     value={certHoras}
-                    onChange={(e) => setCertHoras(Number(e.target.value))}
+                    min={0}
+                    onChange={(e) => setCertHoras(e.target.value)}
                     className="w-full px-3 py-2 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-xs font-semibold text-ink dark:text-ink-light"
                     required
                   />
@@ -1207,13 +1243,18 @@ export default function PerfilView() {
 
               <div className="p-2.5 bg-slate-100 dark:bg-surface-dark rounded-xl text-[11px] text-ink-muted">
                 <strong>Reconocimiento:</strong> Más de 60 horas para nivel Avanzado; desde 20 horas o con evaluación formal para Intermedio.
+                {' '}Este quedaría como <strong>{clasificarCertificado(certHoras, certEvaluacion)}</strong>. Por habilidad solo cuenta tu certificado más alto.
               </div>
+
+              {certError && <ErrorConReintento compacto mensaje={certError} />}
 
               <button
                 type="submit"
-                className="w-full py-3 bg-brand-primary hover:bg-brand-primaryHover text-white font-black text-xs rounded-xl shadow-sm transition"
+                disabled={isSavingCert}
+                className="w-full py-3 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-60 text-white font-black text-xs rounded-xl shadow-sm transition flex items-center justify-center space-x-1.5"
               >
-                Guardar Certificado
+                {isSavingCert && <Loader2 size={14} className="animate-spin" />}
+                <span>Guardar Certificado</span>
               </button>
             </form>
           </div>

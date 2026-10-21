@@ -1,8 +1,11 @@
-import { supabase, isSupabaseConfigured } from './supabase';
+import { supabase, ejecutar, uidActual } from './supabase.js';
 
-/**
- * Normas de Convivencia Universitaria Kampuz (M33)
- */
+// =============================================================================
+// Centro de seguridad (M33): reportar, bloquear y moderación. Solo Supabase.
+// Antes, sin configuración, estas funciones "simulaban" éxito. Ahora lanzan
+// KampuzError con el mensaje para mostrarlo en la interfaz.
+// =============================================================================
+
 export const NORMAS_CONVIVENCIA = [
   {
     titulo: '1. Se habla de la materia, no de la persona',
@@ -23,165 +26,66 @@ export const NORMAS_CONVIVENCIA = [
 ];
 
 /**
- * Envía un reporte formal a la tabla public.reportes
+ * Envía un reporte a moderación. tipo: mensaje | perfil | espacio | consulta | mensaje_directo
  */
-export async function enviarReporte({ autorId, tipo, objetoId, motivo, detalle = '' }) {
-  if (!isSupabaseConfigured) {
-    console.log('[Safety Mock] Reporte simulado:', { autorId, tipo, objetoId, motivo, detalle });
-    return { success: true };
-  }
-
-  try {
-    const textoMotivo = detalle ? `${motivo} — ${detalle}` : motivo;
-    const { data, error } = await supabase
+export async function enviarReporte({ tipo, objetoId, motivo, detalle = '' }) {
+  const uid = await uidActual();
+  const texto = detalle?.trim() ? `${motivo} — ${detalle.trim()}` : motivo;
+  return ejecutar(
+    supabase
       .from('reportes')
-      .insert({
-        autor_id: autorId,
-        tipo,
-        objeto_id: String(objetoId),
-        motivo: textoMotivo,
-        estado: 'abierto'
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-    return { success: true, data };
-  } catch (err) {
-    console.error('[Safety] Error al enviar reporte:', err);
-    return { success: false, error: err.message };
-  }
+      .insert({ autor_id: uid, tipo, objeto_id: String(objetoId), motivo: texto, estado: 'abierto' })
+      .select('id')
+      .single()
+  );
 }
 
 /**
- * Bloquea a un usuario de forma recíproca
+ * Bloquea a otro alumno. El servidor oculta los perfiles en ambos sentidos y
+ * cierra solicitudes y chats entre ambos.
  */
-export async function bloquearUsuario(bloqueadorId, bloqueadoId) {
-  if (!isSupabaseConfigured) {
-    return { success: true };
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from('bloqueos')
-      .insert({
-        bloqueador_id: bloqueadorId,
-        bloqueado_id: bloqueadoId
-      })
-      .select()
-      .single();
-
-    if (error && error.code !== '23505') { // 23505 = unique_violation
-      throw error;
-    }
-
-    return { success: true, data };
-  } catch (err) {
-    console.error('[Safety] Error al bloquear usuario:', err);
-    return { success: false, error: err.message };
+export async function bloquearUsuario(bloqueadoId) {
+  const uid = await uidActual();
+  const { error } = await supabase
+    .from('bloqueos')
+    .insert({ bloqueador_id: uid, bloqueado_id: bloqueadoId });
+  if (error && error.code !== '23505') {
+    await ejecutar(Promise.resolve({ error })); // traduce y lanza
   }
 }
 
-/**
- * Desbloquea a un usuario previamente bloqueado
- */
-export async function desbloquearUsuario(bloqueadorId, bloqueadoId) {
-  if (!isSupabaseConfigured) {
-    return { success: true };
-  }
-
-  try {
-    const { error } = await supabase
-      .from('bloqueos')
-      .delete()
-      .eq('bloqueador_id', bloqueadorId)
-      .eq('bloqueado_id', bloqueadoId);
-
-    if (error) throw error;
-    return { success: true };
-  } catch (err) {
-    console.error('[Safety] Error al desbloquear usuario:', err);
-    return { success: false, error: err.message };
-  }
+export async function desbloquearUsuario(bloqueadoId) {
+  const uid = await uidActual();
+  await ejecutar(
+    supabase.from('bloqueos').delete().eq('bloqueador_id', uid).eq('bloqueado_id', bloqueadoId)
+  );
 }
 
-/**
- * Obtiene la lista de usuarios bloqueados por el usuario actual
- */
-export async function fetchUsuariosBloqueados(userId) {
-  if (!isSupabaseConfigured || !userId) {
-    return [];
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from('bloqueos')
-      .select(`
-        id,
-        bloqueado_id,
-        creado_en,
-        perfil_bloqueado:perfiles!bloqueado_id(id, nombre, carrera, ciclo, foto_url)
-      `)
-      .eq('bloqueador_id', userId)
-      .order('creado_en', { ascending: false });
-
-    if (error) throw error;
-    return data || [];
-  } catch (err) {
-    console.error('[Safety] Error al obtener bloqueados:', err);
-    return [];
-  }
+export async function fetchUsuariosBloqueados() {
+  const uid = await uidActual();
+  return (
+    (await ejecutar(
+      supabase
+        .from('bloqueos')
+        .select('id, bloqueado_id, creado_en, perfil_bloqueado:perfiles!bloqueos_bloqueado_id_fkey(id, nombre, apellido, carrera, ciclo, foto_url)')
+        .eq('bloqueador_id', uid)
+        .order('creado_en', { ascending: false })
+    )) || []
+  );
 }
 
-/**
- * Obtiene los reportes abiertos para vista de moderación
- */
 export async function fetchReportesModeracion() {
-  if (!isSupabaseConfigured) {
-    return [];
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from('reportes')
-      .select(`
-        id,
-        tipo,
-        objeto_id,
-        motivo,
-        estado,
-        creado_en,
-        autor:perfiles!autor_id(id, nombre, carrera)
-      `)
-      .order('creado_en', { ascending: false })
-      .limit(50);
-
-    if (error) throw error;
-    return data || [];
-  } catch (err) {
-    console.error('[Safety] Error al obtener reportes de moderación:', err);
-    return [];
-  }
+  return (
+    (await ejecutar(
+      supabase
+        .from('reportes')
+        .select('id, tipo, objeto_id, motivo, estado, creado_en, autor:perfiles!reportes_autor_id_fkey(id, nombre, carrera)')
+        .order('creado_en', { ascending: false })
+        .limit(50)
+    )) || []
+  );
 }
 
-/**
- * Actualiza el estado de un reporte (moderadores)
- */
 export async function actualizarEstadoReporte(reporteId, nuevoEstado) {
-  if (!isSupabaseConfigured) {
-    return { success: true };
-  }
-
-  try {
-    const { error } = await supabase
-      .from('reportes')
-      .update({ estado: nuevoEstado })
-      .eq('id', reporteId);
-
-    if (error) throw error;
-    return { success: true };
-  } catch (err) {
-    console.error('[Safety] Error actualizando reporte:', err);
-    return { success: false, error: err.message };
-  }
+  await ejecutar(supabase.from('reportes').update({ estado: nuevoEstado }).eq('id', reporteId));
 }

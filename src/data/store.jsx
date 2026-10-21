@@ -2,16 +2,13 @@
 // La sesión y los datos compartidos viven SOLO en Supabase. Aquí solo hay estado
 // de UI (pestaña activa, modo oscuro, pantalla) y el perfil del usuario con sesión.
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
-import {
-  ESPACIOS_INICIALES,
-  CONSULTAS_AGRUPADAS_INICIALES,
-  ENCUESTAS_BANDEJA_INICIALES,
-  ENCUESTA_PROPIA_DEMO,
-  METRICAS_PANEL_UTP,
-  HABILIDADES_BASE_NUEVO_ALUMNO
-} from './mockData';
+// METRICAS_PANEL_UTP: el panel de la universidad (W01–W06) sigue con datos de ejemplo
+// por decisión del MVP (docs/DECISIONES.md). HABILIDADES_BASE_NUEVO_ALUMNO es el estado
+// en cero mientras llega el cálculo real del servidor.
+import { METRICAS_PANEL_UTP, HABILIDADES_BASE_NUEVO_ALUMNO } from './mockData';
 import { supabase, isSupabaseConfigured, mensajeError } from '../lib/supabase';
 import { obtenerPerfil, cerrarSesion as cerrarSesionAuth } from '../lib/auth';
+import { calcularHabilidadesReales, fetchCertificados } from '../lib/profile';
 
 const StoreContext = createContext(null);
 
@@ -57,12 +54,6 @@ export function StoreProvider({ children }) {
   const [errorSesion, setErrorSesion] = useState('');
   // Evita recargar el perfil si Supabase repite SIGNED_IN para el mismo usuario (p. ej. al volver a la pestaña)
   const uidCargadoRef = useRef(null);
-
-  // Datos de ejemplo que aún usan algunas vistas (se reemplazan por Supabase en el paso 3)
-  const [espacios] = useState(ESPACIOS_INICIALES);
-  const [consultas] = useState(CONSULTAS_AGRUPADAS_INICIALES);
-  const [encuestasBandeja] = useState(ENCUESTAS_BANDEJA_INICIALES);
-  const [encuestaPropia] = useState(ENCUESTA_PROPIA_DEMO);
 
   const [activeTab, setActiveTab] = useState('inicio'); // 'inicio' | 'explorar' | 'grupos' | 'encuestas' | 'perfil'
   const [currentScreen, setCurrentScreen] = useState('m01_bienvenida'); // 'app' | 'm01_bienvenida' | 'm02_otp' | 'm03_onboarding' | 'm04_intereses' | 'm05_consentimientos' | 'panel_utp'
@@ -127,6 +118,25 @@ export function StoreProvider({ children }) {
     }
   }, []);
 
+  // Habilidades (calculadas en el servidor a partir de los hechos) y certificados
+  const refrescarHabilidades = useCallback(async () => {
+    const uid = uidCargadoRef.current;
+    if (!uid) return;
+    try {
+      const [habilidades, certificados] = await Promise.all([
+        calcularHabilidadesReales(uid),
+        fetchCertificados(uid)
+      ]);
+      setUser((prev) => (prev?.id === uid ? { ...prev, habilidades, certificados } : prev));
+    } catch (err) {
+      console.warn('[Kampuz] No se pudieron actualizar las habilidades:', err.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (estadoSesion === 'lista') refrescarHabilidades();
+  }, [estadoSesion, refrescarHabilidades]);
+
   const reintentarSesion = useCallback(async () => {
     const { data } = await supabase.auth.getSession();
     await cargarSesion(data?.session);
@@ -163,10 +173,6 @@ export function StoreProvider({ children }) {
     return [0, 30, 80, 200][Math.min(nivel, 3)];
   };
 
-  // Temporal: PerfilView aún los usa (se reemplazan en los pasos 3 y 4)
-  const toggleConsentimiento = () => {};
-  const agregarCertificado = () => null;
-
   // Al terminar el onboarding, con el perfil ya guardado en Supabase
   const completarOnboarding = (perfil) => {
     uidCargadoRef.current = perfil.id;
@@ -193,10 +199,7 @@ export function StoreProvider({ children }) {
         errorSesion,
         reintentarSesion,
         completarOnboarding,
-        espacios,
-        consultas,
-        encuestasBandeja,
-        encuestaPropia,
+        refrescarHabilidades,
         activeTab,
         setActiveTab,
         currentScreen,
@@ -210,8 +213,6 @@ export function StoreProvider({ children }) {
         darkMode,
         setDarkMode,
         getAlcanceSemanal,
-        toggleConsentimiento,
-        agregarCertificado,
         cerrarSesion,
         metricasPanel: METRICAS_PANEL_UTP
       }}

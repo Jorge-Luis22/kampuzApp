@@ -1,5 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useStore } from '../data/store';
+import { fetchBandejaEncuestas } from '../lib/surveys';
+import { fetchEspacios } from '../lib/spaces';
+import { fetchConsultasCarrera } from '../lib/consultas';
+import ErrorConReintento from '../components/ErrorConReintento';
 import {
   ClipboardList,
   MessageSquare,
@@ -21,17 +25,42 @@ export default function InicioView() {
   const {
     user,
     setActiveTab,
-    encuestasBandeja,
-    consultas,
-    espacios,
     setActiveEspacioId,
     setActiveConsultaId
   } = useStore();
+
+  // Resumen real desde Supabase (antes eran datos de ejemplo)
+  const [encuestasBandeja, setEncuestasBandeja] = useState([]);
+  const [espacios, setEspacios] = useState([]);
+  const [consultas, setConsultas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState('');
+
+  const cargarResumen = useCallback(async () => {
+    setCargando(true);
+    setErrorCarga('');
+    const [b, e, c] = await Promise.allSettled([
+      fetchBandejaEncuestas(),
+      fetchEspacios(),
+      fetchConsultasCarrera(user?.id)
+    ]);
+    if (b.status === 'fulfilled') setEncuestasBandeja(b.value);
+    if (e.status === 'fulfilled') setEspacios(e.value);
+    if (c.status === 'fulfilled') setConsultas(c.value);
+    const fallo = [b, e, c].find((r) => r.status === 'rejected');
+    if (fallo) setErrorCarga(fallo.reason?.message || 'No pudimos cargar tu inicio.');
+    setCargando(false);
+  }, [user?.id]);
+
+  useEffect(() => {
+    cargarResumen();
+  }, [cargarResumen]);
 
   const encuestaPendiente = encuestasBandeja.find(e => e.estado === 'pendiente');
   const cohorteGrupo = espacios.find(e => e.tipo === 'carrera_ciclo');
   const carreraEspacio = espacios.find(e => e.tipo === 'carrera');
   const tallerActivo = espacios.find(e => e.tipo === 'taller' && e.esMiembro);
+  const talleresOficiales = espacios.filter(e => e.tipo === 'taller' && e.horario).slice(0, 3);
   const consultasAbiertas = consultas.filter(c => c.estado === 'abierto');
 
   const goToEspacio = (id) => {
@@ -40,6 +69,7 @@ export default function InicioView() {
   };
 
   const goToConsulta = (id) => {
+    if (carreraEspacio) setActiveEspacioId(carreraEspacio.id);
     setActiveConsultaId(id);
     setActiveTab('grupos');
   };
@@ -85,6 +115,11 @@ export default function InicioView() {
         </button>
       </div>
 
+      {errorCarga && <ErrorConReintento compacto mensaje={errorCarga} onReintentar={cargarResumen} />}
+      {cargando && espacios.length === 0 && !errorCarga && (
+        <p className="text-xs text-ink-muted font-semibold">Cargando tu campus...</p>
+      )}
+
       {/* Banner Encuesta Pendiente de Tesis */}
       {encuestaPendiente && (
         <div className="bg-gradient-to-r from-brand-primary via-[#2E2675] to-[#3B3294] text-white p-4 rounded-2xl shadow-md relative overflow-hidden border border-brand-primary/50">
@@ -105,7 +140,7 @@ export default function InicioView() {
 
             <div className="flex items-center justify-between pt-1">
               <span className="text-xs text-indigo-200 font-medium">
-                Por {encuestaPendiente.autorNombre} (~{encuestaPendiente.tiempoEstimado})
+                Anónima · ~{encuestaPendiente.duracionMin} min
               </span>
               <button
                 onClick={() => setActiveTab('encuestas')}
@@ -169,7 +204,7 @@ export default function InicioView() {
                     </span>
                   </div>
                   <p className="text-xs text-ink-soft dark:text-ink-muted line-clamp-1 font-medium">
-                    {cohorteGrupo.ultimoMensaje}
+                    {cohorteGrupo.miembrosCount} compañero{cohorteGrupo.miembrosCount === 1 ? '' : 's'} de tu ciclo en Kampuz
                   </p>
                 </div>
               </div>
@@ -278,6 +313,11 @@ export default function InicioView() {
         </div>
 
         <div className="space-y-2.5">
+          {consultasAbiertas.length === 0 && (
+            <p className="text-xs text-ink-muted bg-white dark:bg-surface-cardDark rounded-2xl p-3 border border-line dark:border-line-dark">
+              No hay dudas abiertas en tu carrera. Si tienes una sobre un curso, publícala en el espacio de tu carrera.
+            </p>
+          )}
           {consultasAbiertas.slice(0, 2).map((c) => (
             <div
               key={c.id}
@@ -300,7 +340,7 @@ export default function InicioView() {
               </p>
 
               <div className="pt-2 border-t border-line dark:border-line-dark flex items-center justify-between text-xs text-ink-muted font-medium">
-                <span>{c.autores[0]}</span>
+                <span>{c.autores?.[0]}</span>
                 <span className="text-accent font-bold flex items-center space-x-1">
                   <span>{c.respuestas.length > 0 ? `${c.respuestas.length} respuesta` : 'Orientar ahora'}</span>
                   <ChevronRight size={14} />
@@ -311,43 +351,31 @@ export default function InicioView() {
         </div>
       </div>
 
-      {/* Actividades del Campus UTP */}
-      <div className="space-y-2.5">
-        <h2 className="text-sm font-black uppercase tracking-wider text-ink dark:text-ink-light">
-          Agenda Campus UTP Lima Sur
-        </h2>
-        <div className="k-card p-3.5 space-y-3 border-2 border-line/80 dark:border-line-dark rounded-2xl shadow-sm">
-          <div className="flex items-center space-x-3.5">
-            <div className="w-12 h-12 rounded-xl bg-accent-soft text-accent flex flex-col items-center justify-center shrink-0 border border-accent/20">
-              <span className="text-xs font-black uppercase leading-none">SÁB</span>
-              <span className="text-base font-black leading-none mt-1">11</span>
-            </div>
-            <div>
-              <h3 className="text-sm font-extrabold text-ink dark:text-ink-light">
-                Torneo Relámpago Interfacultades
-              </h3>
-              <p className="text-xs text-ink-soft dark:text-ink-muted mt-0.5">
-                Cancha Central Lima Sur · Vóley & Futsal Oficial
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-3.5 pt-2.5 border-t border-line dark:border-line-dark">
-            <div className="w-12 h-12 rounded-xl bg-brand-primary-soft dark:bg-brand-dark text-brand-primary dark:text-teal-300 flex flex-col items-center justify-center shrink-0 border border-brand-primary/20">
-              <span className="text-xs font-black uppercase leading-none">VIE</span>
-              <span className="text-base font-black leading-none mt-1">17</span>
-            </div>
-            <div>
-              <h3 className="text-sm font-extrabold text-ink dark:text-ink-light">
-                Workshop: Búsqueda con IA para Tesis
-              </h3>
-              <p className="text-xs text-ink-soft dark:text-ink-muted mt-0.5">
-                Auditorio 1 y Lab 401 · Abierto a Ciencias de la Salud
-              </p>
-            </div>
+      {/* Talleres oficiales con su horario (datos reales de Supabase) */}
+      {talleresOficiales.length > 0 && (
+        <div className="space-y-2.5">
+          <h2 className="text-sm font-black uppercase tracking-wider text-ink dark:text-ink-light">
+            Talleres de tu sede
+          </h2>
+          <div className="k-card p-3.5 space-y-3 border-2 border-line/80 dark:border-line-dark rounded-2xl shadow-sm">
+            {talleresOficiales.map((t, i) => (
+              <button
+                key={t.id}
+                onClick={() => goToEspacio(t.id)}
+                className={`w-full text-left flex items-center space-x-3.5 ${i > 0 ? 'pt-2.5 border-t border-line dark:border-line-dark' : ''}`}
+              >
+                <div className="w-10 h-10 rounded-xl bg-accent-soft text-accent flex items-center justify-center shrink-0 border border-accent/20">
+                  <Calendar size={18} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-extrabold text-ink dark:text-ink-light truncate">{t.nombre}</h3>
+                  <p className="text-xs text-ink-soft dark:text-ink-muted mt-0.5 truncate">{t.horario}</p>
+                </div>
+              </button>
+            ))}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

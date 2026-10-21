@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../data/store';
 import { CARRERAS_UTP, INTERESES_DISPONIBLES } from '../data/mockData';
+import ErrorConReintento from '../components/ErrorConReintento';
 import {
   fetchUmbralMinimoSegmento,
   calcularAlcanceEnVivo,
@@ -34,13 +35,7 @@ import {
 } from 'lucide-react';
 
 export default function EncuestasView() {
-  const {
-    user,
-    setUser,
-    encuestasBandeja: fallbackBandeja,
-    encuestaPropia: fallbackPropia,
-    getAlcanceSemanal
-  } = useStore();
+  const { user, getAlcanceSemanal, refrescarHabilidades } = useStore();
 
   const [activeSubTab, setActiveSubTab] = useState('bandeja'); // 'bandeja' | 'crear' | 'mis_encuestas'
 
@@ -52,6 +47,12 @@ export default function EncuestasView() {
   const [isLoadingBandeja, setIsLoadingBandeja] = useState(false);
   const [misEncuestas, setMisEncuestas] = useState([]);
   const [isLoadingMisEncuestas, setIsLoadingMisEncuestas] = useState(false);
+  const [errorBandeja, setErrorBandeja] = useState('');
+  const [errorMisEncuestas, setErrorMisEncuestas] = useState('');
+  const [errorAlcance, setErrorAlcance] = useState('');
+  const [errorResponder, setErrorResponder] = useState('');
+  const [errorResultados, setErrorResultados] = useState('');
+  const [resultadoEnvio, setResultadoEnvio] = useState(null);
 
   // Flujo Crear Encuesta: Filtro (M24)
   const [filtro, setFiltro] = useState({
@@ -64,7 +65,7 @@ export default function EncuestasView() {
     intereses: []
   });
 
-  const [alcanceCalculado, setAlcanceCalculado] = useState(30);
+  const [alcanceCalculado, setAlcanceCalculado] = useState(0);
   const [isCalculandoAlcance, setIsCalculandoAlcance] = useState(false);
   const [crearStep, setCrearStep] = useState('filtro'); // 'filtro' | 'bloqueado_m25' | 'bloqueado_alcance' | 'preguntas'
   const [encuestaTitulo, setEncuestaTitulo] = useState('');
@@ -101,35 +102,30 @@ export default function EncuestasView() {
 
   // Cargar umbral inicial y bandeja
   useEffect(() => {
-    fetchUmbralMinimoSegmento().then(setUmbralMinimo);
+    fetchUmbralMinimoSegmento()
+      .then(setUmbralMinimo)
+      .catch((err) => setErrorAlcance(err.message));
   }, []);
 
   const cargarBandeja = async () => {
-    if (!user?.id) return;
     setIsLoadingBandeja(true);
+    setErrorBandeja('');
     try {
-      const data = await fetchBandejaEncuestas(user.id);
-      if (data && data.length > 0) {
-        setBandejaReal(data);
-      } else {
-        // Fallback enriquecido si no hay en DB
-        setBandejaReal(fallbackBandeja);
-      }
+      setBandejaReal(await fetchBandejaEncuestas());
     } catch (err) {
-      setBandejaReal(fallbackBandeja);
+      setErrorBandeja(err.message);
     } finally {
       setIsLoadingBandeja(false);
     }
   };
 
   const cargarMisEncuestas = async () => {
-    if (!user?.id) return;
     setIsLoadingMisEncuestas(true);
+    setErrorMisEncuestas('');
     try {
-      const data = await fetchMisEncuestasCreadas(user.id);
-      setMisEncuestas(data || []);
+      setMisEncuestas(await fetchMisEncuestasCreadas());
     } catch (err) {
-      console.warn('Error cargando mis encuestas:', err);
+      setErrorMisEncuestas(err.message);
     } finally {
       setIsLoadingMisEncuestas(false);
     }
@@ -147,11 +143,12 @@ export default function EncuestasView() {
   useEffect(() => {
     let timer = setTimeout(async () => {
       setIsCalculandoAlcance(true);
+      setErrorAlcance('');
       try {
         const alcance = await calcularAlcanceEnVivo(filtro);
         setAlcanceCalculado(alcance);
       } catch (e) {
-        console.warn('Error calculando alcance:', e);
+        setErrorAlcance(e.message);
       } finally {
         setIsCalculandoAlcance(false);
       }
@@ -170,6 +167,7 @@ export default function EncuestasView() {
   };
 
   const handleVerificarFiltro = () => {
+    if (errorAlcance || isCalculandoAlcance) return;
     // Si el alcance es menor al umbral configurado (30), bloquear con pantalla M25
     if (alcanceCalculado < umbralMinimo) {
       setCrearStep('bloqueado_m25');
@@ -209,12 +207,7 @@ export default function EncuestasView() {
         preguntas: preguntasNuevas
       });
 
-      if (!res.success) {
-        setErrorEnvio(res.error || 'No se pudo enviar la encuesta.');
-        setIsEnviandoEncuesta(false);
-        return;
-      }
-
+      setResultadoEnvio(res);
       setEncuestaEnviadaExito(true);
       setTimeout(() => {
         setEncuestaEnviadaExito(false);
@@ -223,9 +216,9 @@ export default function EncuestasView() {
         setEncuestaObjetivo('');
         setActiveSubTab('mis_encuestas');
         cargarMisEncuestas();
-      }, 1500);
+      }, 2500);
     } catch (err) {
-      setErrorEnvio('Error de red al procesar el envío seguro.');
+      setErrorEnvio(err.message);
     } finally {
       setIsEnviandoEncuesta(false);
     }
@@ -237,30 +230,14 @@ export default function EncuestasView() {
     setPreguntaIndex(0);
     setRespuestasUsuario({});
     setRespuestaFinalizada(false);
+    setErrorResponder('');
+    setPreguntasParaResponder([]);
     setIsLoadingPreguntas(true);
 
     try {
-      let preguntas = [];
-      if (encuesta.encuestaId) {
-        preguntas = await fetchPreguntasEncuesta(encuesta.encuestaId);
-      }
-      if (!preguntas || preguntas.length === 0) {
-        preguntas = encuesta.preguntas || [
-          {
-            id: 'p1',
-            texto: '¿Con qué frecuencia utilizas las salas de estudio de la sede?',
-            opciones: ['Todos los días', '2 a 3 veces por semana', 'Raras veces']
-          },
-          {
-            id: 'p2',
-            texto: '¿Consideras que el horario de tutorías clínicas se adapta a tus cursos?',
-            opciones: ['Sí, completamente', 'Parcialmente', 'No se adapta']
-          }
-        ];
-      }
-      setPreguntasParaResponder(preguntas);
+      setPreguntasParaResponder(await fetchPreguntasEncuesta(encuesta.encuestaId));
     } catch (err) {
-      console.warn('Error cargando preguntas:', err);
+      setErrorResponder(err.message);
     } finally {
       setIsLoadingPreguntas(false);
     }
@@ -281,29 +258,15 @@ export default function EncuestasView() {
     } else {
       // Última pregunta: guardar respuestas de forma segura
       setIsGuardandoRespuesta(true);
+      setErrorResponder('');
       try {
         await responderEncuestaSegura({
           envioId: encuestaParaResponder.envioId,
-          encuestaId: encuestaParaResponder.encuestaId,
           respuestas: respuestasUsuario
         });
 
-        // Actualizar habilidad localmente
-        setUser(prev => {
-          const actual = prev?.habilidades?.apoyo_investigacion?.nivel || 0;
-          return {
-            ...prev,
-            habilidades: {
-              ...(prev?.habilidades || {}),
-              apoyo_investigacion: {
-                nivel: Math.max(actual, 1),
-                nombre: 'Apoyo a la investigación',
-                puntos: ((prev?.habilidades?.apoyo_investigacion?.puntos) || 0) + 10,
-                encuestasRespondidas: ((prev?.habilidades?.apoyo_investigacion?.encuestasRespondidas) || 0) + 1
-              }
-            }
-          };
-        });
+        // El nivel lo recalcula el servidor a partir de las encuestas respondidas
+        refrescarHabilidades?.();
 
         setRespuestaFinalizada(true);
         setTimeout(() => {
@@ -312,8 +275,7 @@ export default function EncuestasView() {
           cargarBandeja();
         }, 1500);
       } catch (err) {
-        console.error('Error al responder:', err);
-        setEncuestaParaResponder(null);
+        setErrorResponder(err.message);
       } finally {
         setIsGuardandoRespuesta(false);
       }
@@ -323,12 +285,13 @@ export default function EncuestasView() {
   // Ver resultados agregados de una encuesta (M28)
   const handleVerResultados = async (enc) => {
     setEncuestaResultadosSeleccionada(enc);
+    setResultadosAgregados(null);
+    setErrorResultados('');
     setIsLoadingResultados(true);
     try {
-      const res = await obtenerResultadosAgregados(enc.id);
-      setResultadosAgregados(res);
+      setResultadosAgregados(await obtenerResultadosAgregados(enc.id));
     } catch (err) {
-      console.warn('Error cargando resultados agregados:', err);
+      setErrorResultados(err.message);
     } finally {
       setIsLoadingResultados(false);
     }
@@ -379,6 +342,10 @@ export default function EncuestasView() {
                 Tus respuestas fueron agregadas anónimamente. Desbloqueaste alcance en tu habilidad <strong>Apoyo a la Investigación</strong>.
               </p>
             </div>
+          ) : errorResponder && !currentP ? (
+            <div className="mt-6">
+              <ErrorConReintento mensaje={errorResponder} onReintentar={() => handleIniciarResponder(encuestaParaResponder)} />
+            </div>
           ) : currentP ? (
             <div className="mt-6 space-y-3">
               <span className="text-xs font-black text-brand-primary dark:text-teal-300 uppercase tracking-wider block">
@@ -421,6 +388,7 @@ export default function EncuestasView() {
 
         {!respuestaFinalizada && (
           <div className="space-y-3 pt-5">
+            {errorResponder && currentP && <ErrorConReintento compacto mensaje={errorResponder} />}
             <div className="flex items-center space-x-1.5 text-xs text-ink-muted justify-center font-medium">
               <ShieldCheck size={16} className="text-accent" />
               <span>Tus respuestas son totalmente anónimas y confidenciales</span>
@@ -588,7 +556,9 @@ export default function EncuestasView() {
               ¡Encuesta enviada con éxito!
             </h3>
             <p className="text-xs text-ink-soft dark:text-ink-muted">
-              Llegará a la bandeja de {Math.min(alcanceCalculado, alcanceSemanal)} estudiantes de la sede.
+              {resultadoEnvio
+                ? `Llegó a la bandeja de ${resultadoEnvio.enviados} estudiantes${resultadoEnvio.encolados ? ` y ${resultadoEnvio.encolados} la recibirán cuando liberen cupo (máximo 3 encuestas por semana)` : ''}.`
+                : ''}
             </p>
           </div>
         ) : (
@@ -759,14 +729,17 @@ export default function EncuestasView() {
               </span>
             </div>
 
-            {isLoadingBandeja ? (
+            {isLoadingBandeja && bandejaReal.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-ink-muted space-y-2">
                 <Loader2 size={22} className="animate-spin text-accent" />
                 <p className="text-xs font-semibold">Cargando bandeja de encuestas...</p>
               </div>
+            ) : errorBandeja ? (
+              <ErrorConReintento mensaje={errorBandeja} onReintentar={cargarBandeja} />
             ) : bandejaReal.length === 0 ? (
-              <div className="p-8 text-center text-xs text-ink-muted bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark">
-                No tienes encuestas asignadas en este momento.
+              <div className="p-8 text-center text-xs text-ink-muted bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark space-y-1">
+                <p className="font-bold text-sm text-ink dark:text-ink-light">No tienes encuestas por responder</p>
+                <p>Cuando un compañero envíe una encuesta a un grupo en el que estás, llegará aquí. Responder una te da Nivel 1 en Apoyo a la investigación.</p>
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -784,7 +757,7 @@ export default function EncuestasView() {
                         <div>
                           <div className="flex items-center space-x-2">
                             <span className="text-xs font-black text-brand-primary dark:text-teal-300">
-                              {enc.autorCarrera || 'Investigación UTP'}
+                              Investigación UTP
                             </span>
                             <span className="text-xs text-ink-muted">• {enc.duracionMin || 2} min</span>
                           </div>
@@ -835,7 +808,7 @@ export default function EncuestasView() {
           {/* Card Contador Grande en Vivo */}
           <div className="k-card p-4 text-center space-y-1.5 border-2 border-brand-primary/40 rounded-2xl shadow-sm bg-white dark:bg-surface-cardDark">
             <span className="text-xs font-black text-ink-muted uppercase tracking-wider">
-              Alcance de tu filtro en vivo (UTP Lima Sur)
+              Alcance de tu filtro en vivo
             </span>
             <div className={`text-4xl font-black ${
               alcanceCalculado < umbralMinimo ? 'text-semantic-danger' : 'text-brand-primary dark:text-teal-300'
@@ -850,7 +823,11 @@ export default function EncuestasView() {
               estudiantes cumplen este perfil
             </p>
 
-            {alcanceCalculado < umbralMinimo ? (
+            {errorAlcance ? (
+              <div className="mt-2">
+                <ErrorConReintento compacto mensaje={errorAlcance} onReintentar={() => setFiltro({ ...filtro })} />
+              </div>
+            ) : alcanceCalculado < umbralMinimo ? (
               <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 border border-amber-200">
                 <AlertTriangle size={15} />
                 <span>Pocos compañeros ({alcanceCalculado}/{umbralMinimo}). Amplía el filtro para enviar.</span>
@@ -966,11 +943,13 @@ export default function EncuestasView() {
       {/* SubTab 3: Mis Resultados Propios (M28) */}
       {activeSubTab === 'mis_encuestas' && (
         <div className="space-y-3">
-          {isLoadingMisEncuestas ? (
+          {isLoadingMisEncuestas && misEncuestas.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-ink-muted space-y-2">
               <Loader2 size={24} className="animate-spin text-accent" />
               <p className="text-xs font-semibold">Cargando tus estudios...</p>
             </div>
+          ) : errorMisEncuestas ? (
+            <ErrorConReintento mensaje={errorMisEncuestas} onReintentar={cargarMisEncuestas} />
           ) : misEncuestas.length === 0 ? (
             <div className="p-8 text-center text-xs text-ink-muted bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark space-y-2">
               <ClipboardList size={32} className="mx-auto text-ink-muted/50" />
@@ -1057,6 +1036,12 @@ export default function EncuestasView() {
                   <Loader2 size={24} className="animate-spin text-accent" />
                   <p className="text-xs font-semibold">Cargando resultados agregados...</p>
                 </div>
+              ) : errorResultados ? (
+                <ErrorConReintento mensaje={errorResultados} onReintentar={() => handleVerResultados(encuestaResultadosSeleccionada)} />
+              ) : resultadosAgregados?.total_respuestas === 0 ? (
+                <p className="text-xs text-ink-muted text-center py-6">
+                  Aún no se han recibido respuestas para este estudio.
+                </p>
               ) : resultadosAgregados?.preguntas && resultadosAgregados.preguntas.length > 0 ? (
                 resultadosAgregados.preguntas.map((q, qIdx) => {
                   const conteos = q.conteo_respuestas || {};

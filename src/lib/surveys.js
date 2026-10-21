@@ -18,7 +18,7 @@ function filtroParaServidor(filtro) {
     carreras: Array.isArray(filtro.carreras) ? filtro.carreras : filtro.carrera ? [filtro.carrera] : [],
     cicloMin: Number(filtro.cicloMin || 1),
     cicloMax: Number(filtro.cicloMax || 10),
-    edadMin: Number(filtro.edadMin || 18),
+    edadMin: Number(filtro.edadMin || 14),
     edadMax: Number(filtro.edadMax || 99),
     intereses: filtro.intereses || []
   };

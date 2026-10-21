@@ -153,3 +153,6 @@ await como(db, H, `select public.enviar_solicitud($1,'Hola, coordinemos')`, [G])
 await como(db, G, `insert into public.bloqueos (bloqueador_id, bloqueado_id) values ($1,$2)`, [G, H]);
 ok((await db.query(`select estado from public.solicitudes_mensaje where de_id=$1 and a_id=$2`, [H, G])).rows[0].estado === 'rechazada', 'bloquear cierra la solicitud pendiente');
 ok((await como(db, A, `select public.calcular_alcance_encuesta($1) n`, [{ carreras: ['Psicología', 'Derecho'] }])).rows[0].n > (await como(db, A, `select public.calcular_alcance_encuesta($1) n`, [{ carreras: ['Psicología'] }])).rows[0].n, 'filtro con varias carreras suma');
+
+console.log('-- sin modo llamada');
+await falla(como(db, D, `select public.responder_consulta($1,'Te llamo y te explico el tema','llamada')`, [r1.grupo_id]), /solo se puede orientar por mensaje/, 'el modo "llamada" ya no se acepta');

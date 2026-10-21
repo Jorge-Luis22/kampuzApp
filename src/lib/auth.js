@@ -245,6 +245,19 @@ export function perfilDesdeFila(fila) {
   };
 }
 
+export const EDAD_MINIMA_POR_DEFECTO = 14;
+
+/**
+ * Edad mínima para registrarse (config edad_minima_registro). El servidor la vuelve
+ * a validar al guardar el perfil; aquí solo sirve para avisar antes.
+ */
+export async function obtenerEdadMinima() {
+  const fila = await ejecutar(
+    supabase.from('config').select('valor').eq('clave', 'edad_minima_registro').maybeSingle()
+  );
+  return Math.max(EDAD_MINIMA_POR_DEFECTO, parseInt(fila?.valor, 10) || EDAD_MINIMA_POR_DEFECTO);
+}
+
 /**
  * Lee el perfil del usuario con sesión. Devuelve null si aún no completa el onboarding.
  */

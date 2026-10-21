@@ -906,7 +906,7 @@ export default function EncuestasView() {
                 </label>
                 <input
                   type="range"
-                  min="16"
+                  min="14"
                   max="35"
                   value={filtro.edadMin}
                   onChange={(e) => setFiltro({ ...filtro, edadMin: Number(e.target.value) })}
@@ -920,7 +920,7 @@ export default function EncuestasView() {
                 </label>
                 <input
                   type="range"
-                  min="16"
+                  min="14"
                   max="35"
                   value={filtro.edadMax}
                   onChange={(e) => setFiltro({ ...filtro, edadMax: Number(e.target.value) })}

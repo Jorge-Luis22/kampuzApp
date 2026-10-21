@@ -15,7 +15,9 @@ import {
   iniciarSesion,
   solicitarRecuperacion,
   confirmarRecuperacion,
-  guardarPerfilInicial
+  guardarPerfilInicial,
+  obtenerEdadMinima,
+  EDAD_MINIMA_POR_DEFECTO
 } from '../lib/auth';
 import { subirAvatar, guardarConsentimientosIniciales } from '../lib/profile';
 import { CONSENTIMIENTOS, valoresPorDefecto } from '../data/consentimientos';
@@ -37,14 +39,15 @@ import {
   Inbox
 } from 'lucide-react';
 
-// Fecha máxima de nacimiento para tener 18 años hoy (spec 6.1)
-const fechaMaximaMayorDeEdad = () => {
+// Fecha de nacimiento más reciente permitida para la edad mínima de registro
+// (config edad_minima_registro, 14 por defecto; la decide el servidor)
+const fechaMaximaNacimiento = (edadMinima) => {
   const d = new Date();
-  d.setFullYear(d.getFullYear() - 18);
+  d.setFullYear(d.getFullYear() - edadMinima);
   return d.toISOString().slice(0, 10);
 };
 
-const esMayorDeEdad = (fecha) => Boolean(fecha) && fecha <= fechaMaximaMayorDeEdad();
+const cumpleEdadMinima = (fecha, edadMinima) => Boolean(fecha) && fecha <= fechaMaximaNacimiento(edadMinima);
 
 const MIN_PASSWORD = 8;
 
@@ -160,6 +163,15 @@ export default function OnboardingFlow() {
   }, [user?.id]);
 
   const [selectedIntereses, setSelectedIntereses] = useState(user?.intereses || []);
+
+  // Edad mínima de registro leída del servidor (solo hay sesión desde M03)
+  const [edadMinima, setEdadMinima] = useState(EDAD_MINIMA_POR_DEFECTO);
+  useEffect(() => {
+    if (currentScreen !== 'm03_onboarding' || !user?.id) return;
+    obtenerEdadMinima()
+      .then(setEdadMinima)
+      .catch(() => {}); // si falla, se usa el valor por defecto; el servidor valida igual
+  }, [currentScreen, user?.id]);
 
   // M05: los 4 consentimientos separados. El 1 es necesario; el 4 empieza apagado.
   const [consentValores, setConsentValores] = useState(valoresPorDefecto);
@@ -386,8 +398,8 @@ export default function OnboardingFlow() {
       setErrorMsg('Elige un @usuario de 3 a 30 caracteres (letras, números, . o _).');
       return;
     }
-    if (!esMayorDeEdad(formData.fechaNacimiento)) {
-      setErrorMsg('Ingresa tu fecha de nacimiento. Kampuz es solo para mayores de 18 años.');
+    if (!cumpleEdadMinima(formData.fechaNacimiento, edadMinima)) {
+      setErrorMsg(`Ingresa tu fecha de nacimiento. Para usar Kampuz debes tener al menos ${edadMinima} años.`);
       return;
     }
     if (selectedIntereses.length < 2) {
@@ -755,7 +767,8 @@ export default function OnboardingFlow() {
                 <input
                   type="date"
                   required
-                  max={fechaMaximaMayorDeEdad()}
+                  min="1940-01-01"
+                  max={fechaMaximaNacimiento(edadMinima)}
                   value={formData.fechaNacimiento}
                   onChange={(e) => setFormData({ ...formData, fechaNacimiento: e.target.value })}
                   className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light focus:outline-none focus:ring-2 focus:ring-accent"
@@ -763,7 +776,7 @@ export default function OnboardingFlow() {
               </div>
             </div>
             <p className="text-[10px] text-ink-muted -mt-2">
-              Kampuz es para mayores de 18. Tu fecha de nacimiento no se muestra en tu perfil.
+              Debes tener al menos {edadMinima} años. Tu fecha de nacimiento no se muestra en tu perfil.
             </p>
 
             {/* Carrera */}

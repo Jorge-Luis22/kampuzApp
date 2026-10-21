@@ -1474,7 +1474,7 @@ GRANT EXECUTE ON FUNCTION public.obtener_correo_por_identificador(text) TO anon,
 -- - correos_invitados deja de ser legible por anon/authenticated.
 -- - Nombre de usuario único (case-insensitive) y RPC de disponibilidad.
 -- - El cliente no puede fijarse rol, correo ni origen de campos en su perfil.
--- - Mayoría de edad (spec 6.1) validada en el servidor.
+-- - Edad mínima de registro (config edad_minima_registro, 14 por defecto) validada en el servidor.
 --
 -- Idempotente: se puede ejecutar sobre una base con 001–003 o con 001–008.
 -- ==============================================================================
@@ -1608,6 +1608,34 @@ revoke all on function public.obtener_correo_por_identificador(text) from public
 grant execute on function public.obtener_correo_por_identificador(text) to anon, authenticated;
 
 -- ------------------------------------------------------------------------------
+-- 4a. EDAD MÍNIMA PARA REGISTRARSE (configurable)
+--    La spec 6.1 pedía mayores de 18, pero hay alumnos que entran a la UTP desde
+--    los 15. Decisión del equipo: edad mínima en config (clave edad_minima_registro),
+--    14 por defecto. En Perú, el tratamiento de datos de menores de 14 años requiere
+--    el consentimiento de sus padres (reglamento de la Ley 29733); Kampuz no tiene
+--    ese flujo, por eso no se baja de 14. Validar con un especialista legal.
+-- ------------------------------------------------------------------------------
+insert into public.config (clave, valor, descripcion)
+values ('edad_minima_registro', '14', 'Edad mínima para crear un perfil en Kampuz (años cumplidos)')
+on conflict (clave) do nothing;
+
+create or replace function public.edad_minima_registro()
+returns integer
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select greatest(14, coalesce(
+        (select nullif(valor, '')::integer from public.config where clave = 'edad_minima_registro'),
+        14
+    ));
+$$;
+
+revoke all on function public.edad_minima_registro() from public, anon;
+grant execute on function public.edad_minima_registro() to authenticated;
+
+-- ------------------------------------------------------------------------------
 -- 4. PROTECCIÓN DEL PERFIL
 --    Las políticas RLS permiten al alumno insertar y editar su fila, pero no deben
 --    dejarle cambiarse el rol (escalar a moderador), el correo verificado ni el
@@ -1640,8 +1668,11 @@ begin
         new.usuario := lower(trim(new.usuario));
     end if;
 
-    if new.fecha_nacimiento > (current_date - interval '18 years')::date then
-        raise exception 'KAMPUZ_MENOR_DE_EDAD: Kampuz es solo para mayores de 18 años.';
+    if new.fecha_nacimiento > (current_date - make_interval(years => public.edad_minima_registro()))::date then
+        raise exception 'KAMPUZ_EDAD_MINIMA: Para usar Kampuz debes tener al menos % años.', public.edad_minima_registro();
+    end if;
+    if new.fecha_nacimiento < date '1940-01-01' then
+        raise exception 'KAMPUZ_EDAD_MINIMA: Revisa tu fecha de nacimiento.';
     end if;
 
     new.actualizado_en := now();
@@ -2448,7 +2479,9 @@ revoke all on function public.listar_consultas_carrera() from public, anon;
 grant execute on function public.listar_consultas_carrera() to authenticated;
 
 -- Orientar: ciclo >= 5, ciclo MAYOR que el de todos los autores, misma carrera y no ser autor.
--- Las estrellas quedan pendientes hasta que un autor valore "me sirvió".
+-- Solo por mensaje: la opción "llamada" (×3) se quitó porque la llamada no existe en la app
+-- (spec 11.3) y el modo lo declaraba quien respondía. Estrellas = nAlumnos si son 2 o más,
+-- pendientes hasta que un autor valore "me sirvió". p_modo se mantiene por compatibilidad.
 create or replace function public.responder_consulta(p_grupo_id uuid, p_texto text, p_modo text default 'mensaje')
 returns uuid
 language plpgsql
@@ -2460,11 +2493,10 @@ declare
     v_perfil record;
     v_grupo record;
     v_ciclo_max integer;
-    v_factor integer := case when p_modo = 'llamada' then 3 else 1 end;
     v_id uuid;
 begin
-    if p_modo not in ('mensaje', 'llamada') then
-        raise exception 'KAMPUZ_CONSULTA: Modo de respuesta no válido.';
+    if coalesce(p_modo, 'mensaje') <> 'mensaje' then
+        raise exception 'KAMPUZ_CONSULTA: Por ahora solo se puede orientar por mensaje.';
     end if;
     select * into v_perfil from public.perfiles where id = v_uid;
     select * into v_grupo from public.grupos_consulta where id = p_grupo_id;
@@ -2490,8 +2522,8 @@ begin
 
     insert into public.asesorias (grupo_consulta_id, asesor_id, modo, texto, estrellas_pendientes, estrellas_acreditadas)
     values (
-        p_grupo_id, v_uid, p_modo, trim(p_texto),
-        case when v_grupo.n_alumnos >= 2 then v_factor * v_grupo.n_alumnos else 0 end,
+        p_grupo_id, v_uid, 'mensaje', trim(p_texto),
+        case when v_grupo.n_alumnos >= 2 then v_grupo.n_alumnos else 0 end,
         0
     )
     returning id into v_id;
@@ -2542,7 +2574,7 @@ begin
             where usuario_a_id = least(v_uid, v_as.asesor_id) and usuario_b_id = greatest(v_uid, v_as.asesor_id)
         );
         if v_grupo.n_alumnos >= 2 and not v_conectados then
-            v_estrellas := (case when v_as.modo = 'llamada' then 3 else 1 end) * v_grupo.n_alumnos;
+            v_estrellas := v_grupo.n_alumnos;
         end if;
         update public.asesorias
         set estrellas_acreditadas = v_estrellas, estrellas_pendientes = 0
@@ -2626,7 +2658,7 @@ declare
     v_carreras text[] := '{}';
     v_ciclo_min integer := coalesce(nullif(p_filtro->>'cicloMin', '')::integer, 1);
     v_ciclo_max integer := coalesce(nullif(p_filtro->>'cicloMax', '')::integer, 10);
-    v_edad_min integer := coalesce(nullif(p_filtro->>'edadMin', '')::integer, 18);
+    v_edad_min integer := coalesce(nullif(p_filtro->>'edadMin', '')::integer, 0);
     v_edad_max integer := coalesce(nullif(p_filtro->>'edadMax', '')::integer, 99);
     v_intereses text[] := '{}';
 begin
@@ -3237,7 +3269,7 @@ declare
     v_carreras text[] := '{}';
     v_ciclo_min integer := coalesce(nullif(p_filtro->>'cicloMin', '')::integer, 1);
     v_ciclo_max integer := coalesce(nullif(p_filtro->>'cicloMax', '')::integer, 10);
-    v_edad_min integer := coalesce(nullif(p_filtro->>'edadMin', '')::integer, 18);
+    v_edad_min integer := coalesce(nullif(p_filtro->>'edadMin', '')::integer, 0);
     v_edad_max integer := coalesce(nullif(p_filtro->>'edadMax', '')::integer, 99);
     v_intereses text[] := '{}';
 begin
@@ -3403,7 +3435,10 @@ grant execute on function public.umbral_visibilidad() to authenticated;
 -- 1. CONFIGURACIÓN DEL SISTEMA
 insert into public.config (clave, valor, descripcion)
 values 
-    ('umbral_minimo_segmento', '30', 'Mínimo de alumnos en un segmento para habilitar el envío de encuestas (Ley 29733)')
+    -- PILOTO: 5 en vez de 30 (spec 6.5) porque el piloto tiene ~10 alumnos. Volver a 30
+    -- antes de abrir Kampuz a más alumnos. Ver docs/DECISIONES.md 2.1.
+    ('umbral_minimo_segmento', '5', 'Mínimo de alumnos en un segmento para enviar encuestas. PILOTO: 5 (la spec pide 30); volver a 30 al abrir a más alumnos.'),
+    ('edad_minima_registro', '14', 'Edad mínima para crear un perfil en Kampuz (años cumplidos). No bajar de 14 sin un flujo de consentimiento de los padres.')
 on conflict (clave) do update set valor = excluded.valor;
 
 -- 2. CORREOS INVITADOS (únicos correos sin @utp.edu.pe que pueden registrarse)

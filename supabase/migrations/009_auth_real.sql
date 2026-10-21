@@ -6,7 +6,7 @@
 -- - correos_invitados deja de ser legible por anon/authenticated.
 -- - Nombre de usuario único (case-insensitive) y RPC de disponibilidad.
 -- - El cliente no puede fijarse rol, correo ni origen de campos en su perfil.
--- - Mayoría de edad (spec 6.1) validada en el servidor.
+-- - Edad mínima de registro (config edad_minima_registro, 14 por defecto) validada en el servidor.
 --
 -- Idempotente: se puede ejecutar sobre una base con 001–003 o con 001–008.
 -- ==============================================================================
@@ -140,6 +140,34 @@ revoke all on function public.obtener_correo_por_identificador(text) from public
 grant execute on function public.obtener_correo_por_identificador(text) to anon, authenticated;
 
 -- ------------------------------------------------------------------------------
+-- 4a. EDAD MÍNIMA PARA REGISTRARSE (configurable)
+--    La spec 6.1 pedía mayores de 18, pero hay alumnos que entran a la UTP desde
+--    los 15. Decisión del equipo: edad mínima en config (clave edad_minima_registro),
+--    14 por defecto. En Perú, el tratamiento de datos de menores de 14 años requiere
+--    el consentimiento de sus padres (reglamento de la Ley 29733); Kampuz no tiene
+--    ese flujo, por eso no se baja de 14. Validar con un especialista legal.
+-- ------------------------------------------------------------------------------
+insert into public.config (clave, valor, descripcion)
+values ('edad_minima_registro', '14', 'Edad mínima para crear un perfil en Kampuz (años cumplidos)')
+on conflict (clave) do nothing;
+
+create or replace function public.edad_minima_registro()
+returns integer
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select greatest(14, coalesce(
+        (select nullif(valor, '')::integer from public.config where clave = 'edad_minima_registro'),
+        14
+    ));
+$$;
+
+revoke all on function public.edad_minima_registro() from public, anon;
+grant execute on function public.edad_minima_registro() to authenticated;
+
+-- ------------------------------------------------------------------------------
 -- 4. PROTECCIÓN DEL PERFIL
 --    Las políticas RLS permiten al alumno insertar y editar su fila, pero no deben
 --    dejarle cambiarse el rol (escalar a moderador), el correo verificado ni el
@@ -172,8 +200,11 @@ begin
         new.usuario := lower(trim(new.usuario));
     end if;
 
-    if new.fecha_nacimiento > (current_date - interval '18 years')::date then
-        raise exception 'KAMPUZ_MENOR_DE_EDAD: Kampuz es solo para mayores de 18 años.';
+    if new.fecha_nacimiento > (current_date - make_interval(years => public.edad_minima_registro()))::date then
+        raise exception 'KAMPUZ_EDAD_MINIMA: Para usar Kampuz debes tener al menos % años.', public.edad_minima_registro();
+    end if;
+    if new.fecha_nacimiento < date '1940-01-01' then
+        raise exception 'KAMPUZ_EDAD_MINIMA: Revisa tu fecha de nacimiento.';
     end if;
 
     new.actualizado_en := now();

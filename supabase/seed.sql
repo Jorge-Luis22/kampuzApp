@@ -6,7 +6,10 @@
 -- 1. CONFIGURACIÓN DEL SISTEMA
 insert into public.config (clave, valor, descripcion)
 values 
-    ('umbral_minimo_segmento', '30', 'Mínimo de alumnos en un segmento para habilitar el envío de encuestas (Ley 29733)')
+    -- PILOTO: 5 en vez de 30 (spec 6.5) porque el piloto tiene ~10 alumnos. Volver a 30
+    -- antes de abrir Kampuz a más alumnos. Ver docs/DECISIONES.md 2.1.
+    ('umbral_minimo_segmento', '5', 'Mínimo de alumnos en un segmento para enviar encuestas. PILOTO: 5 (la spec pide 30); volver a 30 al abrir a más alumnos.'),
+    ('edad_minima_registro', '14', 'Edad mínima para crear un perfil en Kampuz (años cumplidos). No bajar de 14 sin un flujo de consentimiento de los padres.')
 on conflict (clave) do update set valor = excluded.valor;
 
 -- 2. CORREOS INVITADOS (únicos correos sin @utp.edu.pe que pueden registrarse)

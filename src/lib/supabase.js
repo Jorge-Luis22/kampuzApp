@@ -55,8 +55,8 @@ const MSG_TIEMPO = 'La conexión está tardando demasiado. Revisa tu internet e 
 
 // Códigos propios que lanzan los triggers y RPC del servidor (prefijo KAMPUZ_)
 const MENSAJES_SERVIDOR = {
-  KAMPUZ_CORREO_NO_PERMITIDO: 'Este correo no está habilitado en Kampuz. Usa tu correo @utp.edu.pe.',
-  KAMPUZ_MENOR_DE_EDAD: 'Kampuz es solo para mayores de 18 años.'
+  KAMPUZ_CORREO_NO_PERMITIDO: 'Este correo no está habilitado en Kampuz. Usa tu correo @utp.edu.pe.'
+  // KAMPUZ_EDAD_MINIMA usa el mensaje del servidor, que incluye la edad configurada
 };
 
 /**

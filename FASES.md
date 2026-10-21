@@ -47,12 +47,12 @@ Instrucciones: `docs/PROMPT_CLAUDE_CODE_AUDITORIA.md`. Un commit por paso.
 - `campusStorage.js` eliminado. Toda la capa de datos lee y escribe solo en Supabase con la sesión real, con timeout de 15 s, estados de carga y errores en español con "Reintentar".
 - Auth real (registro, código del correo, login con @usuario o correo, recuperación). Dominio validado solo en el servidor.
 - 4 consentimientos separados (M05 y M32) con historial demostrable.
-- Migraciones 009–012 con las reglas en el servidor y 109 comprobaciones automáticas (`npm run test:sql`).
+- Migraciones 009–012 con las reglas en el servidor y 114 comprobaciones automáticas (`npm run test:sql`).
 - Chat sin duplicados (id temporal reemplazado por el del servidor), Realtime en mensajes, mensajes de grupo y solicitudes.
 - Prueba de dos dispositivos con Playwright (`npm run test:e2e`).
 
 ### Qué falta para dar el MVP por cerrado
-1. Aplicar 009–012 en Supabase y configurar Resend + plantillas (`docs/GUIA_PILOTO.md`, sección 0).
+1. Aplicar 009–012 en Supabase y configurar el SMTP de Gmail + plantillas (`docs/GUIA_PILOTO.md`, sección 0).
 2. Crear dos cuentas de prueba y correr `npm run test:e2e` hasta que pase.
 3. Probar con dos celulares reales (APK) los escenarios de `docs/GUIA_PILOTO.md`.
 4. Pendientes de producto: M17 (solicitud de publicación), M18 (eventos), panel W con datos reales, moderadores por espacio, egresados (ver `docs/DECISIONES.md`).

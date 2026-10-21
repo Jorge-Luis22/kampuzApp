@@ -96,8 +96,9 @@ export function validarPermisoOrientar(user, consulta) {
   return { puede: true, motivo: null };
 }
 
-export async function publicarOrientacion({ grupoId, texto, modo = 'mensaje' }) {
-  return rpc('responder_consulta', { p_grupo_id: grupoId, p_texto: texto, p_modo: modo });
+// Solo por mensaje: estrellas = nAlumnos (si son 2 o más), pendientes hasta la valoración.
+export async function publicarOrientacion({ grupoId, texto }) {
+  return rpc('responder_consulta', { p_grupo_id: grupoId, p_texto: texto });
 }
 
 /**

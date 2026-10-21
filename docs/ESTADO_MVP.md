@@ -19,8 +19,8 @@ Estado **real** de cada pantalla de la app (M01–M33) y del panel web (W01–W0
 | ID | Pantalla | Estado | Qué hay de verdad / qué falta |
 |---|---|:---:|---|
 | **M01** | Bienvenida y acceso | 🔵 | Login con @usuario o correo + contraseña (Supabase Auth). Registro con correo, contraseña y @usuario. El dominio @utp.edu.pe / `correos_invitados` lo valida **solo el servidor** (trigger en `auth.users`). |
-| **M02** | Código de 6 dígitos | 🔵 | `verifyOtp` de Supabase con el código que llega **al correo**. Sin código local, sin `123456`, sin "Autocompletar". Depende de configurar Resend y las plantillas (ver `GUIA_PILOTO.md`, sección 0). |
-| **M03** | Perfil declarado | 🔵 | Nombre, @usuario, fecha de nacimiento (18+ validado en servidor), carrera, ciclo, sede y foto (solo Storage). Trigger asigna el grupo de carrera y ciclo. |
+| **M02** | Código de 6 dígitos | 🔵 | `verifyOtp` de Supabase con el código que llega **al correo**. Sin código local, sin `123456`, sin "Autocompletar". Depende de configurar el SMTP de Gmail y las plantillas (ver `GUIA_PILOTO.md`, sección 0). |
+| **M03** | Perfil declarado | 🔵 | Nombre, @usuario, fecha de nacimiento (edad mínima configurable, 14 por defecto, validada en servidor), carrera, ciclo, sede y foto (solo Storage). Trigger asigna el grupo de carrera y ciclo. |
 | **M04** | Intereses | 🔵 | Mínimo 2, en la misma pantalla que M03. Se guardan en `perfiles.intereses` (fuente del filtro de encuestas). |
 | **M05** | Consentimientos | 🔵 | **Los 4 separados** (spec 6.8): el 1 bloqueado "Necesario", el 4 apagado. Tabla `consentimientos` + historial con versión y fecha. Cuentas antiguas pasan por M05 al entrar. |
 | **M06** | Inicio | 🔵 | Encuesta pendiente, espacios, dudas de la carrera y talleres con horario: todo de Supabase. 🔴 "Eventos de la sede": no existe tabla de eventos (antes eran inventados; se quitaron). |
@@ -38,7 +38,7 @@ Estado **real** de cada pantalla de la app (M01–M33) y del panel web (W01–W0
 | **M18** | Eventos del grupo | 🔴 | No implementado (no hay tabla de eventos). |
 | **M19** | Hacer una consulta | 🔵 | `crear_consulta`: carrera y ciclo los toma el servidor; moderación en el servidor. |
 | **M20** | Lista de consultas agrupadas | 🔵 | Solo las de tu carrera, con autores distintos. |
-| **M21** | Responder una consulta | 🔵 | `responder_consulta`: ciclo ≥ 5, mayor que los autores, no autor, misma carrera. Estrellas pendientes. |
+| **M21** | Responder una consulta | 🔵 | `responder_consulta`: solo por mensaje (sin "llamada"); ciclo ≥ 5, mayor que los autores, no autor, misma carrera. Estrellas = nAlumnos, pendientes hasta la valoración. |
 | **M22** | Valorar respuesta | 🔵 | `valorar_asesoria`: solo autores; estrellas solo si nAlumnos ≥ 2 y sin conexión aceptada entre ambos. |
 | **M23** | Bandeja de encuestas | 🔵 | `mi_bandeja_encuestas` libera la cola si hay cupo (tope 3/semana). |
 | **M24** | Crear encuesta: filtro en vivo | 🔵 | Conteo por RPC (solo un número), solo cuenta a quien dio el consentimiento 2. |
@@ -67,8 +67,8 @@ Estado **real** de cada pantalla de la app (M01–M33) y del panel web (W01–W0
 
 | Pieza | Estado | Observaciones |
 |---|:---:|---|
-| Migraciones 001–012 | 🔵 | Probadas en Postgres en memoria (`npm run test:sql`, 109 comprobaciones). **En producción solo están 001–003**: hay que aplicar 009–012 (ver `GUIA_PILOTO.md`). |
-| Correo con el código (Resend) | 🔴 | Pendiente de configurar en Supabase (sección 0 de `GUIA_PILOTO.md`). |
+| Migraciones 001–012 | 🔵 | Probadas en Postgres en memoria (`npm run test:sql`, 114 comprobaciones). **En producción solo están 001–003**: hay que aplicar 009–012 (ver `GUIA_PILOTO.md`). |
+| Correo con el código (Gmail SMTP, `kampuz.app.pe@gmail.com`) | 🔴 | Pendiente de configurar en Supabase (sección 0.2 de `GUIA_PILOTO.md`). Límite aproximado de 500 correos al día. |
 | APK debug (GitHub Actions) | 🔵 | El workflow era inválido (`secrets` en un `if`); corregido. Falla con un mensaje claro si faltan los secretos. |
 | AAB firmado para Play Store | 🔵 | Falla si falta el keystore (antes generaba un .aab sin firmar). |
 | Prueba de dos dispositivos | 🔵 | `npm run test:e2e`, pendiente de correr con dos cuentas reales. |

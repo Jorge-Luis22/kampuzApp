@@ -46,11 +46,11 @@ Aplicación MVP de **Kampus**, la red social universitaria cerrada con identidad
 - **Regla dura:** *"Se habla del curso, no de la persona"*.
 - Algoritmo de moderación con regex para nombres de docentes o juicios de valor.
 - Solo responden alumnos de ciclo $\ge 5$.
-- Multiplicador de estrellas: $(modo == "llamada" ? 3 : 1) \times nAlumnos$ (solo si $nAlumnos \ge 2$ y calificado por solicitante).
+- Estrellas: $nAlumnos$ (solo si $nAlumnos \ge 2$ y calificado por solicitante). Solo se orienta por mensaje: la opción "llamada" se quitó.
 
-### 4. Encuestas con Filtro y Umbral de 30 (Flujo 3, Sección 6.5 y 7.4)
+### 4. Encuestas con Filtro y Umbral Mínimo de Segmento (Flujo 3, Sección 6.5 y 7.4)
 - Filtro en vivo por Sede, Carrera, Rango de ciclos, Rango de edades e Intereses.
-- **Pantalla Bloqueada M25:** Si el segmento tiene $< 30$ alumnos, se bloquea en una pantalla dedicada para garantizar el anonimato legal bajo Ley 29733.
+- **Pantalla Bloqueada M25:** Si el segmento tiene menos alumnos que el umbral (`config.umbral_minimo_segmento`: 30 según la spec, **5 durante el piloto**), se bloquea en una pantalla dedicada.
 
 ### 5. Legalidad y Consentimientos (Ley 29733, Sección 6.8)
 - 4 consentimientos separados:

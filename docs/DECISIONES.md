@@ -21,10 +21,17 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
 
 ## 2. Decisiones de Producto y Reglas de Negocio
 
-### 2.1 Umbral Mínimo de Segmento para Encuestas (30 usuarios)
+### 2.1 Umbral Mínimo de Segmento para Encuestas (30 en la spec, 5 en el piloto)
 - **Regla:** El umbral por defecto es **30** (almacenado en la tabla `config` con clave `umbral_minimo_segmento`).
 - **Consideración para Piloto:** Para un piloto de 10 alumnos reales, un umbral de 30 impedirá enviar encuestas con filtros estrechos en pruebas de laboratorio.
-- **Decisión:** La regla de servidor se mantiene en 30 (desde la auditoría, solo cuentan alumnos con el consentimiento 2 otorgado) para respetar la especificación de anonimato bajo la Ley 29733. El valor se parametriza en la tabla `config` para que el equipo/Jorge decida si lo ajusta temporalmente a un valor menor (ej. 5) durante la sustentación en vivo.
+- **Decisión inicial:** 30 (desde la auditoría, solo cuentan alumnos con el consentimiento 2 otorgado), parametrizado en `config`.
+- **Decisión del equipo para el piloto (2026-10-20):** **5**. `supabase/seed.sql` lo deja en 5. Con unos 10 alumnos, un umbral de 30 hacía imposible enviar cualquier encuesta.
+- **Riesgo aceptado:** con segmentos de 5 a 29 alumnos es más fácil deducir quién respondió qué (por ejemplo, si el filtro deja a 5 compañeros del mismo salón). La spec presenta el 30 como la garantía de anonimato que hace defendibles las métricas. Por eso el consentimiento 2 y la política de privacidad ya no prometen "30 o más" (versión de la política 1.1).
+- **Antes de abrir Kampuz a más alumnos, volver a 30:**
+  ```sql
+  update public.config set valor = '30' where clave = 'umbral_minimo_segmento';
+  ```
+  y cambiar también `supabase/seed.sql`, porque al ejecutarlo de nuevo sobrescribe el valor.
 
 ### 2.2 Sistema de Puntaje Unificado
 - **Sin monedas ni créditos:** No existe una billetera ni saldo consumible.
@@ -82,6 +89,13 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
 - **Qué se hizo (auditoría, paso 5):** ahora es **opcional**, empieza en **"Sin estado"** (columna `perfiles.estado_en_vivo` en `null`), se guarda en Supabase y el alumno puede volver a "Sin estado" cuando quiera. Solo acepta los 5 valores definidos (restricción en la base).
 - **A decidir por Jorge / el equipo:** mantenerlo así, quitar los estados que revelan ubicación ("En campus", "En biblioteca", "En clase") y dejar solo disponibilidad ("Buscando equipo", "En exámenes"), o eliminarlo.
 
+### 4.2 Edad mínima para registrarse (cambio respecto a la spec 6.1)
+- **La spec decía:** "Mayores de 18".
+- **Decisión del equipo (2026-10-20):** hay alumnos que entran a la UTP desde los 15 años; dejarlos fuera los excluye justo del público que más necesita la app (la cachimba de la spec 3.1). La edad mínima ahora es configurable en `config.edad_minima_registro`, **14 por defecto**.
+- **Por qué no menos de 14:** según el reglamento de la Ley 29733, para tratar datos de menores de 14 años se necesita el consentimiento de sus padres o tutores, y Kampuz no tiene ese flujo. El servidor no baja de 14 aunque se configure un valor menor.
+- **Encuestas:** el filtro de edad de una encuesta nueva sigue empezando en 18 (el autor puede bajarlo hasta 14). Investigar con menores suele requerir autorización de los padres; que lo decida el equipo con el curso o el comité de ética.
+- **Pendiente:** validar con un especialista legal el tratamiento de datos de alumnos de 14 a 17 años (consentimientos, consentimiento 4 sobre convocatorias, chats con adultos) y avisar a Jorge, porque cambia una regla de la spec.
+
 ---
 
 ## 5. Dónde se aplica cada regla (auditoría, paso 7)
@@ -94,14 +108,14 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
 |---|---|---|
 | 6.1 Solo correo @utp.edu.pe o invitado | **Servidor (corregido)** | Trigger `trg_validar_auth_user` en `auth.users` + `correos_invitados.activo` (009). Antes el cliente dejaba pasar ante error o timeout. |
 | 6.1 Verificación por código de 6 dígitos | **Servidor** | Supabase Auth con "Confirm email" activado (configuración del proyecto). Se borró todo código local, `123456` y "Autocompletar". |
-| 6.1 Mayores de 18 | **Servidor (corregido)** | Trigger `proteger_perfil` (009). |
+| 6.1 Edad mínima (la spec decía 18; ver 4.2) | **Servidor (corregido)** | Trigger `proteger_perfil` (009) con `config.edad_minima_registro` (14 por defecto, nunca menos de 14). |
 | 6.1 Nombre y apellido reales | Cliente | Solo se exige que no estén vacíos; no es verificable sin convenio. |
 | 6.2 Origen declarado/verificado | **Servidor (corregido)** | `proteger_perfil` fija `origen_campos`, `rol` y `correo_institucional`; el alumno no puede cambiárselos (antes podía ponerse `rol = moderador`). |
 | 6.3 El perfil es la única fuente del filtro | **Servidor** | `destinatarios_filtro` usa `perfiles.intereses`, nunca las membresías. |
 | 6.4 No hay mensaje directo sin solicitud aceptada | **Servidor (corregido)** | Solicitudes solo por `enviar_solicitud`; la conversación solo la crea `responder_solicitud`. Antes cualquiera podía crear una conversación con cualquiera. |
 | 6.4 Chat libre dentro de tu espacio | **Servidor** | RLS de `mensajes` con `es_miembro`. Unirse solo a talleres/intereses visibles; el grupo de carrera y ciclo lo asigna el trigger y, al cambiar de ciclo, se sale del anterior (corregido). |
 | 6.5 Conteo en vivo, solo un número | **Servidor** | RPC `calcular_alcance_encuesta`. |
-| 6.5 Umbral mínimo de 30 | **Servidor** | `enviar_encuesta_segura` lee `config.umbral_minimo_segmento`. |
+| 6.5 Umbral mínimo de segmento (spec: 30; piloto: 5, ver 2.1) | **Servidor** | `enviar_encuesta_segura` lee `config.umbral_minimo_segmento`. |
 | 6.5 Alcance semanal [0, 30, 80, 200] | **Servidor (corregido)** | Ahora acumulado en 7 días por emisor (antes era por encuesta: se podían mandar muchas por semana). |
 | 6.5 Tope de 3 por semana con cola | **Servidor** | Envío a `encolada`; `mi_bandeja_encuestas` libera la cola cuando hay cupo. |
 | 6.5 El emisor nunca ve quién respondió qué | **Servidor (corregido)** | El autor ya no lee `envios_encuesta` (antes veía quién respondió); resultados solo agregados y solo para el autor (antes cualquiera podía pedirlos). |
@@ -121,7 +135,7 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
 | 2. Clasificación de certificados | **Servidor (corregido)** | Trigger `clasificar_certificado` (012). Antes el alumno podía guardar "Avanzado" u origen "verificada", y los certificados ni se guardaban en la base. |
 | 3. nAlumnos = autores distintos | **Servidor (corregido)** | `crear_consulta`. Antes no funcionaba (columnas inexistentes). |
 | 4. Orientar: ciclo ≥ 5, mayor que todos los autores, no ser autor | **Servidor (corregido)** | `responder_consulta`; se cerró el insert directo en `asesorias`. |
-| 5. Estrellas = (llamada ? 3 : 1) × nAlumnos, solo si nAlumnos ≥ 2, pendientes hasta valorar | **Servidor (corregido)** | `responder_consulta` + `valorar_asesoria`. Además no cuentan entre alumnos con conexión aceptada (anti-gaming 3 de la spec 7.1). |
+| 5. Estrellas = nAlumnos, solo si nAlumnos ≥ 2, pendientes hasta valorar (sin modo "llamada", ver 5.3) | **Servidor (corregido)** | `responder_consulta` + `valorar_asesoria`. Además no cuentan entre alumnos con conexión aceptada (anti-gaming 3 de la spec 7.1). |
 | 6. Solo los autores valoran | **Servidor (corregido)** | `valorar_asesoria`; se cerró el insert directo. |
 | 7. Un apoyo por alumno; umbral max(15, round(base × 0.03)) | **Servidor** | Restricción única + `apoyar_propuesta` + trigger. Corregido: el creador podía poner su propuesta en "visible" directamente. |
 | 8. Nivel 0 = alcance 0 = no puede enviar | **Servidor** | `enviar_encuesta_segura`. |
@@ -131,6 +145,6 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
 - **Constancia** cuenta talleres o grupos de interés donde el alumno es miembro **y escribió** al menos un mensaje (spec 5.6: asistir no es evidencia). **Liderazgo** cuenta grupos creados que **alcanzaron el umbral** (una propuesta oculta no es un grupo).
 - **Propuestas:** máximo 2 propuestas ocultas a la vez por alumno (anti-spam).
 - **Solicitudes:** si una solicitud fue ignorada, el mismo emisor no puede reenviarla.
-- **Modo "llamada" (×3):** se mantiene porque es una regla portada, pero la llamada no existe en la app (la spec 11.3 la deja fuera del piloto) y el modo lo declara quien responde. Riesgo de inflar estrellas; sugerencia: ocultarlo hasta que exista la llamada.
+- **Modo "llamada" (×3) eliminado (decisión del equipo, 2026-10-20):** la llamada no existe en la app (la spec 11.3 la deja fuera del piloto) y el modo lo declaraba quien respondía, así que inflaba estrellas. Ahora solo se orienta por mensaje: estrellas = nAlumnos si son 2 o más. El servidor rechaza cualquier otro modo. Si algún día existe la llamada dentro de la app (con moderación), se puede volver a evaluar el ×3.
 - **Sede** no se usa en el filtro de encuestas: el piloto es de una sola sede.
 - **Login con @usuario:** la función `obtener_correo_por_identificador` permite saber el correo de un @usuario sin sesión (necesario para entrar con @usuario). Si el equipo prefiere no exponerlo, el login debe ser solo con correo.

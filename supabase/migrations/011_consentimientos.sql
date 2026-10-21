@@ -116,7 +116,7 @@ declare
     v_carreras text[] := '{}';
     v_ciclo_min integer := coalesce(nullif(p_filtro->>'cicloMin', '')::integer, 1);
     v_ciclo_max integer := coalesce(nullif(p_filtro->>'cicloMax', '')::integer, 10);
-    v_edad_min integer := coalesce(nullif(p_filtro->>'edadMin', '')::integer, 18);
+    v_edad_min integer := coalesce(nullif(p_filtro->>'edadMin', '')::integer, 0);
     v_edad_max integer := coalesce(nullif(p_filtro->>'edadMax', '')::integer, 99);
     v_intereses text[] := '{}';
 begin

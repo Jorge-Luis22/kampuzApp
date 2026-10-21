@@ -90,7 +90,6 @@ export default function GruposView() {
   // Responder consulta (M21)
   const [showResponderModal, setShowResponderModal] = useState(false);
   const [textoRespuesta, setTextoRespuesta] = useState('');
-  const [modoRespuesta, setModoRespuesta] = useState('mensaje'); // 'mensaje' | 'llamada'
   const [errorRespuesta, setErrorRespuesta] = useState(null);
   const [isSubmittingRespuesta, setIsSubmittingRespuesta] = useState(false);
 
@@ -297,7 +296,7 @@ export default function GruposView() {
     setIsSubmittingRespuesta(true);
     setErrorRespuesta(null);
     try {
-      await publicarOrientacion({ grupoId: activeConsultaId, texto: textoRespuesta, modo: modoRespuesta });
+      await publicarOrientacion({ grupoId: activeConsultaId, texto: textoRespuesta });
       setShowResponderModal(false);
       setTextoRespuesta('');
       await cargarConsultas();
@@ -718,8 +717,8 @@ export default function GruposView() {
     const permisoOrientar = validarPermisoOrientar(user, currentConsulta);
     const puedoOrientar = permisoOrientar.puede;
     const soyAutor = currentConsulta.soyAutor;
-    const factorModo = modoRespuesta === 'llamada' ? 3 : 1;
-    const estrellasPotenciales = currentConsulta.nAlumnos >= 2 ? factorModo * currentConsulta.nAlumnos : 0;
+    // Solo por mensaje: una estrella por cada alumno con la misma duda (si son 2 o más)
+    const estrellasPotenciales = currentConsulta.nAlumnos >= 2 ? currentConsulta.nAlumnos : 0;
 
     return (
       <div className="flex-1 flex flex-col h-full bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
@@ -879,30 +878,6 @@ export default function GruposView() {
                 Orientar en {currentConsulta.curso}
               </h3>
 
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setModoRespuesta('mensaje')}
-                  className={`p-2.5 rounded-xl text-xs font-bold border transition ${
-                    modoRespuesta === 'mensaje'
-                      ? 'bg-brand-primary text-white border-brand-primary shadow-sm'
-                      : 'bg-surface border-line text-ink-muted'
-                  }`}
-                >
-                  Mensaje Texto (1x)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setModoRespuesta('llamada')}
-                  className={`p-2.5 rounded-xl text-xs font-bold border transition ${
-                    modoRespuesta === 'llamada'
-                      ? 'bg-brand-primary text-white border-brand-primary shadow-sm'
-                      : 'bg-surface border-line text-ink-muted'
-                  }`}
-                >
-                  Llamada App (3x)
-                </button>
-              </div>
 
               <textarea
                 rows={3}

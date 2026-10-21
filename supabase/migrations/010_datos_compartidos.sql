@@ -774,7 +774,9 @@ revoke all on function public.listar_consultas_carrera() from public, anon;
 grant execute on function public.listar_consultas_carrera() to authenticated;
 
 -- Orientar: ciclo >= 5, ciclo MAYOR que el de todos los autores, misma carrera y no ser autor.
--- Las estrellas quedan pendientes hasta que un autor valore "me sirvió".
+-- Solo por mensaje: la opción "llamada" (×3) se quitó porque la llamada no existe en la app
+-- (spec 11.3) y el modo lo declaraba quien respondía. Estrellas = nAlumnos si son 2 o más,
+-- pendientes hasta que un autor valore "me sirvió". p_modo se mantiene por compatibilidad.
 create or replace function public.responder_consulta(p_grupo_id uuid, p_texto text, p_modo text default 'mensaje')
 returns uuid
 language plpgsql
@@ -786,11 +788,10 @@ declare
     v_perfil record;
     v_grupo record;
     v_ciclo_max integer;
-    v_factor integer := case when p_modo = 'llamada' then 3 else 1 end;
     v_id uuid;
 begin
-    if p_modo not in ('mensaje', 'llamada') then
-        raise exception 'KAMPUZ_CONSULTA: Modo de respuesta no válido.';
+    if coalesce(p_modo, 'mensaje') <> 'mensaje' then
+        raise exception 'KAMPUZ_CONSULTA: Por ahora solo se puede orientar por mensaje.';
     end if;
     select * into v_perfil from public.perfiles where id = v_uid;
     select * into v_grupo from public.grupos_consulta where id = p_grupo_id;
@@ -816,8 +817,8 @@ begin
 
     insert into public.asesorias (grupo_consulta_id, asesor_id, modo, texto, estrellas_pendientes, estrellas_acreditadas)
     values (
-        p_grupo_id, v_uid, p_modo, trim(p_texto),
-        case when v_grupo.n_alumnos >= 2 then v_factor * v_grupo.n_alumnos else 0 end,
+        p_grupo_id, v_uid, 'mensaje', trim(p_texto),
+        case when v_grupo.n_alumnos >= 2 then v_grupo.n_alumnos else 0 end,
         0
     )
     returning id into v_id;
@@ -868,7 +869,7 @@ begin
             where usuario_a_id = least(v_uid, v_as.asesor_id) and usuario_b_id = greatest(v_uid, v_as.asesor_id)
         );
         if v_grupo.n_alumnos >= 2 and not v_conectados then
-            v_estrellas := (case when v_as.modo = 'llamada' then 3 else 1 end) * v_grupo.n_alumnos;
+            v_estrellas := v_grupo.n_alumnos;
         end if;
         update public.asesorias
         set estrellas_acreditadas = v_estrellas, estrellas_pendientes = 0
@@ -952,7 +953,7 @@ declare
     v_carreras text[] := '{}';
     v_ciclo_min integer := coalesce(nullif(p_filtro->>'cicloMin', '')::integer, 1);
     v_ciclo_max integer := coalesce(nullif(p_filtro->>'cicloMax', '')::integer, 10);
-    v_edad_min integer := coalesce(nullif(p_filtro->>'edadMin', '')::integer, 18);
+    v_edad_min integer := coalesce(nullif(p_filtro->>'edadMin', '')::integer, 0);
     v_edad_max integer := coalesce(nullif(p_filtro->>'edadMax', '')::integer, 99);
     v_intereses text[] := '{}';
 begin

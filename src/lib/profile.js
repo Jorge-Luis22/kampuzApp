@@ -242,7 +242,7 @@ export async function agregarCertificado({ habilidad, emisor, horas, url, tieneE
 // -----------------------------------------------------------------------------
 // Consentimientos (spec 6.8): cuatro finalidades separadas, con versión y fechas.
 // -----------------------------------------------------------------------------
-export const VERSION_POLITICA = '1.0';
+export const VERSION_POLITICA = '1.1';
 export const FINALIDADES = ['cuenta', 'encuestas', 'metricas', 'perfil_universidad'];
 
 export async function fetchConsentimientos() {

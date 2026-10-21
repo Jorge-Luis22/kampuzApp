@@ -1,6 +1,7 @@
 // Los cuatro consentimientos separados por finalidad (spec 6.8, Ley 29733).
 // Nunca una casilla única. El 1 es necesario y va bloqueado; el 4 va apagado por defecto.
 // Si cambias un texto, sube VERSION_POLITICA en src/lib/profile.js.
+// 1.1: el consentimiento 2 ya no promete "grupos de 30 o más" (umbral del piloto: 5).
 
 export const CONSENTIMIENTOS = [
   {
@@ -17,7 +18,7 @@ export const CONSENTIMIENTOS = [
     numero: 2,
     titulo: 'Recibir encuestas de otros alumnos',
     texto:
-      'Tu carrera, ciclo, edad e intereses se usan para que te lleguen encuestas de investigación de otros alumnos (máximo 3 por semana). Quien envía la encuesta nunca ve quién respondió qué: solo resultados agregados de grupos de 30 o más.',
+      'Tu carrera, ciclo, edad e intereses se usan para que te lleguen encuestas de investigación de otros alumnos (máximo 3 por semana). Quien envía la encuesta nunca ve quién respondió qué: solo resultados agregados de todo el grupo.',
     necesario: false,
     porDefecto: true
   },

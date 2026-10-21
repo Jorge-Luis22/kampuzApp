@@ -182,7 +182,7 @@
         <li><strong>Datos Académicos:</strong> Carrera profesional, ciclo de estudios cursado y sede de campus.</li>
         <li><strong>Datos de Perfil Opcionales:</strong> Fecha de nacimiento, fotografía de perfil (optimizada y recortada localmente antes de subirse), biografía breve e intereses académicos/extracurriculares seleccionados.</li>
         <li><strong>Interacciones en la Plataforma:</strong> Mensajería directa 1 a 1 entre estudiantes autorizados, mensajes en chats de carrera y ciclo, dudas académicas formuladas y orientaciones brindadas.</li>
-        <li><strong>Encuestas Estudiantiles Agregadas:</strong> Respuestas a encuestas de investigación académica. Las respuestas se almacenan de forma <strong>completamente disociada</strong> y solo se muestran como agregados estadísticos con un umbral mínimo de 30 alumnos para evitar cualquier reidentificación.</li>
+        <li><strong>Encuestas Estudiantiles Agregadas:</strong> Respuestas a encuestas de investigación académica. Las respuestas se almacenan de forma <strong>completamente disociada</strong> y solo se muestran como agregados estadísticos. Una encuesta solo se puede enviar si el grupo de destinatarios tiene un número mínimo de alumnos (30; durante el piloto se redujo temporalmente a 5 porque participan unos 10 alumnos).</li>
       </ul>
     </section>
 
@@ -218,11 +218,16 @@
     </section>
 
     <section>
+      <h2>Alumnos menores de edad</h2>
+      <p>Pueden registrarse alumnos de la universidad desde los 14 años. No se registran menores de 14 años, porque para tratar sus datos se necesitaría el consentimiento de sus padres o tutores. Los alumnos de 14 a 17 años deciden sus propios consentimientos y pueden revocarlos o eliminar su cuenta en cualquier momento.</p>
+    </section>
+
+    <section>
       <h2>4. Transferencia y Proveedores de Servicio</h2>
       <p>Kampuz <strong>no comercializa ni vende datos personales</strong> bajo ninguna circunstancia. Los datos solo se procesan con:</p>
       <ul>
         <li><strong>Infraestructura en la Nube (Supabase Inc.):</strong> Como encargado de tratamiento para base de datos cifrada, autenticación OTP y almacenamiento seguro de avatares con protocolos TLS 1.3 y cifrado en reposo (AES-256).</li>
-        <li><strong>Resend:</strong> Como encargado de tratamiento para enviar los correos con el código de verificación y de recuperación de contraseña (solo recibe tu correo electrónico).</li>
+        <li><strong>Google (Gmail):</strong> Como encargado de tratamiento para enviar, desde la cuenta del equipo <code>kampuz.app.pe@gmail.com</code>, los correos con el código de verificación y de recuperación de contraseña (solo recibe tu correo electrónico).</li>
         <li><strong>La Universidad Tecnológica del Perú (UTP):</strong> Únicamente en caso de que el estudiante active explícitamente el <em>Consentimiento 4</em> para convocatorias de mérito y talento. Bajo ninguna circunstancia se comparten con la universidad mensajes privados ni respuestas individuales de encuestas.</li>
       </ul>
     </section>

@@ -64,3 +64,13 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
   - **Recuperación de contraseña:** Flujo guiado por correo institucional con código de seguridad OTP y actualización de contraseña.
   - **Privacidad implícita:** Eliminación de la sobrecarga de avisos de "Ley 29733" en pantallas de usuario. La aceptación legal se traslada de forma limpia a un checkbox de Términos y Privacidad en el registro y opciones directas en Perfil.
   - **Limpieza de UX estudiantil:** Reemplazo de jerga técnica y matemática (`>30`, fórmulas de umbral, prefijos de pantalla `M01-M33`) por microcopy empático y centrado en la experiencia de campus.
+
+---
+
+## 4. Pendiente de decisión del equipo
+
+### 4.1 "Estado en vivo" (En campus / En clase / En biblioteca / Buscando equipo / En exámenes)
+- **Qué había:** todos los perfiles arrancaban con "En campus", aunque no fuera cierto, y el estado solo se guardaba en el teléfono.
+- **Riesgo:** dice dónde está una persona en tiempo real. La persona objetivo (spec 3.1) es tímida y joven; un estado "En biblioteca" visible para cualquier alumno de la sede facilita que alguien la ubique. Ninguna regla de la spec lo pide.
+- **Qué se hizo (auditoría, paso 5):** ahora es **opcional**, empieza en **"Sin estado"** (columna `perfiles.estado_en_vivo` en `null`), se guarda en Supabase y el alumno puede volver a "Sin estado" cuando quiera. Solo acepta los 5 valores definidos (restricción en la base).
+- **A decidir por Jorge / el equipo:** mantenerlo así, quitar los estados que revelan ubicación ("En campus", "En biblioteca", "En clase") y dejar solo disponibilidad ("Buscando equipo", "En exámenes"), o eliminarlo.

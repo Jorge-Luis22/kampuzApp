@@ -49,7 +49,12 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_MODO_DEMO: 'false'
-        run: npm run build
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error::Faltan los secretos VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY (GitHub → Settings → Secrets → Actions)."
+            exit 1
+          fi
+          npm run build
 
       - name: Sincronizar con Capacitor Android
         run: npx cap sync android
@@ -99,16 +104,29 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_MODO_DEMO: 'false'
-        run: npm run build
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error::Faltan los secretos VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY (GitHub → Settings → Secrets → Actions)."
+            exit 1
+          fi
+          npm run build
 
       - name: Sincronizar con Capacitor Android
         run: npx cap sync android
 
+      # El contexto "secrets" no se puede usar en el "if" de un step: invalidaba el workflow.
+      # Se pasa el secreto a env y se valida dentro del script. Sin keystore no se genera
+      # un .aab sin firmar (Play Store lo rechazaría): el job falla con un mensaje claro.
       - name: Decodificar Keystore de firma (Secrets)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ]; then
+            echo "::error::Faltan los secretos ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD o ANDROID_KEY_ALIAS. Ver docs/PLAY_STORE.md."
+            exit 1
+          fi
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
 
       - name: Compilar Android App Bundle (.aab)

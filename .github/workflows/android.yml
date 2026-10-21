@@ -26,20 +26,25 @@ jobs:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
 
-      - name: Configurar Node.js 20
+      - name: Configurar Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
-      - name: Configurar Java JDK 17
+      # Capacitor 8 requiere JDK 21
+      - name: Configurar Java JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
+      # Sin "packages", la acción intenta instalar el paquete obsoleto "tools" y falla
+      # ("Failed to find package 'tools'"). Se instalan solo los que usa el proyecto (SDK 36).
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - name: Instalar dependencias
         run: npm ci
@@ -81,20 +86,25 @@ jobs:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
 
-      - name: Configurar Node.js 20
+      - name: Configurar Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
-      - name: Configurar Java JDK 17
+      # Capacitor 8 requiere JDK 21
+      - name: Configurar Java JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
+      # Sin "packages", la acción intenta instalar el paquete obsoleto "tools" y falla
+      # ("Failed to find package 'tools'"). Se instalan solo los que usa el proyecto (SDK 36).
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - name: Instalar dependencias
         run: npm ci

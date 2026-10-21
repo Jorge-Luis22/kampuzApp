@@ -40,6 +40,8 @@ export default function BottomNav() {
         return (
           <button
             key={tab.id}
+            aria-label={tab.label}
+            aria-current={isActive ? 'page' : undefined}
             onClick={() => setActiveTab(tab.id)}
             className={`relative flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all duration-150 ${
               isActive

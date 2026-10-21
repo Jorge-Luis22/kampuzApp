@@ -16,6 +16,8 @@ import {
 } from '../lib/profile';
 import CentroSeguridadModal from '../components/CentroSeguridadModal';
 import ErrorConReintento from '../components/ErrorConReintento';
+import ConsentimientoItem from '../components/ConsentimientoItem';
+import { CONSENTIMIENTOS } from '../data/consentimientos';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -262,7 +264,9 @@ export default function PerfilView() {
     setConsentGuardando(finalidad);
     setConsentError('');
     try {
-      setConsentimientos(await actualizarConsentimiento(finalidad, !consentimientos.valores[finalidad]));
+      const nuevos = await actualizarConsentimiento(finalidad, !consentimientos.valores[finalidad]);
+      setConsentimientos(nuevos);
+      setUser((prev) => ({ ...prev, consentimientos: nuevos.valores }));
     } catch (err) {
       setConsentError(err.message);
     } finally {
@@ -806,68 +810,50 @@ export default function PerfilView() {
             <ChevronRight size={18} className="text-accent group-hover:translate-x-0.5 transition-transform shrink-0" />
           </button>
 
-          {/* Preferencias de cuenta */}
+          {/* M32: los cuatro consentimientos, separados y revocables (spec 6.8) */}
           <div className="space-y-2">
             <h4 className="text-xs font-black text-ink dark:text-ink-light px-1">
-              Preferencias y Privacidad
+              Tus consentimientos
             </h4>
+            <p className="text-[11px] text-ink-muted px-1">
+              Cada cambio queda registrado con su fecha. El primero solo se retira eliminando tu cuenta.
+            </p>
 
-            {/* Preferencia 1: Encuestas */}
-            <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
-              <div className="pr-2">
-                <span className="font-extrabold text-ink dark:text-ink-light block text-xs">
-                  Invitaciones a encuestas estudiantiles
-                </span>
-                <span className="text-[11px] text-ink-muted block">
-                  Recibe hasta 3 encuestas semanales de compañeros de tu sede
-                </span>
-              </div>
-              <input
-                type="checkbox"
-                checked={Boolean(consentimientos?.valores?.encuestas)}
-                disabled={!consentimientos || consentGuardando === 'encuestas'}
-                onChange={() => handleToggleConsentimientoReal('encuestas')}
-                className="w-5 h-5 accent-accent rounded cursor-pointer shrink-0"
-              />
-            </div>
+            {consentError && (
+              <ErrorConReintento compacto mensaje={consentError} onReintentar={cargarConsentimientos} />
+            )}
 
-            {/* Preferencia 2: Métricas */}
-            <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
-              <div className="pr-2">
-                <span className="font-extrabold text-ink dark:text-ink-light block text-xs">
-                  Colaborar con estadísticas anónimas de sede
-                </span>
-                <span className="text-[11px] text-ink-muted block">
-                  Aporta a métricas grupales protegidas para mejorar la universidad
-                </span>
+            {!consentimientos && !consentError ? (
+              <div className="flex items-center space-x-2 text-xs text-ink-muted p-3">
+                <Loader2 size={14} className="animate-spin text-accent" />
+                <span>Cargando tus consentimientos...</span>
               </div>
-              <input
-                type="checkbox"
-                checked={Boolean(consentimientos?.valores?.metricas)}
-                disabled={!consentimientos || consentGuardando === 'metricas'}
-                onChange={() => handleToggleConsentimientoReal('metricas')}
-                className="w-5 h-5 accent-accent rounded cursor-pointer shrink-0"
-              />
-            </div>
-
-            {/* Preferencia 3: Convocatorias UTP */}
-            <div className="k-card p-3.5 flex items-center justify-between border border-line dark:border-line-dark rounded-xl">
-              <div className="pr-2">
-                <span className="font-extrabold text-ink dark:text-ink-light block text-xs">
-                  Visible para programas de mérito UTP
-                </span>
-                <span className="text-[11px] text-ink-muted block">
-                  Permite conocer tus asesorías y talleres para Impulsa o Generación Top
-                </span>
-              </div>
-              <input
-                type="checkbox"
-                checked={Boolean(consentimientos?.valores?.perfil_universidad)}
-                disabled={!consentimientos || consentGuardando === 'perfil_universidad'}
-                onChange={() => handleToggleConsentimientoReal('perfil_universidad')}
-                className="w-5 h-5 accent-accent rounded cursor-pointer shrink-0"
-              />
-            </div>
+            ) : consentimientos ? (
+              CONSENTIMIENTOS.map((c) => {
+                const det = consentimientos.detalle[c.finalidad];
+                const fecha = (iso) =>
+                  iso ? new Date(iso).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+                return (
+                  <ConsentimientoItem
+                    key={c.finalidad}
+                    consentimiento={c}
+                    valor={Boolean(consentimientos.valores[c.finalidad])}
+                    onCambiar={(finalidad) => handleToggleConsentimientoReal(finalidad)}
+                    deshabilitado={consentGuardando === c.finalidad}
+                    pie={
+                      <p className="text-[10px] text-ink-muted pt-1 border-t border-line dark:border-line-dark">
+                        {!det
+                          ? 'Sin registrar'
+                          : det.otorgado
+                          ? `Otorgado el ${fecha(det.otorgado_en)}`
+                          : `Apagado${det.revocado_en ? ` desde el ${fecha(det.revocado_en)}` : ''}`}
+                        {det ? ` · versión ${det.version_politica}` : ''}
+                      </p>
+                    }
+                  />
+                );
+              })
+            ) : null}
           </div>
 
           <div className="pt-1 text-center">

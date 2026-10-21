@@ -17,7 +17,9 @@ import {
   confirmarRecuperacion,
   guardarPerfilInicial
 } from '../lib/auth';
-import { subirAvatar } from '../lib/profile';
+import { subirAvatar, guardarConsentimientosIniciales } from '../lib/profile';
+import { CONSENTIMIENTOS, valoresPorDefecto } from '../data/consentimientos';
+import ConsentimientoItem from '../components/ConsentimientoItem';
 import {
   CheckCircle2,
   ArrowRight,
@@ -51,8 +53,12 @@ export default function OnboardingFlow() {
     currentScreen,
     setCurrentScreen,
     user,
+    estadoSesion,
     completarOnboarding
   } = useStore();
+
+  // Cuenta que ya tenía perfil pero no los 4 consentimientos (creada antes de esta versión)
+  const soloConsentimientos = estadoSesion === 'consentimientos';
 
   // Modo: 'login' | 'registro' | 'recuperar'
   const [authMode, setAuthMode] = useState('login');
@@ -154,6 +160,9 @@ export default function OnboardingFlow() {
   }, [user?.id]);
 
   const [selectedIntereses, setSelectedIntereses] = useState(user?.intereses || []);
+
+  // M05: los 4 consentimientos separados. El 1 es necesario; el 4 empieza apagado.
+  const [consentValores, setConsentValores] = useState(valoresPorDefecto);
 
   const [avatarUrl, setAvatarUrl] = useState(user?.fotoUrl || null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
@@ -386,9 +395,17 @@ export default function OnboardingFlow() {
       return;
     }
 
+    setCurrentScreen('m05_consentimientos');
+  };
+
+  // --- 7. M05: GUARDAR PERFIL (si falta) Y LOS 4 CONSENTIMIENTOS ---
+  const handleGuardarConsentimientos = async (e) => {
+    e.preventDefault();
+    limpiarMensajes();
     setIsLoading(true);
     try {
-      const perfil = await guardarPerfilInicial({
+      // upsert: si un intento anterior ya guardó el perfil, solo se actualiza
+      const perfil = soloConsentimientos ? user : await guardarPerfilInicial({
         correoInstitucional: user?.correoInstitucional,
         nombre: formData.nombre,
         apellido: formData.apellido,
@@ -400,7 +417,8 @@ export default function OnboardingFlow() {
         fechaNacimiento: formData.fechaNacimiento,
         intereses: selectedIntereses
       });
-      completarOnboarding(perfil);
+      const consentimientos = await guardarConsentimientosIniciales(consentValores);
+      completarOnboarding(perfil, consentimientos);
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
@@ -554,7 +572,79 @@ export default function OnboardingFlow() {
   // =========================================================================
   // SUBPANTALLA: CONFIGURAR PERFIL ACADÉMICO (DATOS E INTERESES)
   // =========================================================================
-  if (currentScreen === 'm03_onboarding' || currentScreen === 'm04_intereses' || currentScreen === 'm05_consentimientos') {
+  if (currentScreen === 'm05_consentimientos' || soloConsentimientos) {
+    return (
+      <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
+        <form onSubmit={handleGuardarConsentimientos} className="space-y-3">
+          {!soloConsentimientos && (
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentScreen('m03_onboarding');
+                limpiarMensajes();
+              }}
+              className="p-1 rounded-full text-ink-muted hover:text-ink dark:hover:text-ink-light inline-flex items-center space-x-1"
+            >
+              <ArrowLeft size={18} />
+              <span className="text-xs font-bold">Volver a mi perfil</span>
+            </button>
+          )}
+
+          <div>
+            <span className="text-[11px] font-black text-accent uppercase tracking-wider">Tu privacidad</span>
+            <h2 className="text-xl font-black text-ink dark:text-ink-light tracking-tight mt-0.5">
+              Tú decides para qué usamos tus datos
+            </h2>
+            <p className="text-xs text-ink-muted leading-relaxed">
+              Son cuatro decisiones separadas. Puedes cambiar las tres últimas cuando quieras en Perfil → Privacidad.
+              No pedimos DNI, dirección ni teléfono.
+            </p>
+          </div>
+
+          {errorMsg && (
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl text-xs text-rose-700 dark:text-rose-300">
+              {errorMsg}
+            </div>
+          )}
+
+          {CONSENTIMIENTOS.map((c) => (
+            <ConsentimientoItem
+              key={c.finalidad}
+              consentimiento={c}
+              valor={c.necesario ? true : consentValores[c.finalidad]}
+              onCambiar={(finalidad, valor) => setConsentValores((prev) => ({ ...prev, [finalidad]: valor }))}
+              deshabilitado={isLoading}
+            />
+          ))}
+
+          <p className="text-[11px] text-ink-muted text-center">
+            Detalle en la{' '}
+            <a href="/privacidad.html" target="_blank" rel="noopener noreferrer" className="text-accent font-bold hover:underline">
+              Política de Privacidad
+            </a>
+            .
+          </p>
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
+          >
+            {isLoading ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <>
+                <span>Guardar y entrar a Kampuz</span>
+                <ArrowRight size={16} />
+              </>
+            )}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  if (currentScreen === 'm03_onboarding' || currentScreen === 'm04_intereses') {
     return (
       <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
         <div>
@@ -772,7 +862,7 @@ export default function OnboardingFlow() {
                 <Loader2 size={18} className="animate-spin" />
               ) : (
                 <>
-                  <span>¡Todo listo! Entrar a Kampuz</span>
+                  <span>Continuar</span>
                   <ArrowRight size={16} />
                 </>
               )}

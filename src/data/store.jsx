@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback, useRef, createContext, useContext } f
 import { METRICAS_PANEL_UTP, HABILIDADES_BASE_NUEVO_ALUMNO } from './mockData';
 import { supabase, isSupabaseConfigured, mensajeError } from '../lib/supabase';
 import { obtenerPerfil, cerrarSesion as cerrarSesionAuth } from '../lib/auth';
-import { calcularHabilidadesReales, fetchCertificados } from '../lib/profile';
+import { calcularHabilidadesReales, fetchCertificados, fetchConsentimientos } from '../lib/profile';
 
 const StoreContext = createContext(null);
 
@@ -49,7 +49,7 @@ function leerPreferencia(clave, porDefecto) {
 
 export function StoreProvider({ children }) {
   const [user, setUser] = useState(null);
-  // 'cargando' | 'sin_sesion' | 'onboarding' | 'lista' | 'error'
+  // 'cargando' | 'sin_sesion' | 'onboarding' | 'consentimientos' | 'lista' | 'error'
   const [estadoSesion, setEstadoSesion] = useState('cargando');
   const [errorSesion, setErrorSesion] = useState('');
   // Evita recargar el perfil si Supabase repite SIGNED_IN para el mismo usuario (p. ej. al volver a la pestaña)
@@ -92,12 +92,21 @@ export function StoreProvider({ children }) {
     try {
       const perfil = await obtenerPerfil(session.user.id);
       if (perfil) {
+        // Los 4 consentimientos se leen de la tabla (antes estaban fijos en el código)
+        const consentimientos = await fetchConsentimientos();
         uidCargadoRef.current = session.user.id;
         setUser({
           ...perfil,
+          consentimientos: consentimientos.valores,
           habilidades: HABILIDADES_BASE_NUEVO_ALUMNO,
           certificados: []
         });
+        if (!consentimientos.completos) {
+          // Cuentas creadas antes de los 4 consentimientos: deben decidir antes de entrar (M05)
+          setEstadoSesion('consentimientos');
+          setCurrentScreen('m05_consentimientos');
+          return;
+        }
         setEstadoSesion('lista');
         setCurrentScreen((pantalla) => (pantalla === 'panel_utp' ? pantalla : 'app'));
       } else {
@@ -174,9 +183,14 @@ export function StoreProvider({ children }) {
   };
 
   // Al terminar el onboarding, con el perfil ya guardado en Supabase
-  const completarOnboarding = (perfil) => {
+  const completarOnboarding = (perfil, consentimientos) => {
     uidCargadoRef.current = perfil.id;
-    setUser({ ...perfil, habilidades: HABILIDADES_BASE_NUEVO_ALUMNO, certificados: [] });
+    setUser({
+      ...perfil,
+      consentimientos: consentimientos.valores,
+      habilidades: HABILIDADES_BASE_NUEVO_ALUMNO,
+      certificados: []
+    });
     setEstadoSesion('lista');
     setActiveTab('inicio');
     setCurrentScreen('app');

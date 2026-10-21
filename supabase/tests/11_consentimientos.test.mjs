@@ -1,0 +1,23 @@
+import { crearBase, como } from './harness.mjs';
+import { ok, falla, alumno } from './util.mjs';
+const db = await crearBase();
+console.log('migraciones + seed OK');
+const A = await alumno(db, { ciclo: 5 });
+const B = await alumno(db, { ciclo: 5, encuestas: false });
+const h = (await como(db, A, `select finalidad, otorgado from public.consentimientos_historial where usuario_id=$1`, [A])).rows;
+ok(h.length === 4, 'historial registra los 4 consentimientos iniciales');
+const c4 = (await db.query(`select otorgado, otorgado_en, revocado_en from public.consentimientos where usuario_id=$1 and finalidad='perfil_universidad'`, [A])).rows[0];
+ok(c4.otorgado === false && c4.otorgado_en === null && c4.revocado_en !== null, 'consentimiento 4 apagado sin fecha de otorgamiento');
+await falla(como(db, A, `update public.consentimientos set otorgado=false where usuario_id=$1 and finalidad='cuenta'`, [A]), /necesario/, 'no se revoca el consentimiento 1');
+await como(db, A, `update public.consentimientos set otorgado=true, otorgado_en='2000-01-01' where usuario_id=$1 and finalidad='perfil_universidad'`, [A]);
+const c4b = (await db.query(`select otorgado_en from public.consentimientos where usuario_id=$1 and finalidad='perfil_universidad'`, [A])).rows[0];
+ok(new Date(c4b.otorgado_en).getFullYear() > 2020, 'la fecha la pone el servidor');
+ok((await como(db, A, `select count(*)::int n from public.consentimientos_historial`)).rows[0].n === 5, 'historial guarda el cambio');
+ok((await como(db, B, `select count(*)::int n from public.consentimientos_historial`)).rows[0].n === 4, 'cada uno ve solo su historial');
+const alc = (await como(db, A, `select public.calcular_alcance_encuesta('{}'::jsonb) n`)).rows[0].n;
+ok(alc === 0, 'B (sin consentimiento 2) no cuenta en el alcance');
+// revocar descarta pendientes
+const e = (await db.query(`insert into public.encuestas (autor_id,titulo,estado) values ($1,'X','enviada') returning id`, [B])).rows[0].id;
+await db.query(`insert into public.envios_encuesta (encuesta_id,destinatario_id,estado) values ($1,$2,'pendiente')`, [e, A]);
+await como(db, A, `update public.consentimientos set otorgado=false where usuario_id=$1 and finalidad='encuestas'`, [A]);
+ok((await db.query(`select estado from public.envios_encuesta where destinatario_id=$1`, [A])).rows[0].estado === 'descartada', 'revocar el 2 descarta encuestas pendientes');

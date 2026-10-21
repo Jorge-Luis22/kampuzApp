@@ -17,7 +17,28 @@ Validar en condiciones reales de campus el flujo completo de Kampuz:
 
 ## 2. Preparación y Acceso para los 10 Testers
 
-### 0. Configuración del correo (una sola vez, antes del piloto)
+### 0. Configuración del servidor (una sola vez, antes del piloto)
+
+**0.1 Actualizar la base de datos.** En producción solo están aplicadas las migraciones 001–003. Sin las siguientes, la app nueva no funciona (por ejemplo, no existe la columna `perfiles.usuario`).
+
+1. Supabase → **SQL Editor** → **New query**.
+2. Copia y pega el contenido completo de `supabase/migrations/009_auth_real.sql` → **Run**. Debe decir "Success".
+3. Repite, en este orden, con `010_datos_compartidos.sql`, `011_consentimientos.sql` y `012_reglas_servidor.sql`.
+4. Por último, `supabase/seed.sql` (agrega el correo de revisión de Google a `correos_invitados`).
+5. Todas se pueden volver a ejecutar sin romper nada si una falla a la mitad.
+6. Para una base nueva desde cero, basta con pegar `supabase/full_schema.sql`.
+
+Revisa también si quedaron cuentas que entraron con los atajos antiguos (correos que no son @utp.edu.pe ni invitados):
+
+```sql
+select email, created_at from auth.users
+where email not ilike '%@utp.edu.pe'
+  and lower(email) not in (select lower(correo) from public.correos_invitados where activo);
+```
+
+Decide con el equipo si se eliminan (Authentication → Users).
+
+**0.2 Correo con el código.**
 
 El registro funciona así: el alumno crea su cuenta con correo, contraseña y @usuario; Supabase le envía un **código de 6 dígitos** a su correo; lo escribe en la app y recién ahí entra. **No existe ningún atajo** que salte esa verificación: es lo que garantiza que al otro lado hay un alumno real de la UTP.
 
@@ -33,7 +54,7 @@ El registro funciona así: el alumno crea su cuenta con correo, contraseña y @u
 
 ### A. Si tienen correo `@utp.edu.pe`:
 - Los estudiantes se registran directamente con su correo institucional.
-- El código llega a su bandeja. **Los servidores de la UTP (Microsoft 365 / Defender) a veces lo retienen unos minutos o lo mandan a *Correo no deseado* o a *Cuarentena*.** La solución es la del punto 0 (SMTP con dominio verificado en Resend). Durante el piloto, pide a los testers que revisen esas dos carpetas antes de pedir otro código (el botón "Reenviar" se habilita a los 60 segundos).
+- El código llega a su bandeja. **Los servidores de la UTP (Microsoft 365 / Defender) a veces lo retienen unos minutos o lo mandan a *Correo no deseado* o a *Cuarentena*.** La solución es la del punto 0.2 (SMTP con dominio verificado en Resend). Durante el piloto, pide a los testers que revisen esas dos carpetas antes de pedir otro código (el botón "Reenviar" se habilita a los 60 segundos).
 - Si un correo queda en cuarentena: en Outlook web, **Seguridad → Cuarentena** (o el enlace del aviso de cuarentena que manda la UTP) → **Liberar**.
 
 ### B. Si tienen correos externos (Gmail, Hotmail, etc.) o testers invitados:
@@ -63,12 +84,26 @@ Pide a los 10 testers que se dividan en parejas o grupos para completar los sigu
 
 | Escenario | Pantallas | Tarea del Tester | Criterio de Éxito |
 |---|---|---|---|
-| **1. Registro y Perfil** | M01–M05 | 1. Ingresar correo.<br>2. Digitar código OTP de 6 dígitos.<br>3. Subir foto de perfil (se recortará cuadrada y optimizada a <300 KB).<br>4. Elegir carrera, ciclo, campus y al menos 2 intereses.<br>5. Aceptar C1 obligatorio y revisar C2–C4. | El alumno ingresa al Inicio y aparece su nombre y carrera en la cabecera. |
+| **1. Registro y Perfil** | M01–M05 | 1. Ingresar correo.<br>2. Digitar código OTP de 6 dígitos.<br>3. Subir foto de perfil (se recortará cuadrada y optimizada a <300 KB).<br>4. Elegir carrera, ciclo, campus y al menos 2 intereses.<br>5. En "Tú decides para qué usamos tus datos": ver el 1 marcado como "Necesario", el 4 apagado, y decidir el 2 y el 3. | El alumno ingresa al Inicio y aparece su nombre y carrera en la cabecera. |
 | **2. Conectar y Chatear 1 a 1** | M07–M10 | 1. Ir a la pestaña **Explorar**.<br>2. Buscar a otro tester.<br>3. Enviar solicitud de conexión ingresando un motivo académico obligatorio.<br>4. El otro tester va a la subpestaña **Solicitudes** y la acepta.<br>5. Ambos abren el chat 1 a 1 y envían mensajes. | Mensajes aparecen instantáneamente para ambos sin recargar la pantalla. Check de leído y scroll automático. |
-| **3. Grupos y Talleres** | M11–M16 | 1. Ir a la pestaña **Grupos**.<br>2. Comprobar que ya pertenecen al espacio de su carrera y al grupo de su ciclo.<br>3. Escribir un mensaje en el chat del ciclo.<br>4. Explorar los talleres extracurriculares oficiales (Futsal, Lettering, IA aplicada) y hacer clic en *"Unirse"*.<br>5. Crear una propuesta de grupo nuevo y ver cómo calcula el umbral de apoyos necesarios. | El mensaje grupal llega en tiempo real a los demás del ciclo. El botón del taller cambia a *"Miembro"*. |
-| **4. Consultas y Estrellas** | M19–M22 | 1. Un alumno de ciclo menor crea una consulta de un curso.<br>2. Probar escribir el nombre de un profesor con un insulto (debe bloquearlo el filtro de moderación: *"Se habla del curso, no de la persona"*).<br>3. Redactar una duda académica real.<br>4. Un alumno de ciclo 5 o superior responde.<br>5. El autor valida la respuesta con *"Me sirvió"*. | El filtro bloquea las faltas de respeto. Al validar la respuesta, se acreditan las estrellas al orientador. |
+| **3. Grupos y Talleres** | M11–M16 | 1. Ir a la pestaña **Grupos**.<br>2. Comprobar que ya pertenecen al espacio de su carrera y al grupo de su ciclo.<br>3. Escribir un mensaje en el chat del ciclo.<br>4. Explorar los talleres extracurriculares oficiales (Futsal, Lettering, IA aplicada) y hacer clic en *"Unirse"*.<br>5. Crear una propuesta de grupo nuevo y ver cómo calcula el umbral de apoyos necesarios. | El mensaje grupal llega en tiempo real a los demás del ciclo. El botón del taller cambia a *"Unido"*. |
+| **4. Consultas y Estrellas** | M19–M22 | 1. Un alumno de ciclo menor crea una consulta de un curso.<br>2. Probar escribir el nombre de un profesor con un insulto (debe bloquearlo el filtro de moderación: *"Se habla del curso, no de la persona"*).<br>3. Redactar una duda académica real.<br>4. Un alumno de ciclo 5 o superior responde.<br>5. El autor valida la respuesta con *"Me sirvió"*. | El filtro bloquea las faltas de respeto. Al validar la respuesta, se acreditan las estrellas al orientador **solo si al menos 2 alumnos distintos hicieron la misma consulta** (mismo curso y tema) y no están conectados entre sí. |
 | **5. Encuestas Estudiantiles** | M23–M28 | 1. Responder encuestas activas una por una.<br>2. Ver cómo sube el nivel de habilidad *"Apoyo a la investigación"*.<br>3. Intentar crear una encuesta segmentando a menos de 30 personas.<br>4. Crear una con segmento mayor a 30 y revisar los resultados agregados. | El sistema bloquea encuestas con alcance menor a 30 (Ley 29733). Al responder, no se expone quién votó qué. |
-| **6. Privacidad y Modo Offline** | M29–M32 | 1. Ir a **Perfil** → **Privacidad**.<br>2. Revocar el consentimiento de analíticas (C2) y verificar que guarde el cambio con fecha.<br>3. Poner el celular en Modo Avión.<br>4. Quitar el Modo Avión. | Aparece el banner amarillo *"Sin conexión a internet"*. Al reconectar, desaparece automáticamente. |
+| **6. Privacidad y Modo Offline** | M29–M32 | 1. Ir a **Perfil** → **Privacidad**.<br>2. Apagar el consentimiento 3 (métricas) y verificar que muestre "Apagado desde el (fecha de hoy)".<br>3. Poner el celular en Modo Avión.<br>4. Quitar el Modo Avión. | Aparece el banner *"Sin conexión a internet"*. Si se intenta enviar un mensaje sin conexión, sale "No se envió · Reintentar" (nunca un falso "enviado"). Al reconectar, el banner desaparece. |
+
+---
+
+### Prueba rápida con dos celulares (antes de invitar a los 10)
+
+1. Instala el APK en dos celulares (A y B) o abre kampuz.vercel.app en ambos. Usa **datos móviles en al menos uno** (así se prueba que no depende del mismo wifi ni del mismo navegador).
+2. Crea una cuenta en cada uno (dos correos @utp.edu.pe o invitados). Ingresa el código que llega a cada correo. Elige **la misma carrera y ciclo** en los dos.
+3. En B: **Explorar** → busca a A → **Conectar** → escribe un motivo → **Enviar solicitud**.
+4. En A, **sin cerrar ni recargar la app**: Explorar → **Solicitudes** → debe aparecer la de B en unos segundos → **Aceptar conexión**. Se abre el chat.
+5. En B: **Chats 1 a 1** → abre el chat con A. A escribe "hola"; debe aparecer en B **una sola vez** y sin recargar. B responde.
+6. En los dos: **Grupos** → "Tu Salón" debe ser el mismo grupo; escribe un mensaje en uno y debe llegar al otro.
+7. Pon a A en modo avión y escribe: debe salir "No se envió · Reintentar". Quita el modo avión y pulsa **Reintentar**.
+
+Para la versión automática de esta prueba (dos navegadores separados contra el Supabase real): agrega en `.env.local` `E2E_USER_A_EMAIL`, `E2E_USER_A_PASSWORD`, `E2E_USER_B_EMAIL` y `E2E_USER_B_PASSWORD` de dos cuentas ya verificadas y ejecuta `npm run test:e2e`.
 
 ---
 

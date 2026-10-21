@@ -24,7 +24,7 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
 ### 2.1 Umbral Mínimo de Segmento para Encuestas (30 usuarios)
 - **Regla:** El umbral por defecto es **30** (almacenado en la tabla `config` con clave `umbral_minimo_segmento`).
 - **Consideración para Piloto:** Para un piloto de 10 alumnos reales, un umbral de 30 impedirá enviar encuestas con filtros estrechos en pruebas de laboratorio.
-- **Decisión:** La regla de servidor se mantiene en 30 para respetar la especificación de anonimato bajo la Ley 29733. El valor se parametriza en la tabla `config` para que el equipo/Jorge decida si lo ajusta temporalmente a un valor menor (ej. 5) durante la sustentación en vivo.
+- **Decisión:** La regla de servidor se mantiene en 30 (desde la auditoría, solo cuentan alumnos con el consentimiento 2 otorgado) para respetar la especificación de anonimato bajo la Ley 29733. El valor se parametriza en la tabla `config` para que el equipo/Jorge decida si lo ajusta temporalmente a un valor menor (ej. 5) durante la sustentación en vivo.
 
 ### 2.2 Sistema de Puntaje Unificado
 - **Sin monedas ni créditos:** No existe una billetera ni saldo consumible.
@@ -62,8 +62,15 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
   - **Cierre de sesión robusto:** Corrección de referencia a usuario nulo en `PhoneShell.jsx`, `App.jsx` y consistencia de llamada a `isSupabaseConfigured` como booleano en `auth.js` y `safety.js`.
   - **Nuevo flujo de autenticación:** Login con Nombre de Usuario o Correo y Contraseña. Registro con username único, correo `@utp.edu.pe`, contraseña y código de verificación OTP.
   - **Recuperación de contraseña:** Flujo guiado por correo institucional con código de seguridad OTP y actualización de contraseña.
-  - **Privacidad implícita:** Eliminación de la sobrecarga de avisos de "Ley 29733" en pantallas de usuario. La aceptación legal se traslada de forma limpia a un checkbox de Términos y Privacidad en el registro y opciones directas en Perfil.
+  - **Privacidad implícita:** Eliminación de la sobrecarga de avisos de "Ley 29733" en pantallas de usuario. La aceptación legal se traslada de forma limpia a un checkbox de Términos y Privacidad en el registro y opciones directas en Perfil. **→ Revertido en la auditoría:** la spec 6.8 prohíbe la casilla única; volvieron los 4 consentimientos separados (M05 y M32).
   - **Limpieza de UX estudiantil:** Reemplazo de jerga técnica y matemática (`>30`, fórmulas de umbral, prefijos de pantalla `M01-M33`) por microcopy empático y centrado en la experiencia de campus.
+
+- **2026-10-20 (Auditoría, docs/PROMPT_CLAUDE_CODE_AUDITORIA.md):** se encontró que casi todo lo marcado como real funcionaba solo dentro de un navegador y que la verificación por correo podía saltarse. Se corrigió:
+  - **Revertido:** capa local-first (`campusStorage.js`, BroadcastChannel), OTP generado en el cliente con "Autocompletar", aceptación de cualquier código de 6 dígitos, login local, contraseñas en localStorage, correos de prueba en el código, fallback de foto en base64, perfiles y datos de ejemplo mezclados con los reales, casilla única de privacidad.
+  - **Regla general nueva:** Supabase es la única fuente de verdad de todo lo compartido. localStorage solo guarda la sesión de Supabase y el modo oscuro. Si el servidor no responde, la app muestra el error y ofrece reintentar; nunca finge éxito.
+  - **Modo demo:** se quitó el botón "Acceder con alumno de prueba". No hay modo de presentación con atajos; si hace falta uno, debe usar datos aislados y no compilarse en el APK ni en Vercel production.
+  - **Migraciones 009–012** con las reglas en el servidor (ver sección 5). La 006 original fallaba en una base nueva y quedó vacía.
+  - **Certificados:** la regla "solo cuenta el más alto por habilidad" se explica al alumno, pero todavía no alimenta ningún nivel (las 4 habilidades verificadas no usan certificados).
 
 ---
 

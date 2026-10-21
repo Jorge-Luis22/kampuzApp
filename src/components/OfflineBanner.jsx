@@ -30,7 +30,7 @@ export default function OfflineBanner() {
     return (
       <div className="bg-rose-600 text-white px-3 py-1.5 text-xs font-bold flex items-center justify-center space-x-2 shrink-0 z-40 animate-fadeIn">
         <WifiOff size={14} className="shrink-0" />
-        <span>Sin conexión a internet. Mostrando datos locales.</span>
+        <span>Sin conexión a internet. Nada se enviará hasta que vuelvas a conectarte.</span>
       </div>
     );
   }

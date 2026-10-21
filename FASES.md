@@ -1,125 +1,58 @@
-# Resumen de Fases del Proyecto — Kampus App
+# Resumen de Fases del Proyecto — Kampuz
 
-Guía ejecutiva y técnica del avance por fases de **Kampus**, la red social universitaria cerrada para estudiantes de la UTP Lima Sur.
+Avance por fases de **Kampuz**, la red social universitaria cerrada para estudiantes de la UTP.
+
+> **Corrección (auditoría del 2026-10-20).** La versión anterior de este archivo marcaba todas las fases como "✅ Completada" e incluía una "certificación de pruebas 10/10". Esas pruebas corrían con un solo almacenamiento compartido en un mismo navegador: no probaban que dos personas en dos celulares se vieran. El detalle de qué estaba mal y qué se corrigió está en la **Fase 14**. El estado pantalla por pantalla está en `docs/ESTADO_MVP.md`.
+
+**Leyenda:** 🔵 implementado contra Supabase con reglas en el servidor, **falta verificar en dos dispositivos** · 🟡 demo a propósito · ⚠️ parcial · ❌ revertido.
 
 ---
 
-## 🗺️ Mapa de Fases y Estado
+## 🗺️ Mapa de fases y estado real
 
-| Fase | Título / Alcance | Estado | Principales Entregables |
+| Fase | Alcance | Estado real | Notas de la auditoría |
 | :--- | :--- | :---: | :--- |
-| **Fase 1** | **Fundamentos, Arquitectura y Reglas** | ✅ Completada | Setup React 18 + Vite + Tailwind, Store reactivo, Reglas no negociables (cero monedas, anonimato, cohortes). |
-| **Fase 2** | **Onboarding y Autenticación Institucional** | ✅ Completada | Validación de dominio institucional (`@utp.edu.pe` e invitados de prueba), código de verificación de 6 dígitos. |
-| **Fase 3** | **Espacios, Cohortes y Comunidades** | ✅ Completada | Tres espacios: Salón/Ciclo cerrado, Espacio de Carrera (ciclos 1-10) y Talleres/Comunidades oficiales y de alumnos (umbral de apoyos). |
-| **Fase 4** | **Consultas Agrupadas y Moderación** | ✅ Completada | Regla *"se habla del curso, no del docente"*, filtro regex automático, solo responden estudiantes de ciclo $\ge 5$, sesiones de estudio. |
-| **Fase 5** | **Sistema de Reputación y Habilidades** | ✅ Completada | 3 niveles de habilidad (Usada, Aplicada, Enseñada), alcance semanal dinámico, certificados anti-farmeo (solo cuenta el nivel más alto). |
-| **Fase 6** | **Encuestas Estudiantiles y Segmentación** | ✅ Completada | Filtros demográficos dinámicos, cálculo de muestra representativa, protección de anonimato para segmentos pequeños. |
-| **Fase 7** | **Panel de la Universidad (Dashboard)** | ✅ Completada | Vista de métricas para empleabilidad y directores de carrera, talento destacado (Impulsa / Generación Top) bajo consentimiento explícito. |
-| **Fase 8** | **Empaquetado Android con Capacitor** | ✅ Completada | Integración `@capacitor/core`, `@capacitor/android`, control del botón atrás nativo, GitHub Actions CI/CD para compilar APK y AAB. |
-| **Fase 9** | **Pulido Demo, PWA y Modo Offline** | ✅ Completada | Detección reactiva de conexión a internet con banner de reconexión, simulación de datos de demostración, navegación fluida. |
-| **Fase 10** | **Play Store, Políticas y Eliminación de Cuenta** | ✅ Completada | Flujo de eliminación permanente de datos (Ley 29733 / Google Play Policy), política de privacidad pública y documentación de despliegue. |
-| **Fase 11** | **Rediseño Integral de Auth y UX/UI Estudiantil** | ✅ Completada | - Autenticación con **Usuario único (`@usuario`)**, contraseña y OTP de 6 dígitos.<br>- **Recuperación de contraseña** por correo institucional.<br>- **Privacidad implícita**: Eliminación de pancartas legales en favor de aceptación estándar de Términos.<br>- **UX/UI Humanizada**: Eliminación de jerga técnica (`>30`, `<30`, `M01-M33`, `W01-W06`, fórmulas matemáticas).<br>- Corrección de pantalla en blanco y ErrorBoundary preventivo. |
-| **Fase 12** | **Conexión entre Estudiantes, Chat 1 a 1 y Validador en Vivo** | ✅ Completada | - **Validador en tiempo real de usuario único**: Comprobación dinámica (disponible / no disponible) mientras el alumno escribe.<br>- **Asistente anti-cuarentena de correo**: Generación local y botón "Autocompletar" de OTP para evitar demoras del servidor de correo UTP.<br>- **Descubrimiento y Conexión de Alumnos**: Todo nuevo usuario registrado aparece inmediatamente en **Explorar** para que cualquier otro compañero lo vea y le envíe solicitud de conexión.<br>- **Chat 1 a 1 en Tiempo Real**: Mensajería directa instantánea (`BroadcastChannel` multi-pestaña + Supabase) con historial y estados de lectura.<br>- **Suite de pruebas automatizadas E2E**: 10 tests unitarios y de integración ejecutados y aprobados al 100%. |
-| **Fase 13** | **Limpieza Integral UX/UI, Identidad UUID, Grilla 2x2 y Fusión Discord + LinkedIn** | ✅ Completada | - **Corrección de error UUID en Perfil**: Blindaje con `generateUUID()` v4 y validación de tipos PostgreSQL.<br>- **Eliminación Total de Jerga Técnica**: Adiós a `< 300 KB`, `Comprimiendo...`, `(M30)`, `(W01-W06)` y operadores técnicos.<br>- **Aislamiento de Carrera**: Cada estudiante ve únicamente los espacios académicos de su carrera (escalable para carné estudiantil).<br>- **Grilla de Comunidades de 2 en 2**: Rediseño a `grid-cols-2` con tarjetas optimizadas para celular.<br>- **Discord Live Status**: Estados en vivo (🟢 En campus, 🟡 En clase, 🔵 En biblioteca, 🟣 Buscando equipo, 🔴 En exámenes) con indicador en el avatar.<br>- **LinkedIn & Professional Showcase**: Insignias directas para LinkedIn, GitHub, Portafolio (Behance/Figma) y Web personal. |
+| **0** | Línea base (npm, sin gh-pages ni pnpm) | 🔵 | No se había hecho: quedaban `gh-pages` y los archivos de pnpm. Corregido. |
+| **1** | Supabase, esquema, RLS, Storage, seed | ⚠️ → 🔵 | En producción solo están 001–003. La 006 fallaba en una base nueva. Varias políticas dejaban saltarse las reglas y dos se referenciaban entre sí (recursión infinita en encuestas). Corregido en 009–012; falta aplicarlas en Supabase. |
+| **2** | Registro y login con código de 6 dígitos | ❌ → 🔵 | El código se generaba en el cliente y se aceptaba cualquier número de 6 dígitos. Reescrito con Supabase Auth. |
+| **3** | Perfil, foto y habilidades | ⚠️ → 🔵 | El perfil no llegaba a la base (columna `usuario` inexistente y error tragado); la foto caía a base64. Corregido. |
+| **4** | Explorar, solicitudes y chat 1 a 1 | ❌ → 🔵 | Funcionaba solo con localStorage + BroadcastChannel (misma máquina). Reescrito sobre Supabase + Realtime. |
+| **5** | Espacios, talleres, chat grupal, propuestas | ⚠️ → 🔵 | Mezclaba espacios inventados; se podía entrar a grupos de otra carrera y el creador podía hacer visible su propuesta. Corregido. |
+| **6** | Encuestas con filtro | ⚠️ → 🔵 | La bandeja fallaba siempre (recursión de RLS); se podía marcar "respondida" sin responder; el autor veía quién respondió. Corregido. |
+| **7** | Consultas agrupadas y estrellas | ❌ → 🔵 | No funcionaba (columnas inexistentes). Reimplementado en el servidor. |
+| **8** | APK con Capacitor y GitHub Actions | ⚠️ → 🔵 | El workflow usaba `secrets` en un `if` (inválido). Corregido. |
+| **9** | Pulido, estados vacíos, guía del piloto | ⚠️ → 🔵 | Los estados vacíos se tapaban con datos de ejemplo. Ahora hay estados vacíos y errores con "Reintentar". |
+| **10** | Listo para Play Store | ⚠️ | Eliminar cuenta corregido (fallaba en silencio). El .aab ya no sale sin firmar. La cuenta de revisión es una cuenta verificada con contraseña. Falta crear el keystore y la cuenta de Play Console. |
+| **11** | Rediseño de auth y UX | ⚠️ | Se mantiene el login con @usuario y contraseña. Se revirtió la "privacidad implícita" (casilla única de Términos marcada por defecto), que incumplía la spec 6.8. |
+| **12** | Validador de @usuario, "anti-cuarentena", conexión y chat | ❌ | Ver Fase 14: el "asistente anti-cuarentena" saltaba la verificación y el chat era local. |
+| **13** | UUID, jerga, grilla 2x2, estado en vivo, enlaces | ⚠️ | Se mantienen la grilla, la limpieza de jerga y los enlaces (ahora guardados en Supabase). El "estado en vivo" ahora es opcional y empieza en "Sin estado" (ver `docs/DECISIONES.md` 4.1). Se quitó el respaldo de foto en base64. |
+| **14** | **Auditoría y corrección final** | 🔵 | Ver detalle abajo. |
+| W | Panel de la universidad (W01–W06) | 🟡 | Datos de ejemplo por decisión del MVP. |
 
 ---
 
-## 🔍 Detalle de la Fase 12 (Última Implementación)
+## 🔍 Fase 14 — Auditoría y corrección final
 
-### 1. Validador en Tiempo Real de Nombre de Usuario (`@usuario`)
-- Verificación automática mientras el alumno escribe en el formulario de registro:
-  - Formato estricto: mínimo 3 caracteres, letras, números, puntos y guiones bajos (sin espacios).
-  - Indicador visual dinámico con debounce de 250 ms:
-    - 🟢 `✓ @usuario está disponible` (borde verde y checkmark).
-    - 🔴 `✗ @usuario ya está en uso por otro estudiante` (borde rojo y alerta).
-    - 🟡 `Mínimo 3 caracteres` (orientación para el alumno).
-  - Bloqueo preventivo del botón de envío si el usuario elegido no está disponible.
+Instrucciones: `docs/PROMPT_CLAUDE_CODE_AUDITORIA.md`. Un commit por paso.
 
-### 2. Resiliencia de Acceso y Asistente Anti-Cuarentena de Correo
-- Solución definitiva al problema de retrasos y cuarentenas de Microsoft Defender / Exchange en cuentas `@utp.edu.pe`:
-  - Código OTP numérico de 6 dígitos generado y sincronizado de forma instantánea.
-  - Asistente de acceso rápido en pantalla con tarjeta explicativa y botón **"Autocompletar"**.
-  - Garantiza que cualquier alumno o evaluador pueda crear su cuenta y verificar su identidad en segundos sin depender de la cola de correos externa.
+### Qué estaba mal
+1. **Dos personas en dos celulares no se veían.** Usuarios, solicitudes, conversaciones y mensajes vivían en localStorage y se "sincronizaban" con BroadcastChannel, que solo comunica pestañas del mismo navegador.
+2. **La app fingía éxito.** Timeouts de 1.6–2.5 s y, si Supabase tardaba o fallaba, seguía en modo local sin avisar. Los inserts fallaban por RLS y el error se tragaba.
+3. **La identidad verificada no existía.** Cualquier número de 6 dígitos (y `123456`) servía; el código se mostraba en pantalla con "Autocompletar"; correos de prueba como `test@gmail.com` estaban en el código; contraseñas en texto plano en el teléfono y login local con cualquier contraseña.
+4. **Ley 29733:** una sola casilla marcada por defecto en vez de los 4 consentimientos separados; los consentimientos del perfil estaban fijos en el código.
+5. **Build:** workflow de Android inválido; restos de gh-pages y pnpm.
+6. **Base de datos:** solo 001–003 aplicadas en producción; 006 fallaba; recursión de RLS en encuestas; atajos que permitían subir de nivel sin responder encuestas, orientar sin el ciclo requerido, valorar sin ser autor, escalar el rol a moderador o crear chats sin solicitud.
 
-### 3. Descubrimiento de Compañeros y Persistencia en "Explorar"
-- **Persistencia Local-First y Sincronizada** ([`src/lib/campusStorage.js`](file:///c:/Users/David/Github/kampusApp/src/lib/campusStorage.js)):
-  - Cuando un nuevo estudiante completa su registro y perfil, se guarda de inmediato en el repositorio compartido del campus.
-  - Cuando cualquier otro usuario (ej. Luz Martínez, compañeros del salón o evaluadores) ingresa a **Explorar**:
-    - El nuevo usuario aparece de inmediato al inicio del listado de personas para conectar.
-    - Se visualiza su nombre completo, handle `@usuario`, carrera, ciclo, sede e intereses afines.
-- **Flujo de Solicitud de Conexión (Spec 6.4)**:
-  - Clic en **"Conectar"** despliega el modal para ingresar el motivo de contacto académico.
-  - Al enviarse, la solicitud pasa a estado `pendiente` y se notifica al destinatario en tiempo real.
-  - El destinatario la ve en **Explorar → Solicitudes → Recibidas** con botones **Aceptar** e **Ignorar**.
+### Qué se cambió
+- `campusStorage.js` eliminado. Toda la capa de datos lee y escribe solo en Supabase con la sesión real, con timeout de 15 s, estados de carga y errores en español con "Reintentar".
+- Auth real (registro, código del correo, login con @usuario o correo, recuperación). Dominio validado solo en el servidor.
+- 4 consentimientos separados (M05 y M32) con historial demostrable.
+- Migraciones 009–012 con las reglas en el servidor y 109 comprobaciones automáticas (`npm run test:sql`).
+- Chat sin duplicados (id temporal reemplazado por el del servidor), Realtime en mensajes, mensajes de grupo y solicitudes.
+- Prueba de dos dispositivos con Playwright (`npm run test:e2e`).
 
-### 4. Chat 1 a 1 en Tiempo Real
-- Al aceptar la solicitud de conexión, se genera automáticamente la conversación directa (`conv_userA_userB`).
-- Se abre de inmediato la ventana de **Chat Directo 1 a 1** ([`src/components/ChatDirectoModal.jsx`](file:///c:/Users/David/Github/kampusApp/src/components/ChatDirectoModal.jsx)).
-- Comunicación bidireccional instantánea mediante `BroadcastChannel` (sincroniza pestañas en vivo) y canales Realtime de Supabase cuando hay conexión.
-- La conversación queda registrada en la pestaña **Chats 1 a 1** de ambos participantes con el último mensaje y contador de no leídos.
-
----
-
-## 🧪 Certificación de Pruebas Automatizadas
-
-Se desarrolló y ejecutó con éxito el script de prueba integral (`test_flow.mjs`):
-
-```bash
-node test_flow.mjs
-```
-
-**Resultados obtenidos (10 de 10 aprobados):**
-1. `[TEST 1]` Registro de Usuario A (Carlos Méndez, `@carlos_m`): **Aprobado (✔)**
-2. `[TEST 2]` Verificación con código OTP de 6 dígitos: **Aprobado (✔)**
-3. `[TEST 3]` Guardado y persistencia de perfil académico: **Aprobado (✔)**
-4. `[TEST 4]` Usuario B (Luz Martínez) explora y visualiza a Carlos con su `@usuario`: **Aprobado (✔)**
-5. `[TEST 5]` Envío de solicitud de conexión con motivo académico: **Aprobado (✔)**
-6. `[TEST 6]` Recepción de solicitud en bandeja de Carlos: **Aprobado (✔)**
-7. `[TEST 7]` Carlos acepta la solicitud y se inicializa la conversación directa: **Aprobado (✔)**
-8. `[TEST 8]` Envío de mensaje en chat directo 1 a 1 por Carlos: **Aprobado (✔)**
-9. `[TEST 9]` Respuesta en tiempo real por Luz Martínez: **Aprobado (✔)**
-10. `[TEST 10]` Historial de mensajes y lista de chats activos sincronizados: **Aprobado (✔)**
-
----
-
-## 🚀 Detalle de la Fase 13 (Última Implementación)
-
-### 1. Resolución de Error de Tipo UUID en Perfil
-- **Diagnóstico**: La tabla `perfiles` en Supabase PostgreSQL define `id` de tipo `uuid`. Los perfiles creados localmente con prefijos `usr_timestamp` desencadenaban la excepción de sintaxis SQL: `invalid input syntax for type uuid: "usr_xxx"`.
-- **Solución Implementada**:
-  - Implementación de generador estándar RFC 4122 v4 (`generateUUID()`) y validador regex (`isValidUUID()`).
-  - Filtrado y guardado seguro en [`src/lib/profile.js`](file:///c:/Users/David/Github/kampusApp/src/lib/profile.js) y [`src/lib/campusStorage.js`](file:///c:/Users/David/Github/kampusApp/src/lib/campusStorage.js).
-  - Respaldo dual con Data URL optimizada para que cambiar la foto de perfil nunca falle, incluso con fallas de red hacia Supabase Storage.
-
-### 2. Erradicación Total de Jerga Técnica y Notaciones Internas
-- Remoción de textos de desarrollo en todas las vistas:
-  - `Cambiar foto (< 300 KB)` y `Comprimiendo...` sustituidos por `Cambiar foto de perfil` y `Actualizando foto...` con microcopy explicativo amigable.
-  - Códigos de especificación interna eliminados de la vista: `(M30)`, `(W01-W06)` y operadores técnicos como `> 60 hrs → Avanzado`.
-  - Microcopy 100% enfocado en el estudiante y su vida académica.
-
-### 3. Aislamiento Dinámico de Comunidades por Carrera
-- **Filtro Académico**: Los espacios de Salón Cerrado (`carrera_ciclo`) y Comunidad de Carrera (`carrera`) ahora se filtran automáticamente según la carrera del alumno conectado.
-  - Un estudiante de **Enfermería** solo visualiza y participa en espacios de su salón y carrera.
-  - No se mezclan comunidades académicas de otras carreras (como Derecho o Sistemas).
-  - Los talleres institucionales y clubes de interés transversales continúan disponibles para todo el campus.
-- **Escalabilidad para Carné UTP**:
-  - El campo `carrera` cuenta con metadatos de procedencia (`declarado` vs `verificado_carnet`).
-  - Cuando se habilite la validación de carné físico o virtual, la transición será transparente sin modificar la lógica de espacios ni romper retrocompatibilidad.
-
-### 4. Rediseño de Comunidades en Grilla de 2 Columnas (2x2)
-- Reemplazo del layout de columna única por una grilla compacta de dos columnas (`grid-cols-2 gap-3`) en [`src/views/GruposView.jsx`](file:///c:/Users/David/Github/kampusApp/src/views/GruposView.jsx).
-- Tarjetas optimizadas para dispositivos móviles con altura controlada, badges visibles, títulos destacados y barra de apoyos estudiantiles compacta.
-
-### 5. Fusión Discord + LinkedIn: El Estudiante como la Estrella
-- **Discord Live Status**:
-  - Selector interactivo de estado de campus en vivo:
-    - 🟢 **En campus**: En instalaciones de la sede UTP.
-    - 🟡 **En clase**: En clase o laboratorio.
-    - 🔵 **En biblioteca**: Estudiando / Concentrado.
-    - 🟣 **Buscando equipo**: Disponible para proyectos y trabajos grupales.
-    - 🔴 **En exámenes**: Ocupado / Semana de parciales o finales.
-  - Indicador de estado en tiempo real visible sobre el avatar y desplegable para cambio rápido en 1 toque.
-- **LinkedIn & Professional Showcase**:
-  - Integración en el perfil de insignias directas para **LinkedIn**, **GitHub**, **Portafolio** (Behance, Figma, Dribbble) y **Sitio Web Personal**.
-  - Formulario de edición con enlaces clicables que abren la presencia profesional del estudiante.
-  - Diseñado para impulsar la empleabilidad y permitir que compañeros y docentes descubran el portafolio real del alumno.
+### Qué falta para dar el MVP por cerrado
+1. Aplicar 009–012 en Supabase y configurar Resend + plantillas (`docs/GUIA_PILOTO.md`, sección 0).
+2. Crear dos cuentas de prueba y correr `npm run test:e2e` hasta que pase.
+3. Probar con dos celulares reales (APK) los escenarios de `docs/GUIA_PILOTO.md`.
+4. Pendientes de producto: M17 (solicitud de publicación), M18 (eventos), panel W con datos reales, moderadores por espacio, egresados (ver `docs/DECISIONES.md`).

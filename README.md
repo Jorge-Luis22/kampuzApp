@@ -4,11 +4,10 @@ Aplicación MVP de **Kampus**, la red social universitaria cerrada con identidad
 
 ---
 
-## 🎯 Persona de Demostración
-- **Usuario:** **Luz Martínez** (`luz.martinez@utp.edu.pe`, 21 años).
-- **Carrera:** Enfermería (Facultad de Ciencias de la Salud).
-- **Ciclo:** 5.° Ciclo (estudiante de ciclos intermedios/superiores).
-- **Sede:** UTP Lima Sur (~19,300 alumnos).
+## 📍 Estado real
+- **Datos:** Supabase es la única fuente de verdad (Auth, Postgres, Realtime, Storage). No hay usuarios de demostración ni datos locales: cada alumno se registra con su correo y el código que le llega.
+- **Estado pantalla por pantalla:** [`docs/ESTADO_MVP.md`](docs/ESTADO_MVP.md). **Reglas y dónde se aplican:** [`docs/DECISIONES.md`](docs/DECISIONES.md).
+- **Antes de usar:** aplicar las migraciones 009–012 y configurar el correo ([`docs/GUIA_PILOTO.md`](docs/GUIA_PILOTO.md), sección 0).
 
 ---
 
@@ -20,7 +19,7 @@ Aplicación MVP de **Kampus**, la red social universitaria cerrada con identidad
   - **Panel Universidad (W01 - W06):** Vista completa del dashboard para directores de carrera y empleabilidad (Impulsa / Generación Top).
   - **Responsive Toggle:** Alterna entre marco de teléfono y pantalla completa.
   - **Modo Oscuro / Claro:** Basado en tokens `--brand-primary`, `--accent`, `--surface`, `--ink`.
-  - **Persistencia Reactiva:** `localStorage` sincronizado con restablecimiento instantáneo de demo.
+  - **Datos:** solo Supabase. `localStorage` guarda únicamente la sesión de Supabase y el modo oscuro.
 
 ---
 
@@ -109,5 +108,11 @@ npm run build
 
 # Vista previa de producción
 npm run preview
+
+# Pruebas de las reglas del servidor (migraciones en Postgres en memoria)
+npm run test:sql
+
+# Prueba de dos dispositivos contra el Supabase real (requiere E2E_* en .env.local)
+npm run test:e2e
 ```
 Servidor local disponible en: `http://localhost:5173`

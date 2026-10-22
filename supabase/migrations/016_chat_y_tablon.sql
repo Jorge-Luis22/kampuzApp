@@ -71,3 +71,58 @@ $$;
 
 revoke all on function public.me_interesa(uuid, text) from public, anon;
 grant execute on function public.me_interesa(uuid, text) to authenticated;
+
+-- ------------------------------------------------------------------------------
+-- 2. "QUIÉNES RESPONDIERON": con qué chat se abre cada persona
+--    Para cada persona: su chat conmigo (de contacto o de ayuda) o, si no hay,
+--    el estado de una solicitud pendiente entre los dos ('enviada' o 'recibida').
+-- ------------------------------------------------------------------------------
+drop function if exists public.respuestas_publicacion(uuid);
+create function public.respuestas_publicacion(p_publicacion_id uuid)
+returns table (
+    usuario_id uuid,
+    nombre text,
+    apellido text,
+    usuario text,
+    foto_url text,
+    carrera text,
+    ciclo integer,
+    tipo text,
+    creado_en timestamptz,
+    conversacion_id uuid,
+    conversacion_origen text,
+    puede_escribir boolean,
+    solicitud_pendiente text
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+    v_yo uuid := auth.uid();
+begin
+    if not exists (select 1 from public.publicaciones where id = p_publicacion_id and autor_id = v_yo) then
+        raise exception 'KAMPUZ_TABLON: Solo el autor ve quiénes respondieron.';
+    end if;
+    return query
+        select pe.id, pe.nombre, pe.apellido, pe.usuario, pe.foto_url, pe.carrera, pe.ciclo, r.tipo, r.creado_en,
+               c.id,
+               c.origen,
+               case when c.id is null then false else public.puede_escribir_conversacion(c.id) end,
+               case
+                   when exists (select 1 from public.solicitudes_mensaje s where s.de_id = v_yo and s.a_id = pe.id and s.estado = 'pendiente') then 'enviada'
+                   when exists (select 1 from public.solicitudes_mensaje s where s.de_id = pe.id and s.a_id = v_yo and s.estado = 'pendiente') then 'recibida'
+               end
+        from public.publicacion_respuestas r
+        join public.perfiles pe on pe.id = r.usuario_id
+        left join public.conversaciones c
+          on c.usuario_a_id = least(pe.id, v_yo) and c.usuario_b_id = greatest(pe.id, v_yo)
+        where r.publicacion_id = p_publicacion_id
+          and not public.hay_bloqueo(pe.id, v_yo)
+        order by r.creado_en;
+end;
+$$;
+
+revoke all on function public.respuestas_publicacion(uuid) from public, anon;
+grant execute on function public.respuestas_publicacion(uuid) to authenticated;

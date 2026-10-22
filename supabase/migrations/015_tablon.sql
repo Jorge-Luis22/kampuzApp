@@ -793,7 +793,9 @@ revoke all on function public.tablon(text) from public, anon;
 grant execute on function public.tablon(text) to authenticated;
 
 -- Quiénes respondieron una publicación mía (para "Ver quiénes respondieron")
-create or replace function public.respuestas_publicacion(p_publicacion_id uuid)
+-- drop: la 016 agrega columnas al resultado; sin esto, volver a correr 015 fallaría
+drop function if exists public.respuestas_publicacion(uuid);
+create function public.respuestas_publicacion(p_publicacion_id uuid)
 returns table (
     usuario_id uuid,
     nombre text,

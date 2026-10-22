@@ -26,6 +26,7 @@ import {
   subscribeToTablon
 } from '../lib/tablon';
 import { conversacionCon, conversacionDeContacto } from '../lib/chat';
+import { enviarSolicitudMensaje } from '../lib/explore';
 import ChatDirectoModal from '../components/ChatDirectoModal';
 import ErrorConReintento from '../components/ErrorConReintento';
 import PanelInferior, { OpcionPanel } from '../components/PanelInferior';
@@ -44,8 +45,16 @@ import {
   Users,
   Lock,
   MessageCircle,
-  Ban
+  Ban,
+  UserPlus
 } from 'lucide-react';
+
+const TITULO_RESPUESTAS = {
+  plan: 'Quiénes van',
+  evento: 'Quiénes asistirán',
+  ayuda: 'Quiénes ofrecieron ayuda',
+  mercadito: 'Quiénes se interesaron'
+};
 
 const linea = (p) => [p?.carrera, p?.ciclo ? `${p.ciclo}.°` : null].filter(Boolean).join(' · ');
 
@@ -207,7 +216,8 @@ function TarjetaPublicacion({ pub, ocupado, onSumarme, onQuitarme, onAyudar, onI
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-3 pt-2.5 border-t border-line/70 dark:border-line-dark">
+      {/* flex-wrap: si no entra todo en una línea, los botones bajan y el texto no se corta */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-2.5 border-t border-line/70 dark:border-line-dark">
         <div className="flex items-center min-w-0 gap-2">
           {pub.participantes.length > 0 && (
             <div className="flex -space-x-2 shrink-0">
@@ -216,7 +226,7 @@ function TarjetaPublicacion({ pub, ocupado, onSumarme, onQuitarme, onAyudar, onI
               ))}
             </div>
           )}
-          <span className="text-[11px] font-semibold text-ink-muted truncate">
+          <span className={`text-[11px] font-semibold text-ink-muted ${pub.esMia ? 'whitespace-nowrap' : 'truncate'}`}>
             {textoGente ||
               (pub.esMia && pub.totalRespuestas
                 ? `${pub.totalRespuestas} ${pub.totalRespuestas === 1 ? 'respuesta' : 'respuestas'}`
@@ -226,7 +236,7 @@ function TarjetaPublicacion({ pub, ocupado, onSumarme, onQuitarme, onAyudar, onI
           </span>
         </div>
         {pub.esMia ? (
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
             <button onClick={() => onRespuestas(pub)} className="px-3 py-2 text-xs font-bold rounded-xl bg-slate-100 dark:bg-slate-800 text-ink dark:text-ink-light">
               Ver respuestas{pub.totalRespuestas ? ` (${pub.totalRespuestas})` : ''}
             </button>
@@ -246,7 +256,7 @@ function TarjetaPublicacion({ pub, ocupado, onSumarme, onQuitarme, onAyudar, onI
 // Vista
 // =============================================================================
 export default function TablonView() {
-  const { user, tablonFiltro, setTablonFiltro, tablonPublicar, setTablonPublicar } = useStore();
+  const { user, tablonFiltro, setTablonFiltro, tablonPublicar, setTablonPublicar, setActiveTab, setChatsSeccion } = useStore();
 
   const [filtro, setFiltro] = useState(tablonFiltro ?? null);
   const [publicaciones, setPublicaciones] = useState([]);
@@ -276,6 +286,9 @@ export default function TablonView() {
   const [reporteMotivo, setReporteMotivo] = useState('Contenido inapropiado o spam');
   const [reporteDetalle, setReporteDetalle] = useState('');
   const [chat, setChat] = useState(null);
+  const [agregarPersona, setAgregarPersona] = useState(null);
+  const [motivoContacto, setMotivoContacto] = useState('');
+  const [enviandoContacto, setEnviandoContacto] = useState(false);
 
   const cargar = useCallback(
     async ({ silencioso = false } = {}) => {
@@ -399,6 +412,28 @@ export default function TablonView() {
       if (id) setChat({ conversacionId: id, otherUser: persona });
     } catch (err) {
       setAviso({ texto: err.message, tipo: 'error' });
+    }
+  };
+
+  // "Agregar contacto" desde quiénes respondieron
+  const abrirAgregarContacto = (persona) => {
+    setMotivoContacto(`Hola, ${persona.nombre}. Vi que respondiste a mi publicación «${respuestasPub?.titulo || ''}».`.slice(0, 300));
+    setAgregarPersona(persona);
+  };
+
+  const enviarAgregarContacto = async () => {
+    setEnviandoContacto(true);
+    try {
+      await enviarSolicitudMensaje({ aId: agregarPersona.id, motivo: motivoContacto.trim() });
+      setRespuestas((lista) =>
+        lista.map((r) => (r.usuario_id === agregarPersona.id ? { ...r, solicitud_pendiente: 'enviada' } : r))
+      );
+      setAviso({ texto: `Le enviamos tu solicitud a ${agregarPersona.nombre}.`, tipo: 'ok' });
+    } catch (err) {
+      setAviso({ texto: err.message, tipo: 'error' });
+    } finally {
+      setAgregarPersona(null);
+      setEnviandoContacto(false);
     }
   };
 
@@ -930,11 +965,11 @@ export default function TablonView() {
         </div>
       </PanelInferior>
 
-      {/* --- PANEL: QUIÉNES RESPONDIERON --- */}
+      {/* --- PANEL: QUIÉNES RESPONDIERON (cada persona abre su chat) --- */}
       <PanelInferior
         abierto={Boolean(respuestasPub)}
         onCerrar={() => setRespuestasPub(null)}
-        titulo="Quiénes respondieron"
+        titulo={TITULO_RESPUESTAS[respuestasPub?.tipo] || 'Quiénes respondieron'}
         subtitulo={respuestasPub?.titulo}
       >
         {cargandoRespuestas ? (
@@ -945,26 +980,84 @@ export default function TablonView() {
           <p className="text-xs text-ink-muted text-center py-6">Todavía nadie respondió.</p>
         ) : (
           <div className="divide-y divide-line/70 dark:divide-line-dark">
-            {respuestas.map((r) => (
-              <div key={r.usuario_id} className="flex items-center gap-3 py-2.5">
-                <AvatarCirculo persona={r} tam="w-9 h-9" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-black text-ink dark:text-ink-light truncate">
-                    {r.nombre} {r.apellido}
-                  </p>
-                  <p className="text-[11px] text-ink-muted truncate">{linea(r)}</p>
-                </div>
-                <span className="text-[10px] text-ink-muted shrink-0">{textoFecha(r.creado_en)}</span>
-              </div>
-            ))}
-            {respuestasPub?.tipo === 'mercadito' && (
-              <p className="text-[11px] text-ink-muted pt-3">Las solicitudes de mensaje te llegan a Chats → Solicitudes.</p>
-            )}
-            {respuestasPub?.tipo === 'ayuda' && (
-              <p className="text-[11px] text-ink-muted pt-3">Quienes ofrecieron ayuda pueden escribirte desde Chats.</p>
-            )}
+            {respuestas.map((r) => {
+              const persona = { id: r.usuario_id, nombre: r.nombre, apellido: r.apellido, usuario: r.usuario, foto_url: r.foto_url, carrera: r.carrera, ciclo: r.ciclo };
+              const conChat = Boolean(r.conversacion_id);
+              const abrir = () => {
+                if (conChat) {
+                  setRespuestasPub(null);
+                  setChat({
+                    conversacionId: r.conversacion_id,
+                    otherUser: persona,
+                    origen: r.conversacion_origen,
+                    publicacionTitulo: r.conversacion_origen === 'ayuda' ? respuestasPub?.titulo : null,
+                    puedeEscribir: r.puede_escribir
+                  });
+                } else if (r.solicitud_pendiente === 'recibida') {
+                  setRespuestasPub(null);
+                  setChatsSeccion('solicitudes');
+                  setActiveTab('chats');
+                } else if (!r.solicitud_pendiente) {
+                  abrirAgregarContacto(persona);
+                }
+              };
+              return (
+                <button key={r.usuario_id} onClick={abrir} className="w-full text-left flex items-center gap-3 py-2.5">
+                  <AvatarCirculo persona={r} tam="w-10 h-10" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black text-ink dark:text-ink-light truncate">
+                      {r.nombre} {r.apellido}
+                    </p>
+                    <p className="text-[11px] text-ink-muted truncate">
+                      {linea(r)} · {textoFecha(r.creado_en)}
+                    </p>
+                  </div>
+                  {conChat ? (
+                    <span className="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-accent text-white flex items-center gap-1 shrink-0">
+                      <MessageCircle size={12} />
+                      <span>{r.conversacion_origen === 'ayuda' ? 'Chat de ayuda' : 'Chatear'}</span>
+                    </span>
+                  ) : r.solicitud_pendiente === 'recibida' ? (
+                    <span className="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-amber-500 text-white shrink-0">Responder</span>
+                  ) : r.solicitud_pendiente === 'enviada' ? (
+                    <span className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-ink-muted shrink-0">Solicitud enviada</span>
+                  ) : (
+                    <span className="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-brand-primary text-white flex items-center gap-1 shrink-0">
+                      <UserPlus size={12} />
+                      <span>Agregar contacto</span>
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            <p className="text-[11px] text-ink-muted pt-3">Toca a una persona para abrir su chat.</p>
           </div>
         )}
+      </PanelInferior>
+
+      {/* --- PANEL: AGREGAR CONTACTO (desde quiénes respondieron) --- */}
+      <PanelInferior
+        abierto={Boolean(agregarPersona)}
+        onCerrar={() => setAgregarPersona(null)}
+        titulo={agregarPersona ? `Agregar a ${agregarPersona.nombre}` : ''}
+        subtitulo="La otra persona verá tu motivo y decidirá si acepta. Al aceptar, podrán chatear."
+      >
+        <div className="space-y-3">
+          <textarea
+            rows={3}
+            value={motivoContacto}
+            onChange={(e) => setMotivoContacto(e.target.value)}
+            maxLength={300}
+            className="w-full px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-surface dark:bg-surface-dark text-sm font-medium text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary resize-none"
+          />
+          <button
+            onClick={enviarAgregarContacto}
+            disabled={enviandoContacto || motivoContacto.trim().length < 5}
+            className="w-full py-3 bg-brand-primary disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center"
+          >
+            {enviandoContacto ? <Loader2 size={18} className="animate-spin" /> : 'Enviar solicitud'}
+          </button>
+        </div>
       </PanelInferior>
 
       {/* --- PANEL: CONFIRMAR CERRAR --- */}
@@ -1016,6 +1109,7 @@ export default function TablonView() {
           otherUser={chat.otherUser}
           origen={chat.origen}
           publicacionTitulo={chat.publicacionTitulo}
+          puedeEscribir={chat.puedeEscribir !== false}
           currentUser={user}
           onClose={() => setChat(null)}
           onUserBlocked={() => {

@@ -34,3 +34,16 @@ ok((await como(db, C, `select public.me_interesa($1, null) r`, [merc.id])).rows[
 const motivo = (await db.query(`select motivo from public.solicitudes_mensaje where de_id = $1 and a_id = $2`, [C, B])).rows[0]?.motivo;
 ok(motivo === 'Hola, me interesa tu publicación «Vendo mandil talla M» del mercadito.', 'la solicitud lleva el mismo motivo');
 await falla(como(db, null, `select public.me_interesa($1, null)`, [merc.id]), /permission denied/, 'sin sesión no se llama');
+
+console.log('-- "Quiénes respondieron" con su chat');
+const D = await alumno(db, { carrera: 'Medicina', ciclo: 4 });
+const ayuda = await publicar(A, { tipo: 'ayuda', titulo: 'Necesito un cargador tipo C' });
+const convAyuda = (await como(db, D, `select public.ofrecer_ayuda($1) c`, [ayuda.id])).rows[0].c;
+const filasAyuda = (await como(db, A, `select * from public.respuestas_publicacion($1)`, [ayuda.id])).rows;
+ok(filasAyuda[0]?.conversacion_id === convAyuda && filasAyuda[0].conversacion_origen === 'ayuda' && filasAyuda[0].puede_escribir, 'quien ofreció ayuda trae su chat de ayuda');
+const filasMerc = (await como(db, B, `select * from public.respuestas_publicacion($1)`, [merc.id])).rows;
+const deA = filasMerc.find((f) => f.usuario_id === A);
+const deC = filasMerc.find((f) => f.usuario_id === C);
+ok(deA?.conversacion_id === convAB && deA.conversacion_origen === 'solicitud', 'un contacto trae su chat de contacto');
+ok(deC && deC.conversacion_id === null && deC.solicitud_pendiente === 'recibida', 'sin chat: se indica la solicitud pendiente');
+await falla(como(db, C, `select * from public.respuestas_publicacion($1)`, [merc.id]), /Solo el autor/, 'solo el autor ve la lista');

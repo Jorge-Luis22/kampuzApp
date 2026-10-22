@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../data/store';
-import { CARRERAS_UTP, INTERESES_DISPONIBLES } from '../data/mockData';
 import ErrorConReintento from '../components/ErrorConReintento';
+import CrearEncuesta from '../components/CrearEncuesta';
 import {
   fetchUmbralMinimoSegmento,
-  calcularAlcanceEnVivo,
-  enviarEncuestaSegura,
   fetchBandejaEncuestas,
   fetchPreguntasEncuesta,
   responderEncuestaSegura,
@@ -49,38 +47,8 @@ export default function EncuestasView() {
   const [isLoadingMisEncuestas, setIsLoadingMisEncuestas] = useState(false);
   const [errorBandeja, setErrorBandeja] = useState('');
   const [errorMisEncuestas, setErrorMisEncuestas] = useState('');
-  const [errorAlcance, setErrorAlcance] = useState('');
   const [errorResponder, setErrorResponder] = useState('');
   const [errorResultados, setErrorResultados] = useState('');
-  const [resultadoEnvio, setResultadoEnvio] = useState(null);
-
-  // Flujo Crear Encuesta: Filtro (M24)
-  const [filtro, setFiltro] = useState({
-    sede: user?.sede || 'Lima Sur',
-    carreras: [user?.carrera || 'Enfermería'],
-    cicloMin: 1,
-    cicloMax: 10,
-    edadMin: 18,
-    edadMax: 30,
-    intereses: []
-  });
-
-  const [alcanceCalculado, setAlcanceCalculado] = useState(0);
-  const [isCalculandoAlcance, setIsCalculandoAlcance] = useState(false);
-  const [crearStep, setCrearStep] = useState('filtro'); // 'filtro' | 'bloqueado_m25' | 'bloqueado_alcance' | 'preguntas'
-  const [encuestaTitulo, setEncuestaTitulo] = useState('');
-  const [encuestaObjetivo, setEncuestaObjetivo] = useState('');
-  const [preguntasNuevas, setPreguntasNuevas] = useState([
-    {
-      id: 1,
-      texto: '¿Cuántas horas dedicas al estudio independiente por semana?',
-      tipo: 'unica',
-      opciones: ['Menos de 3 horas', '3 a 6 horas', 'Más de 6 horas']
-    }
-  ]);
-  const [isEnviandoEncuesta, setIsEnviandoEncuesta] = useState(false);
-  const [encuestaEnviadaExito, setEncuestaEnviadaExito] = useState(false);
-  const [errorEnvio, setErrorEnvio] = useState('');
 
   // Flujo Responder Encuesta (M27)
   const [encuestaParaResponder, setEncuestaParaResponder] = useState(null);
@@ -104,7 +72,7 @@ export default function EncuestasView() {
   useEffect(() => {
     fetchUmbralMinimoSegmento()
       .then(setUmbralMinimo)
-      .catch((err) => setErrorAlcance(err.message));
+      .catch(() => {}); // si falla se usa el valor por defecto; el servidor valida igual
   }, []);
 
   const cargarBandeja = async () => {
@@ -138,91 +106,6 @@ export default function EncuestasView() {
       cargarMisEncuestas();
     }
   }, [activeSubTab, user?.id]);
-
-  // Recalcular alcance en vivo con RPC al cambiar filtros (M24)
-  useEffect(() => {
-    let timer = setTimeout(async () => {
-      setIsCalculandoAlcance(true);
-      setErrorAlcance('');
-      try {
-        const alcance = await calcularAlcanceEnVivo(filtro);
-        setAlcanceCalculado(alcance);
-      } catch (e) {
-        setErrorAlcance(e.message);
-      } finally {
-        setIsCalculandoAlcance(false);
-      }
-    }, 250);
-
-    return () => clearTimeout(timer);
-  }, [filtro]);
-
-  const toggleCarreraFiltro = (nombre) => {
-    if (filtro.carreras.includes(nombre)) {
-      if (filtro.carreras.length === 1) return;
-      setFiltro({ ...filtro, carreras: filtro.carreras.filter(c => c !== nombre) });
-    } else {
-      setFiltro({ ...filtro, carreras: [...filtro.carreras, nombre] });
-    }
-  };
-
-  const handleVerificarFiltro = () => {
-    if (errorAlcance || isCalculandoAlcance) return;
-    // Si el alcance es menor al umbral configurado (30), bloquear con pantalla M25
-    if (alcanceCalculado < umbralMinimo) {
-      setCrearStep('bloqueado_m25');
-      return;
-    }
-    // Si el alcance semanal del alumno es 0 (no ha apoyado encuestas antes)
-    if (alcanceSemanal === 0) {
-      setCrearStep('bloqueado_alcance');
-      return;
-    }
-    setCrearStep('preguntas');
-  };
-
-  // Enviar encuesta mediante RPC de servidor (M26)
-  const handleEnviarEncuestaFinal = async (e) => {
-    e.preventDefault();
-    if (!encuestaTitulo.trim() || isEnviandoEncuesta) return;
-
-    if (alcanceCalculado < umbralMinimo) {
-      setCrearStep('bloqueado_m25');
-      return;
-    }
-
-    if (alcanceSemanal === 0) {
-      setCrearStep('bloqueado_alcance');
-      return;
-    }
-
-    setIsEnviandoEncuesta(true);
-    setErrorEnvio('');
-
-    try {
-      const res = await enviarEncuestaSegura({
-        titulo: encuestaTitulo,
-        descripcion: encuestaObjetivo,
-        filtro,
-        preguntas: preguntasNuevas
-      });
-
-      setResultadoEnvio(res);
-      setEncuestaEnviadaExito(true);
-      setTimeout(() => {
-        setEncuestaEnviadaExito(false);
-        setCrearStep('filtro');
-        setEncuestaTitulo('');
-        setEncuestaObjetivo('');
-        setActiveSubTab('mis_encuestas');
-        cargarMisEncuestas();
-      }, 2500);
-    } catch (err) {
-      setErrorEnvio(err.message);
-    } finally {
-      setIsEnviandoEncuesta(false);
-    }
-  };
 
   // Iniciar respuesta de encuesta (M27)
   const handleIniciarResponder = async (encuesta) => {
@@ -414,248 +297,16 @@ export default function EncuestasView() {
     );
   }
 
-  // --- M25: ESTADO BLOQUEADO (< 30) (PANTALLA DEDICADA) ---
-  if (crearStep === 'bloqueado_m25') {
-    return (
-      <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn">
-        <div>
-          <button
-            onClick={() => setCrearStep('filtro')}
-            className="p-1 -ml-1 text-ink-muted hover:text-ink mb-4 flex items-center space-x-1 text-xs font-bold"
-          >
-            <ArrowLeft size={18} />
-            <span>Ajustar filtro</span>
-          </button>
-
-          <div className="k-card p-5 space-y-4 border-2 border-amber-300 dark:border-amber-900/60 rounded-3xl bg-white dark:bg-surface-cardDark shadow-sm">
-            <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
-              <AlertTriangle size={28} />
-            </div>
-
-            <div>
-              <span className="text-xs font-black text-amber-600 uppercase tracking-wider block">
-                Faltan compañeros
-              </span>
-              <h1 className="text-lg font-black text-ink dark:text-ink-light tracking-tight mt-1">
-                Para cuidar el anonimato, tu encuesta necesita llegar a más compañeros
-              </h1>
-            </div>
-
-            <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-900">
-              <div className="text-3xl font-black text-amber-700 dark:text-amber-300">
-                {alcanceCalculado} {alcanceCalculado === 1 ? 'compañero' : 'compañeros'} con este filtro
-              </div>
-              <p className="text-xs text-amber-900 dark:text-amber-200 font-semibold mt-1.5 leading-relaxed">
-                Necesitas al menos {umbralMinimo} para que nadie pueda deducir quién respondió qué.
-              </p>
-            </div>
-
-            <p className="text-xs text-ink-soft dark:text-ink-muted leading-relaxed">
-              Te recomendamos ampliar los ciclos o incluir otras carreras afines de tu sede para que tu investigación tenga el alcance necesario.
-            </p>
-          </div>
-        </div>
-
-        <div className="space-y-2.5 pt-4">
-          <button
-            onClick={() => {
-              setFiltro(prev => ({
-                ...prev,
-                carreras: ['Enfermería', 'Psicología', 'Ingeniería Industrial', 'Ingeniería de Sistemas'],
-                cicloMin: 1,
-                cicloMax: 10
-              }));
-              setCrearStep('filtro');
-            }}
-            className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-2xl shadow-sm transition"
-          >
-            Ampliar el filtro automáticamente
-          </button>
-          <button
-            onClick={() => setCrearStep('filtro')}
-            className="w-full py-2.5 bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light font-bold text-xs rounded-xl border border-line dark:border-line-dark"
-          >
-            Ajustar manualmente
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // --- BLOQUEO POR ALCANCE SEMANAL 0 (Nivel 0 Apoyo a la Investigación) ---
-  if (crearStep === 'bloqueado_alcance') {
-    return (
-      <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn">
-        <div>
-          <button
-            onClick={() => setCrearStep('filtro')}
-            className="p-1 -ml-1 text-ink-muted hover:text-ink mb-4 flex items-center space-x-1 text-xs font-bold"
-          >
-            <ArrowLeft size={18} />
-            <span>Volver al filtro</span>
-          </button>
-
-          <div className="k-card p-5 space-y-4 border-2 border-line dark:border-line-dark rounded-3xl bg-white dark:bg-surface-cardDark shadow-sm">
-            <div className="w-14 h-14 rounded-2xl bg-accent-soft text-accent flex items-center justify-center">
-              <ShieldCheck size={28} />
-            </div>
-            <div>
-              <span className="text-xs font-black text-accent uppercase tracking-wider block">
-                Aún no puedes enviar encuestas
-              </span>
-              <h1 className="text-lg font-black text-ink dark:text-ink-light tracking-tight mt-1">
-                Primero ayuda a alguien
-              </h1>
-            </div>
-            <p className="text-sm text-ink-soft dark:text-ink-muted leading-relaxed">
-              Responde una encuesta de otro alumno y desbloquea la opción de enviar las tuyas. Mientras más encuestas respondas, a más compañeros podrá llegar la tuya.
-            </p>
-          </div>
-        </div>
-
-        <div className="pt-4">
-          <button
-            onClick={() => {
-              setCrearStep('filtro');
-              setActiveSubTab('bandeja');
-            }}
-            className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-2xl shadow-sm transition"
-          >
-            Ir a mi bandeja de encuestas
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // --- M26: REDACTAR PREGUNTAS ---
-  if (crearStep === 'preguntas') {
-    return (
-      <div className="flex-1 p-4 pb-24 space-y-4 overflow-y-auto animate-fadeIn select-none bg-surface dark:bg-surface-dark">
-        <div className="flex items-center space-x-2.5 pb-2 border-b border-line dark:border-line-dark">
-          <button
-            onClick={() => setCrearStep('filtro')}
-            className="p-1 -ml-1 text-ink-muted hover:text-ink"
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <div>
-            <h2 className="text-sm font-black text-ink dark:text-ink-light">
-              Paso 2: Redactar Preguntas
-            </h2>
-            <p className="text-xs text-accent font-bold">
-              Destinatarios: {Math.min(alcanceCalculado, alcanceSemanal)} alumnos
-            </p>
-          </div>
-        </div>
-
-        {encuestaEnviadaExito ? (
-          <div className="k-card p-8 text-center space-y-3 rounded-3xl border-2 border-emerald-300 bg-white dark:bg-surface-cardDark shadow-sm">
-            <CheckCircle2 size={44} className="text-semantic-success mx-auto" />
-            <h3 className="text-base font-black text-ink dark:text-ink-light">
-              ¡Encuesta enviada con éxito!
-            </h3>
-            <p className="text-xs text-ink-soft dark:text-ink-muted">
-              {resultadoEnvio
-                ? `Llegó a la bandeja de ${resultadoEnvio.enviados} estudiantes${resultadoEnvio.encolados ? ` y ${resultadoEnvio.encolados} la recibirán cuando liberen cupo (máximo 3 encuestas por semana)` : ''}.`
-                : ''}
-            </p>
-          </div>
-        ) : (
-          <form onSubmit={handleEnviarEncuestaFinal} className="k-card p-4 space-y-3.5 border-2 border-line/80 dark:border-line-dark rounded-2xl bg-white dark:bg-surface-cardDark shadow-sm">
-            <div>
-              <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">
-                Título del estudio
-              </label>
-              <input
-                type="text"
-                placeholder="Ej: Rendimiento en prácticas clínicas hospitalarias"
-                value={encuestaTitulo}
-                onChange={(e) => setEncuestaTitulo(e.target.value)}
-                className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1">
-                Objetivo
-              </label>
-              <input
-                type="text"
-                placeholder="Ej: Tesis de bachiller / Suficiencia profesional"
-                value={encuestaObjetivo}
-                onChange={(e) => setEncuestaObjetivo(e.target.value)}
-                className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary"
-                required
-              />
-            </div>
-
-            <div className="space-y-2 pt-1">
-              <span className="text-xs font-black text-ink dark:text-ink-light block">
-                Pregunta del formulario
-              </span>
-
-              {preguntasNuevas.map((p, idx) => (
-                <div key={p.id} className="p-3.5 bg-surface dark:bg-surface-dark rounded-xl border border-line dark:border-line-dark space-y-2.5">
-                  <input
-                    type="text"
-                    value={p.texto}
-                    onChange={(e) => {
-                      const updated = [...preguntasNuevas];
-                      updated[idx].texto = e.target.value;
-                      setPreguntasNuevas(updated);
-                    }}
-                    className="w-full px-3 py-2 bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark rounded-xl text-sm font-medium focus:outline-none focus:border-brand-primary"
-                  />
-                  <div className="space-y-1.5">
-                    {p.opciones.map((opc, opcIdx) => (
-                      <div key={opcIdx} className="flex items-center space-x-2 text-xs text-ink-soft">
-                        <span className="text-ink-muted font-bold">•</span>
-                        <span>{opc}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {errorEnvio && (
-              <p className="text-xs text-semantic-danger font-semibold bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200">
-                {errorEnvio}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={!encuestaTitulo.trim() || isEnviandoEncuesta}
-              className="w-full py-3.5 bg-brand-primary disabled:opacity-40 hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-2xl flex items-center justify-center space-x-2 shadow-sm transition"
-            >
-              {isEnviandoEncuesta ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <>
-                  <span>Enviar a bandejas estudiantiles</span>
-                  <Send size={15} />
-                </>
-              )}
-            </button>
-          </form>
-        )}
-      </div>
-    );
-  }
-
   // --- VISTA PRINCIPAL: BANDEJA Y ALCANCE (M23) ---
   return (
     <div className="flex-1 p-4 pb-24 space-y-4 overflow-y-auto animate-fadeIn select-none bg-surface dark:bg-surface-dark">
       {/* Header */}
       <div>
         <h1 className="text-xl font-black text-ink dark:text-ink-light tracking-tight">
-          Encuestas Académicas
+          Encuestas
         </h1>
         <p className="text-xs font-semibold text-ink-muted">
-          Datos de investigación reales sin recurrir a muestras inventadas
+          Responde las de tus compañeros y crea las tuyas. Las respuestas son anónimas.
         </p>
       </div>
 
@@ -679,7 +330,7 @@ export default function EncuestasView() {
               : 'text-ink-muted hover:text-ink'
           }`}
         >
-          Crear Encuesta
+          Crear
         </button>
         <button
           onClick={() => setActiveSubTab('mis_encuestas')}
@@ -802,142 +453,18 @@ export default function EncuestasView() {
         </div>
       )}
 
-      {/* SubTab 2: Crear Encuesta y Filtro en Vivo (M24) */}
+      {/* SubTab 2: Crear encuesta en 3 pasos (M24–M26) */}
       {activeSubTab === 'crear' && (
-        <div className="space-y-4">
-          {/* Card Contador Grande en Vivo */}
-          <div className="k-card p-4 text-center space-y-1.5 border-2 border-brand-primary/40 rounded-2xl shadow-sm bg-white dark:bg-surface-cardDark">
-            <span className="text-xs font-black text-ink-muted uppercase tracking-wider">
-              Alcance de tu filtro en vivo
-            </span>
-            <div className={`text-4xl font-black ${
-              alcanceCalculado < umbralMinimo ? 'text-semantic-danger' : 'text-brand-primary dark:text-teal-300'
-            }`}>
-              {isCalculandoAlcance ? (
-                <Loader2 size={32} className="animate-spin inline text-accent" />
-              ) : (
-                alcanceCalculado
-              )}
-            </div>
-            <p className="text-xs text-ink-soft dark:text-ink-muted font-semibold">
-              estudiantes cumplen este perfil
-            </p>
-
-            {errorAlcance ? (
-              <div className="mt-2">
-                <ErrorConReintento compacto mensaje={errorAlcance} onReintentar={() => setFiltro({ ...filtro })} />
-              </div>
-            ) : alcanceCalculado < umbralMinimo ? (
-              <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 border border-amber-200">
-                <AlertTriangle size={15} />
-                <span>Para cuidar el anonimato, tu encuesta necesita llegar a más compañeros. Amplía el filtro.</span>
-              </div>
-            ) : (
-              <div className="mt-2 p-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 border border-emerald-200">
-                <CheckCircle2 size={15} />
-                <span>Listo: llega a suficientes compañeros para cuidar el anonimato</span>
-              </div>
-            )}
-          </div>
-
-          {/* Filtros de Carrera */}
-          <div className="k-card p-4 space-y-3.5 text-xs border-2 border-line/80 dark:border-line-dark rounded-2xl bg-white dark:bg-surface-cardDark shadow-sm">
-            <div>
-              <label className="block font-bold text-ink dark:text-ink-light mb-1.5">
-                Carreras a encuestar
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {CARRERAS_UTP.slice(0, 6).map(c => {
-                  const sel = filtro.carreras.includes(c.nombre);
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => toggleCarreraFiltro(c.nombre)}
-                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition ${
-                        sel
-                          ? 'bg-brand-primary text-white border-brand-primary shadow-sm'
-                          : 'bg-surface dark:bg-surface-dark text-ink border-line dark:border-line-dark'
-                      }`}
-                    >
-                      {c.nombre}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Ciclos Min - Max */}
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <div>
-                <label className="block font-bold text-ink dark:text-ink-light mb-1">
-                  Ciclo min: {filtro.cicloMin}.°
-                </label>
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  value={filtro.cicloMin}
-                  onChange={(e) => setFiltro({ ...filtro, cicloMin: Number(e.target.value) })}
-                  className="w-full accent-brand-primary"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-ink dark:text-ink-light mb-1">
-                  Ciclo max: {filtro.cicloMax}.°
-                </label>
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  value={filtro.cicloMax}
-                  onChange={(e) => setFiltro({ ...filtro, cicloMax: Number(e.target.value) })}
-                  className="w-full accent-brand-primary"
-                />
-              </div>
-            </div>
-
-            {/* Edades Min - Max */}
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <div>
-                <label className="block font-bold text-ink dark:text-ink-light mb-1">
-                  Edad min: {filtro.edadMin} años
-                </label>
-                <input
-                  type="range"
-                  min="14"
-                  max="35"
-                  value={filtro.edadMin}
-                  onChange={(e) => setFiltro({ ...filtro, edadMin: Number(e.target.value) })}
-                  className="w-full accent-accent"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-ink dark:text-ink-light mb-1">
-                  Edad max: {filtro.edadMax} años
-                </label>
-                <input
-                  type="range"
-                  min="14"
-                  max="35"
-                  value={filtro.edadMax}
-                  onChange={(e) => setFiltro({ ...filtro, edadMax: Number(e.target.value) })}
-                  className="w-full accent-accent"
-                />
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={handleVerificarFiltro}
-            className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-2xl flex items-center justify-center space-x-2 shadow-sm transition"
-          >
-            <span>Verificar y Redactar Preguntas</span>
-            <ArrowRight size={16} />
-          </button>
-        </div>
+        <CrearEncuesta
+          user={user}
+          umbralMinimo={umbralMinimo}
+          alcanceSemanal={alcanceSemanal}
+          onEnviada={() => {
+            setActiveSubTab('mis_encuestas');
+            cargarMisEncuestas();
+          }}
+          onIrABandeja={() => setActiveSubTab('bandeja')}
+        />
       )}
 
       {/* SubTab 3: Mis Resultados Propios (M28) */}

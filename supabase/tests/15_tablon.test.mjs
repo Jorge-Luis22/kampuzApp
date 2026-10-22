@@ -159,3 +159,16 @@ await como(db, B, `insert into public.reportes (autor_id, tipo, objeto_id, motiv
 ok(true, 'se puede reportar una publicación');
 await como(db, A, `update public.perfiles set universidad = 'OTRA' where id = $1`, [A]);
 ok((await db.query(`select universidad from public.perfiles where id = $1`, [A])).rows[0].universidad === 'UTP', 'el alumno no puede cambiarse de universidad');
+
+console.log('-- recién llegados (Inicio)');
+const yoRL = await alumno(db, { carrera: 'Psicología', ciclo: 1 });
+const mismaCarrera = await alumno(db, { carrera: 'Psicología', ciclo: 2 });
+const otraCarrera = await alumno(db, { carrera: 'Economía', ciclo: 1 });
+const conSolicitud = await alumno(db, { carrera: 'Derecho', ciclo: 1 });
+await como(db, yoRL, `select public.enviar_solicitud($1, 'Hola, soy nuevo también')`, [conSolicitud]);
+const rl = (await como(db, yoRL, `select * from public.recien_llegados(10)`)).rows.map((r) => r.id);
+ok(rl.includes(otraCarrera), 'muestra alumnos nuevos de otras carreras');
+ok(!rl.includes(mismaCarrera), 'no muestra a los de mi carrera');
+ok(!rl.includes(conSolicitud), 'no muestra a quien ya le envié una solicitud');
+ok(!rl.includes(yoRL) && !rl.includes(E), 'ni a mí ni a alumnos de otra universidad');
+await falla(como(db, null, `select * from public.recien_llegados(5)`), /permission denied/, 'sin sesión no se llama');

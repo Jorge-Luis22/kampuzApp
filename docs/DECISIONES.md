@@ -105,6 +105,12 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
   - `perfiles.universidad` (por defecto 'UTP', el alumno no puede cambiarla) queda lista para el punto 4.
   - Foto opcional en eventos y mercadito (bucket `publicaciones`, máximo 1 MB).
 
+- **2026-10-22 (Sprint, punto 3: nuevo Inicio y navegación):**
+  - Inicio "Pasando hoy en tu sede": saludo con el estado, "Ahora mismo" (planes y ayudas en carrusel), "Próximos eventos" (eventos del tablón y talleres oficiales cuyo horario incluye el día de hoy), "Dudas de tu carrera", "Recién llegados" y accesos a los grupos.
+  - "Recién llegados" (RPC `recien_llegados`, en la 015): alumnos nuevos de **otras carreras** de la misma sede, sin contacto ni solicitud previa. El botón dice "Agregar contacto" (no "Conectar", por la decisión de producto del punto 1).
+  - Barra inferior: **Inicio · Tablón · Grupos · Chats · Perfil**. Explorar se abre con la lupa del Inicio; Chats junta los chats 1 a 1, "Mis contactos" y las solicitudes; Encuestas se abre desde el Perfil (no se borró nada). El contador de Chats suma solicitudes pendientes y mensajes sin leer; el del Perfil, encuestas pendientes.
+  - En Solicitudes solo se muestran las pendientes.
+
 ## 4. Pendiente de decisión del equipo
 
 ### 4.1 "Estado en vivo" (En campus / En clase / En biblioteca / Buscando equipo / En exámenes)

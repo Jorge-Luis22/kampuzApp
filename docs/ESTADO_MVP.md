@@ -23,7 +23,7 @@ Estado **real** de cada pantalla de la app (M01–M33) y del panel web (W01–W0
 | **M03** | Perfil declarado | 🔵 | Nombre, @usuario, fecha de nacimiento (edad mínima configurable, 14 por defecto, validada en servidor), carrera, ciclo, sede y foto (solo Storage). Trigger asigna el grupo de carrera y ciclo. |
 | **M04** | Intereses | 🔵 | Mínimo 2, en la misma pantalla que M03. Se guardan en `perfiles.intereses` (fuente del filtro de encuestas). |
 | **M05** | Consentimientos | 🔵 | **Los 4 separados** (spec 6.8): el 1 bloqueado "Necesario", el 4 apagado. Tabla `consentimientos` + historial con versión y fecha. Cuentas antiguas pasan por M05 al entrar. |
-| **M06** | Inicio | 🔵 | Encuesta pendiente, espacios, dudas de la carrera y talleres con horario: todo de Supabase. 🔴 "Eventos de la sede": no existe tabla de eventos (antes eran inventados; se quitaron). |
+| **M06** | Inicio | 🔵 | "Pasando hoy en tu sede": ahora mismo (tablón), próximos eventos y talleres de hoy, dudas de la carrera, recién llegados de otras carreras y grupos. Todo de Supabase. |
 | **M07** | Explorar | 🔵 | Perfiles reales con filtros en el servidor; sin perfiles de muestra. Excluye bloqueos en ambos sentidos. |
 | **M08** | Perfil de otro alumno + solicitud | 🔵 | Modal con datos reales y solicitud con motivo (validada por `enviar_solicitud`). Falta mostrar las habilidades del otro alumno. |
 | **M09** | Solicitudes | 🔵 | Recibidas/enviadas desde Supabase, aviso en vivo (Realtime). Aceptar crea la conversación en el servidor. |
@@ -35,7 +35,7 @@ Estado **real** de cada pantalla de la app (M01–M33) y del panel web (W01–W0
 | **M15** | Chat de grupo | 🔵 | Igual que M13. |
 | **M16** | Proponer grupo | 🔵 | `proponer_grupo` en el servidor: nace oculto; umbral max(15, 3%); apoyo único; visible al llegar al umbral. |
 | **M17** | Solicitud de publicación en grupo ajeno | 🔴 | No implementada (la spec la deja para fase 2). |
-| **M18** | Eventos del grupo | 🔴 | No implementado (no hay tabla de eventos). |
+| **M18** | Eventos del grupo | 🟡 | Los eventos de la sede viven en el tablón (tipo "evento"). Eventos dentro de un grupo: pendiente. |
 | **M19** | Hacer una consulta | 🔵 | `crear_consulta`: carrera y ciclo los toma el servidor; moderación en el servidor. |
 | **M20** | Lista de consultas agrupadas | 🔵 | Solo las de tu carrera, con autores distintos. |
 | **M21** | Responder una consulta | 🔵 | `responder_consulta`: solo por mensaje (sin "llamada"); ciclo ≥ 5, mayor que los autores, no autor, misma carrera. Estrellas = nAlumnos, pendientes hasta la valoración. |
@@ -67,7 +67,7 @@ Estado **real** de cada pantalla de la app (M01–M33) y del panel web (W01–W0
 
 | Pieza | Estado | Observaciones |
 |---|:---:|---|
-| Migraciones 001–013 | 🔵 | Probadas en Postgres en memoria (`npm run test:sql`). **En producción solo están 001–003**: hay que aplicar 009–012 (ver `GUIA_PILOTO.md`). |
+| Migraciones 001–015 | 🔵 | Probadas en Postgres en memoria (`npm run test:sql`). La 015 agrega el tablón "Pasando hoy". **En producción solo están 001–003**: hay que aplicar 009–012 (ver `GUIA_PILOTO.md`). |
 | Correo con el código (Gmail SMTP, `kampuz.app.pe@gmail.com`) | 🔴 | Pendiente de configurar en Supabase (sección 0.2 de `GUIA_PILOTO.md`). Límite aproximado de 500 correos al día. |
 | APK debug (GitHub Actions) | 🔵 | El workflow era inválido (`secrets` en un `if`); corregido. Falla con un mensaje claro si faltan los secretos. |
 | AAB firmado para Play Store | 🔵 | Falla si falta el keystore (antes generaba un .aab sin firmar). |

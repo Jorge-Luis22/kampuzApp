@@ -56,13 +56,15 @@ export function StoreProvider({ children }) {
   const uidCargadoRef = useRef(null);
   const consentimientosCompletosRef = useRef(true);
 
-  const [activeTab, setActiveTab] = useState('inicio'); // 'inicio' | 'explorar' | 'grupos' | 'encuestas' | 'perfil'
+  const [activeTab, setActiveTab] = useState('inicio'); // Barra: 'inicio' | 'tablon' | 'grupos' | 'chats' | 'perfil'. Fuera de la barra: 'explorar' (desde Inicio) y 'encuestas' (desde Perfil)
   const [currentScreen, setCurrentScreen] = useState('m01_bienvenida'); // 'app' | 'm01_bienvenida' | 'm02_otp' | 'm03_onboarding' | 'm04_intereses' | 'm05_consentimientos' | 'panel_utp'
   const [activeEspacioId, setActiveEspacioId] = useState(null);
   const [activeConsultaId, setActiveConsultaId] = useState(null);
   // Pedidos al tablón desde otras pantallas: abrir con un filtro o con el panel de publicar
   const [tablonFiltro, setTablonFiltro] = useState(null);
   const [tablonPublicar, setTablonPublicar] = useState(null);
+  // Sección que abre la pestaña Chats ('chats' | 'solicitudes')
+  const [chatsSeccion, setChatsSeccion] = useState(null);
 
   const [deviceFrame, setDeviceFrame] = useState(true);
   const [darkMode, setDarkMode] = useState(() => leerPreferencia(PREF_MODO_OSCURO, false));
@@ -242,6 +244,8 @@ export function StoreProvider({ children }) {
         setTablonFiltro,
         tablonPublicar,
         setTablonPublicar,
+        chatsSeccion,
+        setChatsSeccion,
         refrescarHabilidades,
         activeTab,
         setActiveTab,

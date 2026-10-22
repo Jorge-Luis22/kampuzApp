@@ -3,51 +3,98 @@ import { useStore } from '../data/store';
 import { fetchBandejaEncuestas } from '../lib/surveys';
 import { fetchEspacios } from '../lib/spaces';
 import { fetchConsultasCarrera } from '../lib/consultas';
+import { fetchTablon, subscribeToTablon } from '../lib/tablon';
+import { fetchRecienLlegados, enviarSolicitudMensaje } from '../lib/explore';
+import { textoVence, textoFecha } from '../data/tablon';
+import { ESTADOS_EN_VIVO } from '../data/estados';
+import { CONTACTO } from '../data/textos';
 import ErrorConReintento from '../components/ErrorConReintento';
-import {
-  ClipboardList,
-  MessageSquare,
-  Sparkles,
-  ArrowRight,
-  Calendar,
-  Users,
-  Clock,
-  BookOpen,
-  ChevronRight,
-  ShieldCheck,
-  CheckCircle2,
-  Lock,
-  Layers,
-  Trophy
-} from 'lucide-react';
+import PanelInferior from '../components/PanelInferior';
+import { EtiquetaTipo } from './TablonView';
+import { Search, ChevronRight, ClipboardList, MapPin, Clock, CalendarDays, Users, UserPlus, Loader2, Plus, Check, Send } from 'lucide-react';
+
+const DIAS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+const sinTildes = (t = '') => t.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+
+// ¿El horario de un taller ("Martes y Jueves 17:00 - 19:00") incluye hoy?
+const esHoy = (horario) => {
+  const hoy = DIAS[new Date().getDay()];
+  return new RegExp(`\\b${hoy}s?\\b`).test(sinTildes(horario));
+};
+
+function Seccion({ titulo, subtitulo, accion, onAccion, children }) {
+  return (
+    <section className="space-y-2.5">
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-black text-ink dark:text-ink-light">{titulo}</h2>
+          {subtitulo && <p className="text-[11px] text-ink-muted font-medium">{subtitulo}</p>}
+        </div>
+        {accion && (
+          <button onClick={onAccion} className="text-xs font-bold text-accent flex items-center shrink-0">
+            <span>{accion}</span>
+            <ChevronRight size={15} />
+          </button>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Avatar({ persona, tam = 'w-12 h-12', texto = 'text-base' }) {
+  return persona?.foto_url ? (
+    <img src={persona.foto_url} alt={persona.nombre || ''} className={`${tam} rounded-full object-cover shrink-0`} />
+  ) : (
+    <div className={`${tam} rounded-full bg-brand-primary text-white font-black ${texto} flex items-center justify-center shrink-0`}>
+      {(persona?.nombre?.[0] || 'K').toUpperCase()}
+    </div>
+  );
+}
 
 export default function InicioView() {
-  const {
-    user,
-    setActiveTab,
-    setActiveEspacioId,
-    setActiveConsultaId
-  } = useStore();
+  const { user, setActiveTab, setActiveEspacioId, setActiveConsultaId, setTablonFiltro, setTablonPublicar } = useStore();
 
-  // Resumen real desde Supabase (antes eran datos de ejemplo)
   const [encuestasBandeja, setEncuestasBandeja] = useState([]);
   const [espacios, setEspacios] = useState([]);
   const [consultas, setConsultas] = useState([]);
+  const [publicaciones, setPublicaciones] = useState([]);
+  const [recien, setRecien] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState('');
+
+  // Agregar contacto desde "Recién llegados"
+  const [agregar, setAgregar] = useState(null);
+  const [motivo, setMotivo] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [errorSolicitud, setErrorSolicitud] = useState('');
+  const [enviadas, setEnviadas] = useState([]);
+
+  const cargarTablon = useCallback(async () => {
+    try {
+      setPublicaciones(await fetchTablon(null));
+    } catch (err) {
+      // El tablón muestra su propio error; aquí la sección queda vacía
+    }
+  }, []);
 
   const cargarResumen = useCallback(async () => {
     setCargando(true);
     setErrorCarga('');
-    const [b, e, c] = await Promise.allSettled([
+    const resultados = await Promise.allSettled([
       fetchBandejaEncuestas(),
       fetchEspacios(),
-      fetchConsultasCarrera(user?.id)
+      fetchConsultasCarrera(user?.id),
+      fetchTablon(null),
+      fetchRecienLlegados(5)
     ]);
+    const [b, e, c, t, r] = resultados;
     if (b.status === 'fulfilled') setEncuestasBandeja(b.value);
     if (e.status === 'fulfilled') setEspacios(e.value);
     if (c.status === 'fulfilled') setConsultas(c.value);
-    const fallo = [b, e, c].find((r) => r.status === 'rejected');
+    if (t.status === 'fulfilled') setPublicaciones(t.value);
+    if (r.status === 'fulfilled') setRecien(r.value);
+    const fallo = resultados.find((x) => x.status === 'rejected');
     if (fallo) setErrorCarga(fallo.reason?.message || 'No pudimos cargar tu inicio.');
     setCargando(false);
   }, [user?.id]);
@@ -56,326 +103,331 @@ export default function InicioView() {
     cargarResumen();
   }, [cargarResumen]);
 
-  const encuestaPendiente = encuestasBandeja.find(e => e.estado === 'pendiente');
-  const cohorteGrupo = espacios.find(e => e.tipo === 'carrera_ciclo');
-  const carreraEspacio = espacios.find(e => e.tipo === 'carrera');
-  const tallerActivo = espacios.find(e => e.tipo === 'taller' && e.esMiembro);
-  const talleresOficiales = espacios.filter(e => e.tipo === 'taller' && e.horario).slice(0, 3);
-  const consultasAbiertas = consultas.filter(c => c.estado === 'abierto');
+  // "Ahora mismo" se actualiza en vivo
+  useEffect(() => {
+    let timer;
+    const unsub = subscribeToTablon(() => {
+      clearTimeout(timer);
+      timer = setTimeout(cargarTablon, 500);
+    });
+    return () => {
+      clearTimeout(timer);
+      unsub();
+    };
+  }, [cargarTablon]);
 
+  const ahora = new Date();
+  const vigentes = publicaciones.filter((p) => new Date(p.venceEn) > ahora);
+  const ahoraMismo = vigentes.filter((p) => p.tipo === 'plan' || p.tipo === 'ayuda');
+  const eventos = vigentes
+    .filter((p) => p.tipo === 'evento')
+    .sort((a, b) => new Date(a.empiezaEn) - new Date(b.empiezaEn))
+    .slice(0, 3);
+  const talleresHoy = espacios.filter((e) => e.tipo === 'taller' && e.oficial && e.horario && esHoy(e.horario));
+  const encuestaPendiente = encuestasBandeja.find((e) => e.estado === 'pendiente');
+  const salon = espacios.find((e) => e.tipo === 'carrera_ciclo');
+  const carreraEspacio = espacios.find((e) => e.tipo === 'carrera');
+  const consultasAbiertas = consultas.filter((c) => c.estado === 'abierto');
+  const estado = ESTADOS_EN_VIVO.find((s) => s.id === user?.estadoEnVivo) || null;
+
+  const irAlTablon = (filtro = null) => {
+    setTablonFiltro(filtro);
+    setActiveTab('tablon');
+  };
+  const publicarEnTablon = (tipo) => {
+    setTablonPublicar(tipo || true);
+    setActiveTab('tablon');
+  };
   const goToEspacio = (id) => {
     setActiveEspacioId(id);
     setActiveTab('grupos');
   };
-
   const goToConsulta = (id) => {
     if (carreraEspacio) setActiveEspacioId(carreraEspacio.id);
     setActiveConsultaId(id);
     setActiveTab('grupos');
   };
 
-  return (
-    <div className="flex-1 p-4 pb-24 space-y-4 overflow-y-auto animate-fadeIn select-none bg-surface dark:bg-surface-dark">
-      {/* Profile Header — Estudiante Estrella */}
-      <div className="flex items-center justify-between pt-1 gap-3">
-        <div className="flex-1 min-w-0 pr-1">
-          <div className="flex items-center space-x-1.5 mb-1 flex-wrap gap-y-1">
-            <span className="text-xs font-semibold text-ink-muted">Bienvenido(a),</span>
-            <span className="text-[11px] bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-300 shrink-0">
-              UTP Sede {user?.sede || 'Lima'}
-            </span>
-          </div>
-          <h1 className="text-xl font-black text-ink dark:text-ink-light tracking-tight truncate leading-tight">
-            {user?.nombre || 'Estudiante'} {user?.apellido || ''}
-          </h1>
-          <p className="text-xs font-bold text-brand-primary dark:text-teal-300 mt-0.5 truncate">
-            {user?.carrera || 'UTP'} {user?.ciclo ? `· ${user.ciclo}.° Ciclo` : ''}
-          </p>
-        </div>
+  const abrirAgregar = (persona) => {
+    setMotivo(`Hola, ${persona.nombre}. Soy ${user?.nombre || ''} de ${user?.carrera || 'la UTP'}. Me gustaría conocer gente de otras carreras.`.slice(0, 300));
+    setErrorSolicitud('');
+    setAgregar(persona);
+  };
 
-        <button
-          onClick={() => setActiveTab('perfil')}
-          className="relative shrink-0 cursor-pointer ring-2 ring-brand-primary/20 dark:ring-accent/40 rounded-2xl p-0.5 hover:scale-105 transition"
-          title="Ver mi perfil"
-        >
-          <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-sm bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-black text-ink-muted">
-            {user?.fotoUrl ? (
-              <img
-                src={user.fotoUrl}
-                alt={user?.nombre || ''}
-                className="w-full h-full object-cover object-center"
-              />
-            ) : (
-              (user?.nombre || 'U').charAt(0).toUpperCase()
-            )}
-          </div>
-          <div className="absolute -bottom-1 -right-1 bg-accent text-white p-1 rounded-full shadow-md border-2 border-white dark:border-surface-cardDark">
-            <ShieldCheck size={13} />
-          </div>
+  const enviarAgregar = async () => {
+    setEnviando(true);
+    setErrorSolicitud('');
+    try {
+      await enviarSolicitudMensaje({ aId: agregar.id, motivo: motivo.trim() });
+      setEnviadas((l) => [...l, agregar.id]);
+      setAgregar(null);
+    } catch (err) {
+      setErrorSolicitud(err.message);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div className="flex-1 p-4 pb-6 space-y-5 animate-fadeIn select-none bg-surface dark:bg-surface-dark">
+      {/* 1. Saludo con el estado del alumno */}
+      <header className="flex items-center gap-3">
+        <button onClick={() => setActiveTab('perfil')} className="shrink-0" aria-label="Ir a mi perfil">
+          <Avatar persona={{ nombre: user?.nombre, foto_url: user?.fotoUrl }} />
         </button>
-      </div>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg font-black text-ink dark:text-ink-light tracking-tight truncate">Hola, {user?.nombre || 'compañero'}</h1>
+          <button onClick={() => setActiveTab('perfil')} className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-muted">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: estado?.color || '#94A3B8' }} />
+            <span>{estado ? estado.label : 'Sin estado'}</span>
+            <span>· Sede {user?.sede || 'UTP'}</span>
+          </button>
+        </div>
+        <button
+          onClick={() => setActiveTab('explorar')}
+          className="w-11 h-11 rounded-full bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark flex items-center justify-center text-ink dark:text-ink-light shadow-sm shrink-0"
+          aria-label="Buscar compañeros"
+          title="Buscar compañeros"
+        >
+          <Search size={19} />
+        </button>
+      </header>
 
       {errorCarga && <ErrorConReintento compacto mensaje={errorCarga} onReintentar={cargarResumen} />}
-      {cargando && espacios.length === 0 && !errorCarga && (
-        <p className="text-xs text-ink-muted font-semibold">Cargando tu campus...</p>
-      )}
 
-      {/* Banner Encuesta Pendiente de Tesis */}
       {encuestaPendiente && (
-        <div className="bg-gradient-to-r from-brand-primary via-[#2E2675] to-[#3B3294] text-white p-4 rounded-2xl shadow-md relative overflow-hidden border border-brand-primary/50">
-          <div className="relative z-10 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-black tracking-wider uppercase text-teal-300 flex items-center space-x-1.5">
-                <ClipboardList size={15} />
-                <span>Encuesta de Tesis Pendiente</span>
-              </span>
-              <span className="text-xs bg-white/20 font-black px-2.5 py-0.5 rounded-full text-white">
-                +1 Apoyo a Investigación
-              </span>
-            </div>
-
-            <h2 className="text-sm font-bold text-white leading-snug line-clamp-2">
-              {encuestaPendiente.titulo}
-            </h2>
-
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-xs text-indigo-200 font-medium">
-                Anónima · ~{encuestaPendiente.duracionMin} min
-              </span>
-              <button
-                onClick={() => setActiveTab('encuestas')}
-                className="px-3.5 py-2 bg-accent hover:bg-accent-hover text-white text-xs font-black rounded-xl flex items-center space-x-1.5 shadow-sm transition"
-              >
-                <span>Responder</span>
-                <ArrowRight size={14} />
-              </button>
-            </div>
+        <button
+          onClick={() => setActiveTab('encuestas')}
+          className="w-full text-left p-3 rounded-2xl bg-brand-primary text-white flex items-center gap-3 shadow-sm"
+        >
+          <ClipboardList size={20} className="text-teal-300 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-black">Tienes una encuesta por responder</p>
+            <p className="text-[11px] text-indigo-200 truncate">{encuestaPendiente.titulo}</p>
           </div>
-        </div>
+          <ChevronRight size={18} className="shrink-0" />
+        </button>
       )}
 
-      {/* Los Tres Espacios Principales de la Alumna */}
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-black uppercase tracking-wider text-ink dark:text-ink-light">
-              Tus Espacios Activos
-            </h2>
-            <p className="text-xs text-ink-muted">Comunidades clave de tu vida universitaria</p>
+      {/* 2. Ahora mismo: planes y ayudas de la sede */}
+      <Seccion titulo="Ahora mismo" subtitulo="Planes y pedidos de ayuda en tu sede" accion="Ver todo" onAccion={() => irAlTablon(null)}>
+        {cargando && publicaciones.length === 0 ? (
+          <div className="h-28 rounded-2xl bg-white/60 dark:bg-surface-cardDark/60 animate-pulse" />
+        ) : ahoraMismo.length === 0 ? (
+          <div className="p-4 rounded-2xl bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark flex items-center justify-between gap-3">
+            <p className="text-xs text-ink-soft dark:text-ink-muted font-medium">Todavía no hay planes en tu sede. Sé el primero en proponer uno.</p>
+            <button
+              onClick={() => publicarEnTablon('plan')}
+              className="px-3 py-2 bg-brand-primary text-white text-xs font-extrabold rounded-xl flex items-center gap-1 shrink-0"
+            >
+              <Plus size={14} />
+              <span>Publicar plan</span>
+            </button>
           </div>
-          <button
-            onClick={() => setActiveTab('grupos')}
-            className="text-xs font-bold text-accent hover:underline flex items-center space-x-0.5"
-          >
-            <span>Ver todos</span>
-            <ChevronRight size={15} />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 gap-2.5">
-          {/* 1. Cohorte Cerrada (Enfermería C5) */}
-          {cohorteGrupo && (
-            <div
-              onClick={() => goToEspacio(cohorteGrupo.id)}
-              className="k-card p-3 flex items-center justify-between hover:border-brand-primary cursor-pointer transition-all duration-200 border-2 border-line/80 dark:border-line-dark rounded-2xl group shadow-sm"
-            >
-              <div className="flex items-center space-x-3.5">
-                <div className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-line dark:border-line-dark shadow-sm">
-                  {cohorteGrupo.portadaUrl ? (
-                    <img
-                      src={cohorteGrupo.portadaUrl}
-                      alt={cohorteGrupo.nombre}
-                      className="w-full h-full object-cover group-hover:scale-105 transition"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-brand-primary text-white flex items-center justify-center font-bold text-xs">C5</div>
-                  )}
-                  <span className="absolute bottom-0 inset-x-0 bg-brand-primary/95 text-white text-xs font-black text-center py-0.5">
-                    SALÓN
-                  </span>
-                </div>
-                <div className="space-y-0.5">
-                  <div className="flex items-center space-x-2">
-                    <h3 className="text-sm font-black text-ink dark:text-ink-light group-hover:text-brand-primary transition">
-                      {cohorteGrupo.nombre}
-                    </h3>
-                    <span className="text-xs bg-slate-100 dark:bg-slate-800 text-ink-muted font-bold px-2 py-0.2 rounded-md">
-                      Cerrado
-                    </span>
-                  </div>
-                  <p className="text-xs text-ink-soft dark:text-ink-muted line-clamp-1 font-medium">
-                    {cohorteGrupo.miembrosCount} compañero{cohorteGrupo.miembrosCount === 1 ? '' : 's'} de tu ciclo en Kampuz
-                  </p>
-                </div>
-              </div>
-              <ChevronRight size={18} className="text-ink-muted shrink-0 group-hover:translate-x-0.5 transition" />
-            </div>
-          )}
-
-          {/* 2. Espacio de Carrera (Ciclos 1 al 10 - Consultas Agrupadas) */}
-          {carreraEspacio && (
-            <div
-              onClick={() => goToEspacio(carreraEspacio.id)}
-              className="k-card p-3 flex items-center justify-between hover:border-brand-primary cursor-pointer transition-all duration-200 border-2 border-line/80 dark:border-line-dark rounded-2xl group shadow-sm"
-            >
-              <div className="flex items-center space-x-3.5">
-                <div className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-line dark:border-line-dark shadow-sm">
-                  {carreraEspacio.portadaUrl ? (
-                    <img
-                      src={carreraEspacio.portadaUrl}
-                      alt={carreraEspacio.nombre}
-                      className="w-full h-full object-cover group-hover:scale-105 transition"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-accent text-white flex items-center justify-center font-bold text-xs">ENF</div>
-                  )}
-                  <span className="absolute bottom-0 inset-x-0 bg-teal-800/95 text-white text-xs font-black text-center py-0.5">
-                    CARRERA
-                  </span>
-                </div>
-                <div className="space-y-0.5">
-                  <div className="flex items-center space-x-2">
-                    <h3 className="text-sm font-black text-ink dark:text-ink-light group-hover:text-brand-primary transition">
-                      {carreraEspacio.nombre}
-                    </h3>
-                    <span className="text-xs bg-teal-50 text-teal-800 dark:bg-teal-950 dark:text-teal-300 font-bold px-2 py-0.2 rounded-md">
-                      Ciclos 1-10
-                    </span>
-                  </div>
-                  <p className="text-xs text-ink-soft dark:text-ink-muted line-clamp-1 font-medium">
-                    Consultas académicas y bancos de preguntas
-                  </p>
-                </div>
-              </div>
-              <ChevronRight size={18} className="text-ink-muted shrink-0 group-hover:translate-x-0.5 transition" />
-            </div>
-          )}
-
-          {/* 3. Taller Oficial con Horario Real */}
-          {tallerActivo && (
-            <div
-              onClick={() => goToEspacio(tallerActivo.id)}
-              className="k-card p-3 flex items-center justify-between hover:border-brand-primary cursor-pointer transition-all duration-200 border-2 border-line/80 dark:border-line-dark rounded-2xl group shadow-sm"
-            >
-              <div className="flex items-center space-x-3.5">
-                <div className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-line dark:border-line-dark shadow-sm">
-                  {tallerActivo.portadaUrl ? (
-                    <img
-                      src={tallerActivo.portadaUrl}
-                      alt={tallerActivo.nombre}
-                      className="w-full h-full object-cover group-hover:scale-105 transition"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-amber-500 text-white flex items-center justify-center text-sm font-bold">🎨</div>
-                  )}
-                  <span className="absolute bottom-0 inset-x-0 bg-amber-700/95 text-white text-xs font-black text-center py-0.5">
-                    TALLER
-                  </span>
-                </div>
-                <div className="space-y-0.5">
-                  <div className="flex items-center space-x-2">
-                    <h3 className="text-sm font-black text-ink dark:text-ink-light group-hover:text-brand-primary transition">
-                      {tallerActivo.nombre}
-                    </h3>
-                    <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.2 rounded-md">
-                      Oficial
-                    </span>
-                  </div>
-                  <p className="text-xs text-amber-700 dark:text-amber-300 font-bold flex items-center mt-0.5">
-                    <Clock size={12} className="inline mr-1 text-amber-600" />
-                    <span>{tallerActivo.horario}</span>
-                  </p>
-                </div>
-              </div>
-              <ChevronRight size={18} className="text-ink-muted shrink-0 group-hover:translate-x-0.5 transition" />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Consultas Agrupadas de tu Carrera (Flujo 1) */}
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div className="min-w-0">
-            <h2 className="text-sm font-black uppercase tracking-wider text-ink dark:text-ink-light">
-              Dudas en {user?.carrera || 'tu carrera'}
-            </h2>
-            <p className="text-[11px] text-ink-muted font-semibold">
-              Responden alumnos de 5.° ciclo en adelante
-            </p>
-          </div>
-          <button
-            onClick={() => setActiveTab('grupos')}
-            className="text-xs font-bold text-accent hover:underline"
-          >
-            Ver dudas
-          </button>
-        </div>
-
-        <div className="space-y-2.5">
-          {consultasAbiertas.length === 0 && (
-            <p className="text-xs text-ink-muted bg-white dark:bg-surface-cardDark rounded-2xl p-3 border border-line dark:border-line-dark">
-              No hay dudas abiertas en tu carrera. Si tienes una sobre un curso, publícala en el espacio de tu carrera.
-            </p>
-          )}
-          {consultasAbiertas.slice(0, 2).map((c) => (
-            <div
-              key={c.id}
-              onClick={() => goToConsulta(c.id)}
-              className="k-card p-3.5 cursor-pointer hover:border-accent transition space-y-2 border-2 border-line/80 dark:border-line-dark rounded-2xl shadow-sm"
-            >
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-extrabold text-brand-primary dark:text-teal-300 text-sm">
-                  {c.curso}
-                </span>
-                <span className="bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 text-xs font-extrabold px-2.5 py-0.5 rounded-full">
-                  {c.nAlumnos} alumnos
-                </span>
-              </div>
-              <h4 className="text-xs font-bold text-ink dark:text-ink-light">
-                {c.tema}
-              </h4>
-              <p className="text-xs text-ink-soft dark:text-ink-muted line-clamp-1 italic">
-                "{c.textoResumen}"
-              </p>
-
-              <div className="pt-2 border-t border-line dark:border-line-dark flex items-center justify-between text-xs text-ink-muted font-medium">
-                <span>{c.autores?.[0]}</span>
-                <span className="text-accent font-bold flex items-center space-x-1">
-                  <span>{c.respuestas.length > 0 ? `${c.respuestas.length} respuesta` : 'Orientar ahora'}</span>
-                  <ChevronRight size={14} />
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Talleres oficiales con su horario (datos reales de Supabase) */}
-      {talleresOficiales.length > 0 && (
-        <div className="space-y-2.5">
-          <h2 className="text-sm font-black uppercase tracking-wider text-ink dark:text-ink-light">
-            Talleres de tu sede
-          </h2>
-          <div className="k-card p-3.5 space-y-3 border-2 border-line/80 dark:border-line-dark rounded-2xl shadow-sm">
-            {talleresOficiales.map((t, i) => (
+        ) : (
+          <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4 scroll-px-4 snap-x snap-mandatory pb-1">
+            {ahoraMismo.map((p) => (
               <button
-                key={t.id}
-                onClick={() => goToEspacio(t.id)}
-                className={`w-full text-left flex items-center space-x-3.5 ${i > 0 ? 'pt-2.5 border-t border-line dark:border-line-dark' : ''}`}
+                key={p.id}
+                onClick={() => irAlTablon(p.tipo)}
+                className="snap-start shrink-0 w-64 text-left p-3.5 rounded-2xl bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark shadow-sm space-y-2"
               >
-                <div className="w-10 h-10 rounded-xl bg-accent-soft text-accent flex items-center justify-center shrink-0 border border-accent/20">
-                  <Calendar size={18} />
+                <div className="flex items-center justify-between gap-2">
+                  <EtiquetaTipo tipo={p.tipo} />
+                  <span className="text-[10px] font-bold text-ink-muted flex items-center gap-1">
+                    <Clock size={11} />
+                    {textoVence(p.venceEn)}
+                  </span>
                 </div>
-                <div className="min-w-0">
-                  <h3 className="text-sm font-extrabold text-ink dark:text-ink-light truncate">{t.nombre}</h3>
-                  <p className="text-xs text-ink-soft dark:text-ink-muted mt-0.5 truncate">{t.horario}</p>
+                <p className="text-sm font-black text-ink dark:text-ink-light leading-snug line-clamp-2 min-h-[2.5rem]">{p.titulo}</p>
+                <div className="flex items-center justify-between text-[11px] text-ink-muted font-semibold gap-2">
+                  <span className="flex items-center gap-1 min-w-0">
+                    <MapPin size={11} className="shrink-0" />
+                    <span className="truncate">{p.lugar || 'Sin lugar'}</span>
+                  </span>
+                  {p.tipo === 'plan' && (
+                    <span className="flex items-center gap-1 shrink-0">
+                      <Users size={11} />
+                      {p.totalRespuestas}
+                      {p.cupo ? `/${p.cupo}` : ''}
+                    </span>
+                  )}
                 </div>
+                <p className="text-[11px] text-ink-muted truncate">
+                  {p.esMia ? 'Tu publicación' : `${p.autor.nombre} · ${p.autor.carrera || ''}`}
+                </p>
               </button>
             ))}
           </div>
-        </div>
+        )}
+      </Seccion>
+
+      {/* 3. Próximos eventos y talleres oficiales de hoy */}
+      <Seccion titulo="Próximos eventos" accion={eventos.length ? 'Ver eventos' : null} onAccion={() => irAlTablon('evento')}>
+        {eventos.length === 0 && talleresHoy.length === 0 ? (
+          <div className="p-4 rounded-2xl bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark flex items-center justify-between gap-3">
+            <p className="text-xs text-ink-soft dark:text-ink-muted font-medium">No hay eventos próximos. Comparte uno para que otros se sumen.</p>
+            <button onClick={() => publicarEnTablon('evento')} className="px-3 py-2 border border-line dark:border-line-dark text-xs font-bold rounded-xl text-ink dark:text-ink-light shrink-0">
+              Publicar evento
+            </button>
+          </div>
+        ) : (
+          <div className="k-card rounded-2xl bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark divide-y divide-line/70 dark:divide-line-dark">
+            {eventos.map((ev) => (
+              <button key={ev.id} onClick={() => irAlTablon('evento')} className="w-full text-left flex items-center gap-3 p-3">
+                <div className="w-11 h-11 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 flex flex-col items-center justify-center shrink-0 leading-none">
+                  <span className="text-[10px] font-bold uppercase">{new Date(ev.empiezaEn).toLocaleDateString('es-PE', { month: 'short' }).replace('.', '')}</span>
+                  <span className="text-base font-black">{new Date(ev.empiezaEn).getDate()}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black text-ink dark:text-ink-light truncate">{ev.titulo}</p>
+                  <p className="text-[11px] text-ink-muted truncate">
+                    {textoFecha(ev.empiezaEn)}
+                    {ev.lugar ? ` · ${ev.lugar}` : ''}
+                  </p>
+                </div>
+                {ev.totalRespuestas > 0 && <span className="text-[10px] font-bold text-ink-muted shrink-0">{ev.totalRespuestas} asistirán</span>}
+              </button>
+            ))}
+            {talleresHoy.map((t) => (
+              <button key={t.id} onClick={() => goToEspacio(t.id)} className="w-full text-left flex items-center gap-3 p-3">
+                <div className="w-11 h-11 rounded-xl bg-accent-soft dark:bg-accent-dark/40 text-accent flex items-center justify-center shrink-0">
+                  <CalendarDays size={18} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black text-ink dark:text-ink-light truncate">{t.nombre}</p>
+                  <p className="text-[11px] text-ink-muted truncate">Hoy · {t.horario}</p>
+                </div>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 shrink-0">Oficial</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Seccion>
+
+      {/* 4. Dudas de tu carrera */}
+      <Seccion titulo={`Dudas de ${user?.carrera || 'tu carrera'}`} subtitulo="Responden alumnos de 5.° ciclo en adelante" accion="Ver dudas" onAccion={() => (carreraEspacio ? goToEspacio(carreraEspacio.id) : setActiveTab('grupos'))}>
+        {consultasAbiertas.length === 0 ? (
+          <p className="text-xs text-ink-muted bg-white dark:bg-surface-cardDark rounded-2xl p-3.5 border border-line dark:border-line-dark">
+            No hay dudas abiertas en tu carrera. Si tienes una sobre un curso, publícala en el espacio de tu carrera.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {consultasAbiertas.slice(0, 2).map((c) => (
+              <button
+                key={c.id}
+                onClick={() => goToConsulta(c.id)}
+                className="w-full text-left k-card p-3.5 rounded-2xl bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark space-y-1"
+              >
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-extrabold text-brand-primary dark:text-teal-300 truncate">{c.curso}</span>
+                  <span className="bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0">
+                    {c.nAlumnos} {c.nAlumnos === 1 ? 'alumno' : 'alumnos'}
+                  </span>
+                </div>
+                <p className="text-xs font-bold text-ink dark:text-ink-light">{c.tema}</p>
+                <p className="text-[11px] text-ink-muted line-clamp-1">"{c.textoResumen}"</p>
+              </button>
+            ))}
+          </div>
+        )}
+      </Seccion>
+
+      {/* 5. Recién llegados de otras carreras */}
+      {recien.length > 0 && (
+        <Seccion titulo="Recién llegados" subtitulo="Alumnos nuevos de otras carreras de tu sede" accion="Buscar más" onAccion={() => setActiveTab('explorar')}>
+          <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+            {recien.map((p) => {
+              const enviada = enviadas.includes(p.id);
+              return (
+                <div key={p.id} className="shrink-0 w-36 p-3 rounded-2xl bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark text-center space-y-1.5">
+                  <div className="flex justify-center">
+                    <Avatar persona={p} tam="w-14 h-14" texto="text-lg" />
+                  </div>
+                  <p className="text-xs font-black text-ink dark:text-ink-light truncate">
+                    {p.nombre} {p.apellido}
+                  </p>
+                  <p className="text-[10px] text-ink-muted truncate">
+                    {p.carrera}
+                    {p.ciclo ? ` · ${p.ciclo}.°` : ''}
+                  </p>
+                  <button
+                    onClick={() => !enviada && abrirAgregar(p)}
+                    disabled={enviada}
+                    className={`w-full py-1.5 rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 ${
+                      enviada ? 'bg-slate-100 dark:bg-slate-800 text-ink-muted' : 'bg-brand-primary text-white'
+                    }`}
+                  >
+                    {enviada ? <Check size={12} /> : <UserPlus size={12} />}
+                    <span>{enviada ? CONTACTO.solicitudEnviada : CONTACTO.agregar}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </Seccion>
       )}
+
+      {/* 6. Tus grupos */}
+      {(salon || carreraEspacio) && (
+        <Seccion titulo="Tus grupos" accion="Ver todos" onAccion={() => setActiveTab('grupos')}>
+          <div className="grid grid-cols-2 gap-2.5">
+            {[salon && { e: salon, etiqueta: 'Tu salón' }, carreraEspacio && { e: carreraEspacio, etiqueta: 'Tu carrera' }]
+              .filter(Boolean)
+              .map(({ e, etiqueta }) => (
+                <button
+                  key={e.id}
+                  onClick={() => goToEspacio(e.id)}
+                  className="text-left p-3 rounded-2xl bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark flex items-center gap-2.5"
+                >
+                  {e.portadaUrl ? (
+                    <img src={e.portadaUrl} alt="" className="w-9 h-9 rounded-xl object-cover shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-xl bg-brand-primary text-white flex items-center justify-center text-xs font-black shrink-0">
+                      {(e.nombre || 'G')[0]}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold text-ink-muted uppercase">{etiqueta}</p>
+                    <p className="text-xs font-black text-ink dark:text-ink-light truncate">{e.nombre}</p>
+                  </div>
+                </button>
+              ))}
+          </div>
+        </Seccion>
+      )}
+
+      {/* PANEL: AGREGAR CONTACTO */}
+      <PanelInferior
+        abierto={Boolean(agregar)}
+        onCerrar={() => setAgregar(null)}
+        titulo={agregar ? `${CONTACTO.agregar}: ${agregar.nombre}` : ''}
+        subtitulo={CONTACTO.motivoAyuda}
+      >
+        <div className="space-y-3">
+          <label className="text-xs font-bold text-ink dark:text-ink-light block">{CONTACTO.motivoEtiqueta}</label>
+          <textarea
+            rows={3}
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            maxLength={300}
+            className="w-full px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-surface dark:bg-surface-dark text-sm font-medium text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary resize-none"
+          />
+          {errorSolicitud && <p className="text-xs text-semantic-danger font-semibold">{errorSolicitud}</p>}
+          <button
+            onClick={enviarAgregar}
+            disabled={enviando || motivo.trim().length < 5}
+            className="w-full py-3 bg-brand-primary disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center gap-2"
+          >
+            {enviando ? <Loader2 size={18} className="animate-spin" /> : (
+              <>
+                <span>{CONTACTO.enviarSolicitud}</span>
+                <Send size={14} />
+              </>
+            )}
+          </button>
+        </div>
+      </PanelInferior>
     </div>
   );
 }

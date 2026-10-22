@@ -95,12 +95,12 @@ async function irATab(page, nombre) {
 
 async function iniciarSesion(page, url, email, password, etiqueta) {
   await page.goto(url);
-  await page.getByPlaceholder('ej. jorge_utp o u2320732@utp.edu.pe').fill(email);
-  await page.getByPlaceholder('Tu contraseña secreta').fill(password);
+  await page.getByPlaceholder('Tu usuario o correo institucional').fill(email);
+  await page.getByPlaceholder('Tu contraseña').fill(password);
   await page.getByRole('button', { name: /Entrar a Kampuz/ }).click();
 
   const resultado = await Promise.race([
-    page.getByRole('button', { name: 'Explorar', exact: true }).waitFor({ timeout: TIEMPO }).then(() => 'app'),
+    page.getByRole('button', { name: 'Tablón', exact: true }).waitFor({ timeout: TIEMPO }).then(() => 'app'),
     page.getByText('Tu Perfil en el Campus').waitFor({ timeout: TIEMPO }).then(() => 'onboarding'),
     page.getByText('Tú decides para qué usamos tus datos').waitFor({ timeout: TIEMPO }).then(() => 'consentimientos'),
     page.locator('[role="alert"], .text-rose-700').first().waitFor({ timeout: TIEMPO }).then(() => 'error')
@@ -124,11 +124,12 @@ async function iniciarSesion(page, url, email, password, etiqueta) {
     await page.getByText('Tú decides para qué usamos tus datos').waitFor({ timeout: TIEMPO });
     await page.getByRole('button', { name: /Guardar y entrar a Kampuz/ }).click();
   }
-  await page.getByRole('button', { name: 'Explorar', exact: true }).waitFor({ timeout: TIEMPO });
+  await page.getByRole('button', { name: 'Tablón', exact: true }).waitFor({ timeout: TIEMPO });
 
-  await irATab(page, 'Inicio');
+  await irATab(page, 'Perfil');
   const nombre = (await page.locator('h1').first().innerText()).trim();
-  const lineaCarrera = (await page.locator('h1 + p').first().innerText()).trim();
+  const lineaCarrera = (await page.locator('p', { hasText: '.° ciclo' }).first().innerText()).trim();
+  await irATab(page, 'Inicio');
   return { nombre, lineaCarrera };
 }
 
@@ -160,12 +161,13 @@ async function main() {
     }
     ok('Ningún dato compartido vive en localStorage (solo la sesión de Supabase y preferencias)');
 
-    // A espera en Solicitudes → Recibidas (Realtime)
-    await irATab(a, 'Explorar');
+    // A espera en Chats → Solicitudes (Realtime)
+    await irATab(a, 'Chats');
     await a.getByRole('button', { name: /^Solicitudes/ }).click();
 
-    // B busca a A en Explorar
-    await irATab(b, 'Explorar');
+    // B busca a A con la lupa del Inicio (Explorar)
+    await irATab(b, 'Inicio');
+    await b.getByRole('button', { name: 'Buscar compañeros' }).first().click();
     const primerNombreA = perfilA.nombre.split(' ')[0];
     await b.getByPlaceholder('Buscar por nombre o carrera...').fill(primerNombreA);
     const tarjetaA = b.locator('.k-card').filter({ has: b.locator('h3', { hasText: perfilA.nombre }) }).first();
@@ -198,14 +200,13 @@ async function main() {
         throw new Error(`Se esperaba "Chatear" entre contactos y la tarjeta dice "${textoBoton}"`);
       }
       ok('Entre contactos, la tarjeta muestra "Chatear" (no deja enviar otra solicitud)');
-      await irATab(a, 'Explorar');
-      await a.getByRole('button', { name: /^Chats/ }).click();
+      await a.getByRole('button', { name: /^Chats/ }).first().click(); // sub-pestaña Chats
       await a.locator('.k-card', { hasText: perfilB.nombre }).first().click();
       await a.getByPlaceholder('Escribe un mensaje...').waitFor({ timeout: TIEMPO });
     }
 
-    // B abre el chat con A (la lista se actualiza por Realtime al aceptar)
-    await b.getByRole('button', { name: /^Chats/ }).click();
+    // B abre el chat con A desde la pestaña Chats (la lista se actualiza por Realtime al aceptar)
+    await irATab(b, 'Chats');
     const convB = b.locator('.k-card', { hasText: perfilA.nombre }).first();
     await convB.waitFor({ timeout: TIEMPO });
     ok(`B ve la conversación con A en "Chats"${yaConectados ? '' : ' sin recargar'}`);

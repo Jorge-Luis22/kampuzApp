@@ -3,7 +3,7 @@ import { StoreProvider, useStore } from './data/store';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { manejarAtras } from './lib/atras';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ArrowLeft } from 'lucide-react';
 import PhoneShell from './components/PhoneShell';
 import BottomNav from './components/BottomNav';
 import OfflineBanner from './components/OfflineBanner';
@@ -115,6 +115,11 @@ function AppContent() {
             setCurrentScreen('m01_bienvenida');
             return;
           }
+          // Encuestas se abre desde el Perfil y Explorar desde el Inicio
+          if (activeTab === 'encuestas') {
+            setActiveTab('perfil');
+            return;
+          }
           if (activeTab !== 'inicio') {
             setActiveTab('inicio');
             return;
@@ -196,10 +201,26 @@ function AppContent() {
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'inicio' && <InicioView />}
         {activeTab === 'tablon' && <TablonView />}
-        {activeTab === 'explorar' && <ExplorarView />}
         {activeTab === 'grupos' && <GruposView />}
-        {activeTab === 'encuestas' && <EncuestasView />}
+        {activeTab === 'chats' && <ExplorarView key="chats" modo="chats" />}
         {activeTab === 'perfil' && <PerfilView />}
+        {/* Fuera de la barra: Explorar se abre desde el Inicio y Encuestas desde el Perfil */}
+        {activeTab === 'explorar' && <ExplorarView key="explorar" modo="explorar" />}
+        {activeTab === 'encuestas' && (
+          <div className="flex flex-col min-h-full">
+            <div className="px-4 pt-3">
+              <button
+                onClick={() => setActiveTab('perfil')}
+                className="flex items-center gap-1 py-1 -ml-1 text-xs font-bold text-ink-muted hover:text-ink dark:hover:text-ink-light"
+                aria-label="Volver al perfil"
+              >
+                <ArrowLeft size={18} />
+                <span>Perfil</span>
+              </button>
+            </div>
+            <EncuestasView />
+          </div>
+        )}
       </div>
       <BottomNav />
     </div>

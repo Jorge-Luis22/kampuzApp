@@ -15,9 +15,11 @@ import {
   eliminarCuentaUsuario
 } from '../lib/profile';
 import CentroSeguridadModal from '../components/CentroSeguridadModal';
+import { fetchBandejaEncuestas } from '../lib/surveys';
 import ErrorConReintento from '../components/ErrorConReintento';
 import ConsentimientoItem from '../components/ConsentimientoItem';
 import PanelInferior, { OpcionPanel } from '../components/PanelInferior';
+import { ESTADOS_EN_VIVO as ESTADOS_DISCORD } from '../data/estados';
 import { CONSENTIMIENTOS } from '../data/consentimientos';
 import {
   ShieldCheck,
@@ -53,16 +55,9 @@ import {
   Globe,
   Code,
   Briefcase,
-  FolderGit2
+  FolderGit2,
+  ClipboardList
 } from 'lucide-react';
-
-const ESTADOS_DISCORD = [
-  { id: 'campus', label: 'En campus', emoji: '🟢', color: '#10B981', desc: 'En instalaciones de la sede' },
-  { id: 'clase', label: 'En clase', emoji: '🟡', color: '#F59E0B', desc: 'En clase o laboratorio' },
-  { id: 'biblioteca', label: 'En biblioteca', emoji: '🔵', color: '#3B82F6', desc: 'Estudiando' },
-  { id: 'buscando_equipo', label: 'Buscando equipo', emoji: '🟣', color: '#8B5CF6', desc: 'Disponible para proyectos' },
-  { id: 'examen', label: 'En exámenes', emoji: '🔴', color: '#EF4444', desc: 'Semana de parciales' }
-];
 
 export default function PerfilView() {
   const {
@@ -170,6 +165,14 @@ export default function PerfilView() {
   useEffect(() => {
     if (activeTabSub === 'privacidad') cargarConsentimientos();
   }, [activeTabSub, user?.id]);
+
+  // Encuestas pendientes (las Encuestas se abren desde aquí)
+  const [encuestasPendientes, setEncuestasPendientes] = useState(0);
+  useEffect(() => {
+    fetchBandejaEncuestas()
+      .then((b) => setEncuestasPendientes(b.filter((e) => e.estado === 'pendiente').length))
+      .catch(() => {}); // la pantalla de Encuestas muestra su propio error
+  }, [user?.id]);
 
   // Las habilidades se recalculan en el servidor al abrir el perfil (spec 5.3)
   useEffect(() => {
@@ -505,6 +508,27 @@ export default function PerfilView() {
           </div>
         </div>
       </div>
+
+      {/* Encuestas (antes era una pestaña de la barra) */}
+      <button
+        type="button"
+        onClick={() => setActiveTab('encuestas')}
+        className="w-full k-card p-3.5 flex items-center gap-3 text-left rounded-2xl border border-line dark:border-line-dark"
+      >
+        <div className="w-10 h-10 rounded-xl bg-brand-primary-soft dark:bg-brand-dark text-brand-primary dark:text-teal-300 flex items-center justify-center shrink-0">
+          <ClipboardList size={20} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-black text-ink dark:text-ink-light">Encuestas</p>
+          <p className="text-[11px] text-ink-muted">Responde las de tus compañeros y crea las tuyas</p>
+        </div>
+        {encuestasPendientes > 0 && (
+          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-accent text-white shrink-0">
+            {encuestasPendientes} {encuestasPendientes === 1 ? 'pendiente' : 'pendientes'}
+          </span>
+        )}
+        <ChevronRight size={18} className="text-ink-muted shrink-0" />
+      </button>
 
       {/* ESTADO VACÍO PARA ALUMNO NUEVO: PRIMER OBJETIVO ALCANZABLE (Spec 6.7) */}
       {isNuevoAlumno && (

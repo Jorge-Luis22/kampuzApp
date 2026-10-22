@@ -29,6 +29,7 @@ import {
   MessageSquare,
   RefreshCw,
   Send,
+  ArrowLeft,
   MoreVertical,
   SlidersHorizontal,
   Clock,
@@ -64,10 +65,21 @@ function MarcaContacto() {
 
 const lineaCarrera = (p) => [p?.carrera, p?.ciclo ? `${p.ciclo}.° ciclo` : null].filter(Boolean).join(' · ');
 
-export default function ExplorarView() {
-  const { user } = useStore();
+// modo 'chats': pestaña Chats de la barra (chats 1 a 1 y solicitudes).
+// modo 'explorar': buscar compañeros, se abre con la lupa del Inicio.
+export default function ExplorarView({ modo = 'chats' }) {
+  const { user, setActiveTab, chatsSeccion, setChatsSeccion } = useStore();
+  const esExplorar = modo === 'explorar';
 
-  const [activeSubTab, setActiveSubTab] = useState('personas'); // 'personas' | 'solicitudes' | 'chats'
+  const [activeSubTab, setActiveSubTab] = useState(esExplorar ? 'personas' : chatsSeccion || 'chats'); // 'personas' | 'solicitudes' | 'chats'
+
+  // Pedido desde otra pantalla para abrir Chats en una sección (p. ej. "Responder" en Explorar)
+  useEffect(() => {
+    if (esExplorar || !chatsSeccion) return;
+    setActiveSubTab(chatsSeccion);
+    if (chatsSeccion === 'solicitudes') setTipoSolTab('recibidas');
+    setChatsSeccion(null);
+  }, [chatsSeccion, esExplorar, setChatsSeccion]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroCarrera, setFiltroCarrera] = useState('');
   const [filtroCiclo, setFiltroCiclo] = useState('');
@@ -314,6 +326,12 @@ export default function ExplorarView() {
   // "Responder": lleva a la solicitud recibida
   const irASolicitud = (solicitud) => {
     setSelectedStudent(null);
+    if (esExplorar) {
+      // Las solicitudes viven en la pestaña Chats
+      setChatsSeccion('solicitudes');
+      setActiveTab('chats');
+      return;
+    }
     setTipoSolTab('recibidas');
     setSolicitudResaltada(solicitud?.id || null);
     setActiveSubTab('solicitudes');
@@ -449,51 +467,55 @@ export default function ExplorarView() {
 
   return (
     <div className="flex-1 p-4 pb-6 space-y-4 overflow-y-auto animate-fadeIn select-none bg-surface dark:bg-surface-dark">
-      {/* 3 sub-pestañas: Explorar · Solicitudes · Chats */}
-      <div className="flex bg-white dark:bg-surface-cardDark p-1.5 rounded-2xl border border-line dark:border-line-dark shadow-sm">
-        <button
-          onClick={() => setActiveSubTab('personas')}
-          className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
-            activeSubTab === 'personas'
-              ? 'bg-brand-primary text-white shadow-sm'
-              : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
-          }`}
-        >
-          Explorar
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('solicitudes')}
-          className={`flex-1 py-2 text-xs font-bold rounded-xl transition flex items-center justify-center space-x-1.5 ${
-            activeSubTab === 'solicitudes'
-              ? 'bg-brand-primary text-white shadow-sm'
-              : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
-          }`}
-        >
-          <span>Solicitudes</span>
-          {totalPendientesRecibidas > 0 && (
-            <span className="w-4 h-4 bg-accent text-white text-[10px] rounded-full flex items-center justify-center font-black">
-              {totalPendientesRecibidas}
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('chats')}
-          className={`flex-1 py-2 text-xs font-bold rounded-xl transition flex items-center justify-center space-x-1.5 ${
-            activeSubTab === 'chats'
-              ? 'bg-brand-primary text-white shadow-sm'
-              : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
-          }`}
-        >
-          <span>Chats</span>
-          {totalMensajesNoLeidos > 0 && (
-            <span className="w-4 h-4 bg-emerald-500 text-white text-[10px] rounded-full flex items-center justify-center font-black">
-              {totalMensajesNoLeidos}
-            </span>
-          )}
-        </button>
-      </div>
+      {esExplorar ? (
+        <header className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveTab('inicio')}
+            className="p-1.5 -ml-1.5 rounded-xl text-ink-muted hover:text-ink dark:hover:text-ink-light"
+            aria-label="Volver al inicio"
+            title="Volver"
+          >
+            <ArrowLeft size={22} />
+          </button>
+          <div>
+            <h1 className="text-lg font-black text-ink dark:text-ink-light leading-tight">Buscar compañeros</h1>
+            <p className="text-[11px] text-ink-muted font-medium">De todas las carreras de Kampuz</p>
+          </div>
+        </header>
+      ) : (
+        <>
+          <h1 className="text-xl font-black text-ink dark:text-ink-light tracking-tight">Chats</h1>
+          {/* Sub-pestañas: Chats · Solicitudes */}
+          <div className="flex bg-white dark:bg-surface-cardDark p-1.5 rounded-2xl border border-line dark:border-line-dark shadow-sm">
+            <button
+              onClick={() => setActiveSubTab('chats')}
+              className={`flex-1 py-2 text-xs font-bold rounded-xl transition flex items-center justify-center space-x-1.5 ${
+                activeSubTab === 'chats' ? 'bg-brand-primary text-white shadow-sm' : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
+              }`}
+            >
+              <span>Chats</span>
+              {totalMensajesNoLeidos > 0 && (
+                <span className="w-4 h-4 bg-emerald-500 text-white text-[10px] rounded-full flex items-center justify-center font-black">
+                  {totalMensajesNoLeidos}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveSubTab('solicitudes')}
+              className={`flex-1 py-2 text-xs font-bold rounded-xl transition flex items-center justify-center space-x-1.5 ${
+                activeSubTab === 'solicitudes' ? 'bg-brand-primary text-white shadow-sm' : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
+              }`}
+            >
+              <span>Solicitudes</span>
+              {totalPendientesRecibidas > 0 && (
+                <span className="w-4 h-4 bg-accent text-white text-[10px] rounded-full flex items-center justify-center font-black">
+                  {totalPendientesRecibidas}
+                </span>
+              )}
+            </button>
+          </div>
+        </>
+      )}
 
       {errorChatAbrir && <ErrorConReintento compacto mensaje={errorChatAbrir} />}
 
@@ -795,10 +817,10 @@ export default function ExplorarView() {
               <h4 className="text-sm font-black text-ink dark:text-ink-light">{CONTACTO.sinContactos}</h4>
               <p className="text-xs text-ink-muted max-w-xs mx-auto">{CONTACTO.sinContactosDetalle}</p>
               <button
-                onClick={() => setActiveSubTab('personas')}
+                onClick={() => setActiveTab('explorar')}
                 className="mt-2 px-4 py-2 bg-brand-primary text-white text-xs font-extrabold rounded-xl shadow-sm"
               >
-                Explorar compañeros
+                Buscar compañeros
               </button>
             </div>
           ) : vistaChats === 'contactos' && contactos.length === 0 ? (

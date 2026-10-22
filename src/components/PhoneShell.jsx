@@ -97,12 +97,20 @@ export default function PhoneShell({ children }) {
                 <div className="py-1 border-t border-line dark:border-line-dark">
                   <div className="text-[10px] font-bold text-accent uppercase tracking-wider px-2 pt-1">Espacios del Campus</div>
                   <button onClick={() => jumpTo('app', 'inicio')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
-                    <span>Inicio (Feed y avisos)</span>
+                    <span>Inicio: pasando hoy en tu sede</span>
                     <span className="text-ink-muted">Feed</span>
                   </button>
+                  <button onClick={() => jumpTo('app', 'tablon')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
+                    <span>Tablón "Pasando hoy"</span>
+                    <span className="text-ink-muted">Tablón</span>
+                  </button>
                   <button onClick={() => jumpTo('app', 'explorar')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
-                    <span>Explorar compañeros y chats</span>
-                    <span className="text-ink-muted">Comunidad</span>
+                    <span>Buscar compañeros</span>
+                    <span className="text-ink-muted">Explorar</span>
+                  </button>
+                  <button onClick={() => jumpTo('app', 'chats')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
+                    <span>Chats y solicitudes</span>
+                    <span className="text-ink-muted">Chats</span>
                   </button>
                   <button onClick={() => jumpTo('app', 'grupos')} className="w-full text-left px-2 py-1.5 hover:bg-surface dark:hover:bg-line-dark rounded-lg flex justify-between font-medium">
                     <span>Espacios de carrera y talleres</span>

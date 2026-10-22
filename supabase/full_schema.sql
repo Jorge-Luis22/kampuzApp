@@ -4479,6 +4479,52 @@ $$;
 revoke all on function public.respuestas_publicacion(uuid) from public, anon;
 grant execute on function public.respuestas_publicacion(uuid) to authenticated;
 
+-- "Recién llegados" del Inicio (punto 3): alumnos nuevos de OTRAS carreras de mi
+-- sede con los que todavía no tengo relación (ni contacto ni solicitud) ni bloqueo.
+-- Empuja la métrica del producto: interacciones entre carreras.
+create or replace function public.recien_llegados(p_limite integer default 5)
+returns table (
+    id uuid,
+    nombre text,
+    apellido text,
+    usuario text,
+    foto_url text,
+    carrera text,
+    ciclo integer,
+    creado_en timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    with yo as (
+        select id, universidad, sede, carrera from public.perfiles where id = auth.uid()
+    )
+    select p.id, p.nombre, p.apellido, p.usuario, p.foto_url, p.carrera, p.ciclo, p.creado_en
+    from public.perfiles p
+    cross join yo
+    where p.id <> yo.id
+      and p.universidad = yo.universidad
+      and p.sede is not distinct from yo.sede
+      and p.carrera is distinct from yo.carrera
+      and not public.hay_bloqueo(p.id, yo.id)
+      and not exists (
+          select 1 from public.conversaciones c
+          where c.usuario_a_id = least(p.id, yo.id) and c.usuario_b_id = greatest(p.id, yo.id)
+            and c.origen = 'solicitud'
+      )
+      and not exists (
+          select 1 from public.solicitudes_mensaje s
+          where (s.de_id = yo.id and s.a_id = p.id) or (s.de_id = p.id and s.a_id = yo.id)
+      )
+    order by p.creado_en desc
+    limit least(greatest(coalesce(p_limite, 5), 1), 10);
+$$;
+
+revoke all on function public.recien_llegados(integer) from public, anon;
+grant execute on function public.recien_llegados(integer) to authenticated;
+
 -- ------------------------------------------------------------------------------
 -- 9. REPORTES DE PUBLICACIONES (tabla reportes existente)
 -- ------------------------------------------------------------------------------

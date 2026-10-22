@@ -47,6 +47,14 @@ export async function fetchPerfilesExplorar({ searchTerm, carrera, ciclo, intere
 }
 
 /**
+ * "Recién llegados" del Inicio: alumnos nuevos de otras carreras de mi sede con
+ * los que aún no tengo relación. Lo decide el servidor (RPC recien_llegados).
+ */
+export async function fetchRecienLlegados(limite = 5) {
+  return (await rpc('recien_llegados', { p_limite: limite })) || [];
+}
+
+/**
  * Solicitudes recibidas y enviadas, con el perfil del otro alumno.
  */
 export async function fetchSolicitudes() {

@@ -16,6 +16,7 @@ import {
   solicitarRecuperacion,
   confirmarRecuperacion,
   guardarPerfilInicial,
+  guardarUsuarioFaltante,
   obtenerEdadMinima,
   EDAD_MINIMA_POR_DEFECTO
 } from '../lib/auth';
@@ -57,7 +58,9 @@ export default function OnboardingFlow() {
     setCurrentScreen,
     user,
     estadoSesion,
-    completarOnboarding
+    completarOnboarding,
+    completarUsuario,
+    cerrarSesion
   } = useStore();
 
   // Cuenta que ya tenía perfil pero no los 4 consentimientos (creada antes de esta versión)
@@ -410,6 +413,29 @@ export default function OnboardingFlow() {
     setCurrentScreen('m05_consentimientos');
   };
 
+  // --- 6b. ELEGIR EL @USUARIO QUE FALTA (cuentas creadas antes del @usuario) ---
+  const handleGuardarUsuarioFaltante = async (e) => {
+    e.preventDefault();
+    limpiarMensajes();
+    if (!FORMATO_USUARIO.test(limpiarUsuario(regUsuario))) {
+      setErrorMsg('Elige un @usuario de 3 a 30 caracteres (letras minúsculas, números, . o _).');
+      return;
+    }
+    if (usernameStatus.state === 'taken') {
+      setErrorMsg('Ese @usuario ya está en uso. Elige otro.');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const perfil = await guardarUsuarioFaltante(regUsuario);
+      completarUsuario(perfil);
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // --- 7. M05: GUARDAR PERFIL (si falta) Y LOS 4 CONSENTIMIENTOS ---
   const handleGuardarConsentimientos = async (e) => {
     e.preventDefault();
@@ -584,6 +610,94 @@ export default function OnboardingFlow() {
   // =========================================================================
   // SUBPANTALLA: CONFIGURAR PERFIL ACADÉMICO (DATOS E INTERESES)
   // =========================================================================
+  // =========================================================================
+  // SUBPANTALLA: ELEGIR @USUARIO (el perfil existe pero no tiene uno)
+  // =========================================================================
+  if (estadoSesion === 'elegir_usuario') {
+    const puedeGuardar = usernameStatus.state === 'available' && !isLoading;
+    return (
+      <div className="flex-1 px-5 pt-5 pb-[calc(var(--sab)+1.25rem)] flex flex-col bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
+        <form onSubmit={handleGuardarUsuarioFaltante} className="my-auto w-full max-w-sm mx-auto space-y-4">
+          <div className="text-center space-y-1">
+            <div className="w-12 h-12 rounded-2xl bg-brand-primary text-white flex items-center justify-center mx-auto mb-2 text-xl font-black">@</div>
+            <h2 className="text-xl font-black text-ink dark:text-ink-light tracking-tight">Elige tu @usuario</h2>
+            <p className="text-xs text-ink-soft dark:text-ink-muted leading-relaxed">
+              {user?.nombre ? `Hola, ${user.nombre}. ` : ''}Tus compañeros te encontrarán con este nombre y podrás usarlo para iniciar sesión.
+            </p>
+          </div>
+
+          {errorMsg && (
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl flex items-start space-x-2 text-xs text-rose-700 dark:text-rose-300">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label htmlFor="usuario-faltante" className="text-xs font-black text-ink dark:text-ink-light">
+                @usuario
+              </label>
+              {usernameStatus.state === 'checking' && (
+                <span className="text-[10px] text-ink-muted flex items-center space-x-1 font-semibold">
+                  <Loader2 size={10} className="animate-spin" />
+                  <span>Verificando...</span>
+                </span>
+              )}
+              {usernameStatus.state === 'available' && (
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">Disponible</span>
+              )}
+              {usernameStatus.state === 'taken' && (
+                <span className="text-[10px] text-semantic-danger font-bold">Ya está en uso</span>
+              )}
+              {(usernameStatus.state === 'invalid' || usernameStatus.state === 'error') && (
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">{usernameStatus.message}</span>
+              )}
+            </div>
+            <div className="relative">
+              <span className="absolute left-3.5 top-3 text-sm font-bold text-ink-muted">@</span>
+              <input
+                id="usuario-faltante"
+                type="text"
+                autoFocus
+                autoCapitalize="none"
+                autoCorrect="off"
+                placeholder="ej. ana.torres"
+                value={regUsuario}
+                onChange={(e) => setRegUsuario(e.target.value.toLowerCase().replace(/[^a-z0-9._]/g, ''))}
+                maxLength={30}
+                className={`w-full text-sm pl-8 pr-3 py-3 rounded-xl border ${
+                  usernameStatus.state === 'available'
+                    ? 'border-emerald-500'
+                    : usernameStatus.state === 'taken'
+                    ? 'border-red-500'
+                    : 'border-line dark:border-line-dark'
+                } bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light lowercase`}
+              />
+            </div>
+            <p className="text-[11px] text-ink-muted mt-1">Mínimo 3 caracteres: letras minúsculas, números, punto o guion bajo.</p>
+          </div>
+
+          <button
+            type="submit"
+            disabled={!puedeGuardar}
+            className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white font-extrabold text-sm rounded-xl flex items-center justify-center space-x-2 shadow-sm transition"
+          >
+            {isLoading ? <Loader2 size={18} className="animate-spin" /> : (
+              <>
+                <span>Guardar y entrar</span>
+                <ArrowRight size={16} />
+              </>
+            )}
+          </button>
+          <button type="button" onClick={cerrarSesion} className="w-full text-xs font-bold text-ink-muted hover:text-ink py-1">
+            Cerrar sesión
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   if (currentScreen === 'm05_consentimientos' || soloConsentimientos) {
     return (
       <div className="flex-1 px-5 pt-5 pb-[calc(var(--sab)+1.25rem)] flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">

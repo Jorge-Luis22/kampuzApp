@@ -316,6 +316,32 @@ export async function obtenerPerfil(userId) {
 }
 
 /**
+ * Guarda el @usuario de un perfil que aún no tiene (cuentas creadas antes del
+ * @usuario). Solo funciona si el perfil no tenía uno: no sirve para cambiarlo.
+ */
+export async function guardarUsuarioFaltante(usuario) {
+  const limpio = limpiarUsuario(usuario);
+  if (!FORMATO_USUARIO.test(limpio)) {
+    throw new KampuzError('El @usuario debe tener de 3 a 30 caracteres: letras minúsculas, números, punto o guion bajo.');
+  }
+  if (!(await usuarioDisponible(limpio))) {
+    throw new KampuzError(`@${limpio} ya está en uso. Elige otro.`);
+  }
+  const uid = await uidActual();
+  const fila = await ejecutar(
+    supabase.from('perfiles').update({ usuario: limpio }).eq('id', uid).is('usuario', null).select('*').maybeSingle()
+  ).catch((err) => {
+    if (err?.causa?.code === '23505') throw new KampuzError(`@${limpio} ya está en uso. Elige otro.`);
+    throw err;
+  });
+  if (fila) return perfilDesdeFila(fila);
+  // Ya tenía @usuario (por ejemplo, lo eligió en otro celular): se usa el guardado
+  const actual = await obtenerPerfil(uid);
+  if (!actual?.usuario) throw new KampuzError('No pudimos guardar tu @usuario. Inténtalo de nuevo.');
+  return actual;
+}
+
+/**
  * Crea (o completa) el perfil del alumno con sesión real.
  * El servidor fija el correo, el rol y el origen de los campos.
  */

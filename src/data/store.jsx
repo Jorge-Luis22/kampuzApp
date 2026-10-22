@@ -54,6 +54,7 @@ export function StoreProvider({ children }) {
   const [errorSesion, setErrorSesion] = useState('');
   // Evita recargar el perfil si Supabase repite SIGNED_IN para el mismo usuario (p. ej. al volver a la pestaña)
   const uidCargadoRef = useRef(null);
+  const consentimientosCompletosRef = useRef(true);
 
   const [activeTab, setActiveTab] = useState('inicio'); // 'inicio' | 'explorar' | 'grupos' | 'encuestas' | 'perfil'
   const [currentScreen, setCurrentScreen] = useState('m01_bienvenida'); // 'app' | 'm01_bienvenida' | 'm02_otp' | 'm03_onboarding' | 'm04_intereses' | 'm05_consentimientos' | 'panel_utp'
@@ -95,12 +96,19 @@ export function StoreProvider({ children }) {
         // Los 4 consentimientos se leen de la tabla (antes estaban fijos en el código)
         const consentimientos = await fetchConsentimientos();
         uidCargadoRef.current = session.user.id;
+        consentimientosCompletosRef.current = consentimientos.completos;
         setUser({
           ...perfil,
           consentimientos: consentimientos.valores,
           habilidades: HABILIDADES_BASE_NUEVO_ALUMNO,
           certificados: []
         });
+        if (!perfil.usuario) {
+          // Cuentas creadas antes del @usuario: lo eligen antes de entrar a la app
+          setEstadoSesion('elegir_usuario');
+          setCurrentScreen('m_elegir_usuario');
+          return;
+        }
         if (!consentimientos.completos) {
           // Cuentas creadas antes de los 4 consentimientos: deben decidir antes de entrar (M05)
           setEstadoSesion('consentimientos');
@@ -182,6 +190,19 @@ export function StoreProvider({ children }) {
     return [0, 30, 80, 200][Math.min(nivel, 3)];
   };
 
+  // Al guardar el @usuario que faltaba: sigue a los consentimientos (si faltan) o a la app
+  const completarUsuario = (perfil) => {
+    setUser((prev) => ({ ...prev, usuario: perfil.usuario }));
+    if (!consentimientosCompletosRef.current) {
+      setEstadoSesion('consentimientos');
+      setCurrentScreen('m05_consentimientos');
+      return;
+    }
+    setEstadoSesion('lista');
+    setActiveTab('inicio');
+    setCurrentScreen('app');
+  };
+
   // Al terminar el onboarding, con el perfil ya guardado en Supabase
   const completarOnboarding = (perfil, consentimientos) => {
     uidCargadoRef.current = perfil.id;
@@ -213,6 +234,7 @@ export function StoreProvider({ children }) {
         errorSesion,
         reintentarSesion,
         completarOnboarding,
+        completarUsuario,
         refrescarHabilidades,
         activeTab,
         setActiveTab,

@@ -231,8 +231,9 @@ export default function ExplorarView() {
       if (s.estado === 'pendiente') mapa.set(s.de_id, { tipo: 'recibida', solicitud: s });
       else if (s.estado === 'aceptada') mapa.set(s.de_id, { tipo: 'contacto' });
     }
+    // Un chat abierto por "Yo te ayudo" (origen 'ayuda') no los convierte en contactos
     for (const c of conversaciones) {
-      if (c.otherUser?.id) mapa.set(c.otherUser.id, { tipo: 'contacto', conversacionId: c.id });
+      if (c.otherUser?.id && c.origen === 'solicitud') mapa.set(c.otherUser.id, { tipo: 'contacto', conversacionId: c.id });
     }
     return mapa;
   }, [solicitudesEnviadas, solicitudesRecibidas, conversaciones]);
@@ -244,6 +245,7 @@ export default function ExplorarView() {
   const contactos = useMemo(
     () =>
       conversaciones
+        .filter((c) => c.origen === 'solicitud')
         .map((c) => ({ ...c.otherUser, conversacionId: c.id }))
         .sort((a, b) => `${a.nombre} ${a.apellido}`.localeCompare(`${b.nombre} ${b.apellido}`, 'es')),
     [conversaciones]
@@ -799,6 +801,11 @@ export default function ExplorarView() {
                 Explorar compañeros
               </button>
             </div>
+          ) : vistaChats === 'contactos' && contactos.length === 0 ? (
+            <div className="text-center py-10 bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark p-6 space-y-1">
+              <h4 className="text-sm font-black text-ink dark:text-ink-light">{CONTACTO.sinContactos}</h4>
+              <p className="text-xs text-ink-muted max-w-xs mx-auto">{CONTACTO.sinContactosDetalle}</p>
+            </div>
           ) : vistaChats === 'contactos' ? (
             <div className="k-card bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark rounded-2xl divide-y divide-line/70 dark:divide-line-dark">
               {contactos.map((c) => (
@@ -829,7 +836,15 @@ export default function ExplorarView() {
                 return (
                   <button
                     key={conv.id}
-                    onClick={() => setActiveChat({ conversacionId: conv.id, otherUser: other })}
+                    onClick={() =>
+                      setActiveChat({
+                        conversacionId: conv.id,
+                        otherUser: other,
+                        origen: conv.origen,
+                        publicacionTitulo: conv.publicacionTitulo,
+                        puedeEscribir: conv.puedeEscribir
+                      })
+                    }
                     className="k-card w-full text-left p-3.5 flex items-center space-x-3 border border-line dark:border-line-dark rounded-2xl hover:border-brand-primary/60 transition bg-white dark:bg-surface-cardDark shadow-xs"
                   >
                     <Avatar persona={other} tam="w-12 h-12" texto="text-sm" />
@@ -849,6 +864,11 @@ export default function ExplorarView() {
 
                       <p className="text-[11px] text-brand-primary dark:text-teal-300 font-semibold truncate">{lineaCarrera(other)}</p>
 
+                      {conv.origen === 'ayuda' && (
+                        <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 truncate">
+                          Por la publicación «{conv.publicacionTitulo || 'del tablón'}»
+                        </p>
+                      )}
                       <p className="text-xs text-ink-muted truncate font-medium mt-0.5">{conv.ultimoMensaje}</p>
                     </div>
 
@@ -1057,6 +1077,9 @@ export default function ExplorarView() {
         <ChatDirectoModal
           conversacionId={activeChat.conversacionId}
           otherUser={activeChat.otherUser}
+          origen={activeChat.origen}
+          publicacionTitulo={activeChat.publicacionTitulo}
+          puedeEscribir={activeChat.puedeEscribir !== false}
           currentUser={user}
           onClose={() => {
             setActiveChat(null);

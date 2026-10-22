@@ -1,8 +1,10 @@
 import { supabase, ejecutar, rpc, uidActual } from './supabase.js';
 
 // =============================================================================
-// Chat 1 a 1 (M10). Solo Supabase: la conversación existe únicamente si una
-// solicitud fue aceptada (RPC responder_solicitud). Realtime en mensajes_directos.
+// Chat 1 a 1 (M10). Solo Supabase: la conversación existe si una solicitud fue
+// aceptada (origen 'solicitud': son contactos) o si alguien tocó "Yo te ayudo" en
+// una publicación de ayuda (origen 'ayuda', solo mientras dure esa publicación).
+// Realtime en mensajes_directos.
 // =============================================================================
 
 const CAMPOS_MENSAJE = 'id, conversacion_id, autor_id, texto, leido, creado_en';
@@ -27,7 +29,12 @@ export async function fetchConversaciones() {
     },
     ultimoMensaje: c.ultimo_texto
       ? `${c.ultimo_autor_id === uid ? 'Tú: ' : ''}${c.ultimo_texto}`
-      : 'Conexión aceptada. ¡Saluda!',
+      : c.origen === 'ayuda'
+      ? 'Chat por una publicación del tablón'
+      : 'Ahora son contactos. Saluda.',
+    origen: c.origen || 'solicitud',
+    publicacionTitulo: c.publicacion_titulo || null,
+    puedeEscribir: c.puede_escribir !== false,
     ultimoMensajeHora: c.ultimo_en,
     noLeidos: c.no_leidos || 0
   }));

@@ -337,7 +337,9 @@ create trigger trg_tocar_conversacion
     execute function public.tocar_conversacion();
 
 -- Bandeja de chats: interlocutor, último mensaje y no leídos en una sola llamada.
-create or replace function public.mis_conversaciones()
+-- drop: la 015 agrega columnas al resultado; sin esto, volver a correr 010 fallaría
+drop function if exists public.mis_conversaciones();
+create function public.mis_conversaciones()
 returns table (
     id uuid,
     otro_id uuid,

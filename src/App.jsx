@@ -10,6 +10,7 @@ import OfflineBanner from './components/OfflineBanner';
 import OnboardingFlow from './views/OnboardingFlow';
 import InicioView from './views/InicioView';
 import ExplorarView from './views/ExplorarView';
+import TablonView from './views/TablonView';
 import GruposView from './views/GruposView';
 import EncuestasView from './views/EncuestasView';
 import PerfilView from './views/PerfilView';
@@ -194,6 +195,7 @@ function AppContent() {
       <OfflineBanner />
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'inicio' && <InicioView />}
+        {activeTab === 'tablon' && <TablonView />}
         {activeTab === 'explorar' && <ExplorarView />}
         {activeTab === 'grupos' && <GruposView />}
         {activeTab === 'encuestas' && <EncuestasView />}

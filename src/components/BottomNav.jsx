@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../data/store';
 import { fetchBandejaEncuestas } from '../lib/surveys';
-import { Home, Compass, MessageSquare, ClipboardList, User } from 'lucide-react';
+import { Home, Compass, MessageSquare, ClipboardList, User, Flame } from 'lucide-react';
 
 export default function BottomNav() {
   const { activeTab, setActiveTab, user } = useStore();
@@ -20,6 +20,7 @@ export default function BottomNav() {
 
   const tabs = [
     { id: 'inicio', label: 'Inicio', icon: Home },
+    { id: 'tablon', label: 'Tablón', icon: Flame },
     { id: 'explorar', label: 'Explorar', icon: Compass },
     { id: 'grupos', label: 'Grupos', icon: MessageSquare },
     {

@@ -30,6 +30,9 @@ const nuevoTempId = () => `tmp-${Date.now()}-${Math.random().toString(36).slice(
 export default function ChatDirectoModal({
   conversacionId,
   otherUser,
+  origen = 'solicitud',
+  publicacionTitulo = null,
+  puedeEscribir = true,
   currentUser,
   onClose,
   onUserBlocked
@@ -299,7 +302,9 @@ export default function ChatDirectoModal({
 
         {/* Aviso corto */}
         <div className="bg-brand-primary/5 dark:bg-accent-dark/20 px-3 py-1.5 border-b border-brand-primary/10 text-[11px] text-center text-ink-muted dark:text-teal-200/80 font-medium shrink-0">
-          🔒 {CONTACTO.avisoChat}
+          {origen === 'ayuda'
+            ? `🤝 Chat por la publicación «${publicacionTitulo || 'del tablón'}». No son contactos todavía.`
+            : `🔒 ${CONTACTO.avisoChat}`}
         </div>
 
         {/* Lista de mensajes: ocupa todo el alto disponible */}
@@ -382,6 +387,11 @@ export default function ChatDirectoModal({
         </div>
 
         {/* Input pegado abajo, encima de los botones o gestos de Android */}
+        {!puedeEscribir ? (
+          <div className="bg-white dark:bg-surface-cardDark px-4 pt-3 pb-[calc(var(--sab)+0.75rem)] border-t border-line dark:border-line-dark text-center text-xs text-ink-muted font-medium shrink-0">
+            Este chat era solo para esa publicación y ya terminó. Para seguir conversando, agrégalo como contacto.
+          </div>
+        ) : (
         <form
           onSubmit={handleEnviar}
           className="bg-white dark:bg-surface-cardDark px-2.5 pt-2.5 pb-[calc(var(--sab)+0.625rem)] border-t border-line dark:border-line-dark flex items-center space-x-2 shrink-0"
@@ -405,6 +415,7 @@ export default function ChatDirectoModal({
             <Send size={18} />
           </button>
         </form>
+        )}
       </div>
 
       {/* Modal: Reportar Conversación / Usuario */}

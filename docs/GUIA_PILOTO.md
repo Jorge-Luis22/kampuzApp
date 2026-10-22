@@ -23,7 +23,7 @@ Validar en condiciones reales de campus el flujo completo de Kampuz:
 
 1. Supabase → **SQL Editor** → **New query**.
 2. Copia y pega el contenido completo de `supabase/migrations/009_auth_real.sql` → **Run**. Debe decir "Success".
-3. Repite, en este orden, con `010_datos_compartidos.sql`, `011_consentimientos.sql`, `012_reglas_servidor.sql`, `013_login_y_contactos.sql` y `014_seguridad_funciones.sql`.
+3. Repite, en este orden, con `010_datos_compartidos.sql`, `011_consentimientos.sql`, `012_reglas_servidor.sql`, `013_login_y_contactos.sql`, `014_seguridad_funciones.sql` y `015_tablon.sql`.
 4. Por último, `supabase/seed.sql` (agrega el correo de revisión de Google a `correos_invitados`).
 5. Todas se pueden volver a ejecutar sin romper nada si una falla a la mitad.
 6. Para una base nueva desde cero, basta con pegar `supabase/full_schema.sql`.

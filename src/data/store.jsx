@@ -60,6 +60,9 @@ export function StoreProvider({ children }) {
   const [currentScreen, setCurrentScreen] = useState('m01_bienvenida'); // 'app' | 'm01_bienvenida' | 'm02_otp' | 'm03_onboarding' | 'm04_intereses' | 'm05_consentimientos' | 'panel_utp'
   const [activeEspacioId, setActiveEspacioId] = useState(null);
   const [activeConsultaId, setActiveConsultaId] = useState(null);
+  // Pedidos al tablón desde otras pantallas: abrir con un filtro o con el panel de publicar
+  const [tablonFiltro, setTablonFiltro] = useState(null);
+  const [tablonPublicar, setTablonPublicar] = useState(null);
 
   const [deviceFrame, setDeviceFrame] = useState(true);
   const [darkMode, setDarkMode] = useState(() => leerPreferencia(PREF_MODO_OSCURO, false));
@@ -235,6 +238,10 @@ export function StoreProvider({ children }) {
         reintentarSesion,
         completarOnboarding,
         completarUsuario,
+        tablonFiltro,
+        setTablonFiltro,
+        tablonPublicar,
+        setTablonPublicar,
         refrescarHabilidades,
         activeTab,
         setActiveTab,

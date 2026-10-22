@@ -96,6 +96,15 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
   - **Ojo al crear funciones nuevas (tablón):** Supabase da EXECUTE a `anon` y `authenticated` por defecto. Cada función nueva debe hacer `revoke all ... from public, anon` y dar `grant execute ... to authenticated` solo si la app la llama.
   - Perfiles sin @usuario (creados antes de que existiera): al entrar eligen uno en una pantalla propia; solo se guarda si el perfil no tenía (no sirve para cambiarlo).
 
+- **2026-10-22 (Sprint, punto 2: tablón "Pasando hoy", migración 015):**
+  - Un solo tablón con 4 tipos (plan, ayuda, evento y mercadito). El servidor fija autor, universidad, sede y vencimiento: plan 3 h por defecto y nunca después de la medianoche de Lima; ayuda 2 h (máximo 24 h); evento en su fecha (+3 h); mercadito 7 días.
+  - Límites: 5 publicaciones activas por alumno y 3 en el mercadito. Moderación anti-trampa con expresiones regulares en mercadito y ayuda (también al editar).
+  - Las publicaciones no se borran: se cierran. Las vencidas se filtran con `vence_en > now()`.
+  - **"Yo te ayudo"** abre un chat sin solicitud, marcado con origen `ayuda` y ligado a la publicación. No cuenta como contacto y deja de aceptar mensajes 2 días después de que vence la publicación. Si después se aceptan como contactos, el mismo chat pasa a origen `solicitud`.
+  - **"Me interesa"** registra el interés y manda una solicitud con el motivo ya escrito; si ya son contactos, solo registra el interés. Quién se interesó o quién ofreció ayuda solo lo ven el autor y quien respondió; quién va a un plan o evento lo ven todos.
+  - `perfiles.universidad` (por defecto 'UTP', el alumno no puede cambiarla) queda lista para el punto 4.
+  - Foto opcional en eventos y mercadito (bucket `publicaciones`, máximo 1 MB).
+
 ## 4. Pendiente de decisión del equipo
 
 ### 4.1 "Estado en vivo" (En campus / En clase / En biblioteca / Buscando equipo / En exámenes)

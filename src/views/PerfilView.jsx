@@ -17,6 +17,7 @@ import {
 import CentroSeguridadModal from '../components/CentroSeguridadModal';
 import ErrorConReintento from '../components/ErrorConReintento';
 import ConsentimientoItem from '../components/ConsentimientoItem';
+import PanelInferior, { OpcionPanel } from '../components/PanelInferior';
 import { CONSENTIMIENTOS } from '../data/consentimientos';
 import {
   ShieldCheck,
@@ -58,9 +59,9 @@ import {
 const ESTADOS_DISCORD = [
   { id: 'campus', label: 'En campus', emoji: '🟢', color: '#10B981', desc: 'En instalaciones de la sede' },
   { id: 'clase', label: 'En clase', emoji: '🟡', color: '#F59E0B', desc: 'En clase o laboratorio' },
-  { id: 'biblioteca', label: 'En biblioteca', emoji: '🔵', color: '#3B82F6', desc: 'Estudiando / Concentrado' },
+  { id: 'biblioteca', label: 'En biblioteca', emoji: '🔵', color: '#3B82F6', desc: 'Estudiando' },
   { id: 'buscando_equipo', label: 'Buscando equipo', emoji: '🟣', color: '#8B5CF6', desc: 'Disponible para proyectos' },
-  { id: 'examen', label: 'En exámenes', emoji: '🔴', color: '#EF4444', desc: 'Ocupado / Semana de parciales' }
+  { id: 'examen', label: 'En exámenes', emoji: '🔴', color: '#EF4444', desc: 'Semana de parciales' }
 ];
 
 export default function PerfilView() {
@@ -311,146 +312,83 @@ export default function PerfilView() {
 
   return (
     <div className="flex-1 p-4 pb-24 space-y-4 overflow-y-auto animate-fadeIn select-none bg-surface dark:bg-surface-dark">
-      {/* Header Profile Card (M29) */}
+      {/* Encabezado del perfil (M29): portada, avatar, nombre, carrera y una fila de insignias */}
       <div className="k-card overflow-hidden border-2 border-line/80 dark:border-line-dark shadow-sm">
-        {/* Cover Photo */}
-        <div className="relative h-28 w-full bg-gradient-to-r from-brand-primary via-[#2E2675] to-[#3B3294] overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
-          <div className="absolute top-3 right-3 bg-white/20 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs font-bold border border-white/30 shadow-sm flex items-center space-x-1">
-            <span className="w-2 h-2 rounded-full bg-accent inline-block animate-pulse" />
-            <span>UTP Sede {user.sede}</span>
-          </div>
+        {/* Portada */}
+        <div className="relative h-24 w-full bg-gradient-to-r from-brand-primary via-[#2E2675] to-[#3B3294]">
+          {user.sede && (
+            <div className="absolute top-3 right-3 bg-white/20 text-white px-3 py-1 rounded-full text-[11px] font-bold border border-white/30 flex items-center space-x-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block" />
+              <span>Sede {user.sede}</span>
+            </div>
+          )}
         </div>
 
-        {/* Profile Info with Overlapping Avatar */}
-        <div className="p-4 pt-0 relative">
-          <div className="flex justify-between items-end -mt-12 mb-3">
-            <div className="relative group cursor-pointer" onClick={handleOpenEditModal}>
+        <div className="px-4 pb-4">
+          <div className="flex items-end justify-between -mt-10 mb-3">
+            {/* Avatar: el botón de la cámara va dentro de la foto */}
+            <button
+              type="button"
+              onClick={handleOpenEditModal}
+              className="relative shrink-0 rounded-2xl"
+              aria-label="Cambiar foto de perfil"
+            >
               {user.fotoUrl ? (
                 <img
                   src={user.fotoUrl}
                   alt={user.nombre}
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
-                  }}
-                  className="w-20 h-20 rounded-2xl object-cover border-4 border-white dark:border-surface-cardDark shadow-elevated"
+                  className="w-20 h-20 rounded-2xl object-cover border-4 border-white dark:border-surface-cardDark shadow-elevated bg-white"
                 />
-              ) : null}
-              <div
-                style={{ display: user.fotoUrl ? 'none' : 'flex' }}
-                className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-brand-primary to-accent text-white font-black text-2xl items-center justify-center border-4 border-white dark:border-surface-cardDark shadow-elevated"
-              >
-                {(user.nombre || 'U').charAt(0).toUpperCase()}
-              </div>
-
-              {/* Discord Live Status Indicator on Avatar */}
-              <div
-                className="absolute -bottom-1 -left-1 w-6 h-6 rounded-full border-2 border-white dark:border-surface-cardDark shadow-md flex items-center justify-center text-[10px]"
-                style={{ backgroundColor: estadoActual?.color || '#94A3B8', display: estadoActual ? 'flex' : 'none' }}
-                title={`Estado: ${currentStatus}`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-white" />
-              </div>
-
-              <div
-                className="absolute -bottom-1 -right-1 bg-brand-primary text-white p-1.5 rounded-full shadow-md border-2 border-white dark:border-surface-cardDark group-hover:scale-110 transition"
-                title="Editar foto"
-              >
-                <Camera size={14} />
-              </div>
-            </div>
-
-            <div className="flex flex-col items-end space-y-1">
-              <span className="text-xs bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-extrabold px-3 py-1 rounded-full border border-emerald-300/60 shadow-sm flex items-center space-x-1">
-                <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400" />
-                <span>Identidad Verificada</span>
+              ) : (
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-brand-primary to-accent text-white font-black text-2xl flex items-center justify-center border-4 border-white dark:border-surface-cardDark shadow-elevated">
+                  {(user.nombre || 'U').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <span className="absolute bottom-1.5 right-1.5 bg-black/55 text-white p-1 rounded-lg">
+                <Camera size={13} />
               </span>
-              <span className="text-xs font-semibold text-ink-muted">
-                {user.rol === 'alumno' ? 'Estudiante UTP' : user.rol}
-              </span>
-            </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenEditModal}
+              className="mb-1 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-ink dark:text-ink-light text-xs font-bold rounded-xl border border-line dark:border-line-dark flex items-center space-x-1.5 shadow-xs transition"
+            >
+              <Edit3 size={13} className="text-brand-primary" />
+              <span>Editar perfil</span>
+            </button>
           </div>
 
           <div>
-            <div className="flex items-center justify-between">
-              <h1 className="text-xl font-black text-ink dark:text-ink-light leading-snug">
-                {user.nombre} {user.apellido}
-              </h1>
+            <h1 className="text-xl font-black text-ink dark:text-ink-light leading-snug">
+              {user.nombre} {user.apellido}
+            </h1>
+            {user.usuario && <p className="text-xs font-bold text-accent">@{user.usuario}</p>}
+            <p className="text-sm font-bold text-brand-primary dark:text-teal-300 mt-0.5">
+              {user.carrera} · {user.ciclo}.° ciclo
+            </p>
+
+            {/* Insignias: verificado y estado */}
+            <div className="flex flex-wrap items-center gap-2 mt-2.5">
+              <span className="text-[11px] bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-extrabold px-2.5 py-1 rounded-full border border-emerald-300/60 flex items-center space-x-1">
+                <CheckCircle2 size={12} className="text-emerald-600 dark:text-emerald-400" />
+                <span>Identidad verificada</span>
+              </span>
+              {user.rol && user.rol !== 'alumno' && (
+                <span className="text-[11px] bg-brand-primary-soft dark:bg-brand-dark text-brand-primary dark:text-teal-300 font-extrabold px-2.5 py-1 rounded-full border border-brand-primary/20 capitalize">
+                  {user.rol}
+                </span>
+              )}
               <button
                 type="button"
-                onClick={handleOpenEditModal}
-                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-ink dark:text-ink-light text-xs font-bold rounded-xl border border-line dark:border-line-dark flex items-center space-x-1.5 shadow-xs transition"
+                onClick={() => setShowStatusMenu(true)}
+                className="text-[11px] px-2.5 py-1 rounded-full font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-ink dark:text-ink-light border border-line dark:border-line-dark flex items-center space-x-1.5 transition"
+                title="Cambiar tu estado"
               >
-                <Edit3 size={13} className="text-brand-primary" />
-                <span>Editar perfil</span>
+                <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: estadoActual?.color || '#94A3B8' }} />
+                <span>{currentStatus}</span>
+                <span className="text-[10px] text-ink-muted">▾</span>
               </button>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 mt-1">
-              <p className="text-sm font-bold text-brand-primary dark:text-teal-300">
-                {user.carrera} · {user.ciclo}.° Ciclo
-              </p>
-
-              {/* Discord Live Status Selector */}
-              <div className="relative inline-block">
-                <button
-                  type="button"
-                  onClick={() => setShowStatusMenu(!showStatusMenu)}
-                  className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-ink dark:text-ink-light border border-line dark:border-line-dark flex items-center space-x-1.5 transition"
-                  title="Toca para cambiar tu estado en vivo"
-                >
-                  <span
-                    className="w-2 h-2 rounded-full inline-block"
-                    style={{ backgroundColor: estadoActual?.color || '#94A3B8' }}
-                  />
-                  <span>{currentStatus}</span>
-                  <span className="text-[10px] text-ink-muted">▾</span>
-                </button>
-
-                {showStatusMenu && (
-                  <div className="absolute left-0 mt-1.5 w-56 bg-white dark:bg-surface-cardDark border-2 border-line dark:border-line-dark rounded-2xl shadow-elevated p-1.5 z-40 space-y-1 animate-fadeIn">
-                    <div className="px-2 py-1 text-[10px] font-black uppercase text-ink-muted">
-                      Estado (opcional, lo ven otros alumnos)
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleSelectStatus(null)}
-                      className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-xl text-left text-xs font-bold transition ${
-                        !estadoActual
-                          ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20'
-                          : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-ink dark:text-ink-light'
-                      }`}
-                    >
-                      <span className="text-sm">⚪</span>
-                      <div className="flex-1">
-                        <div className="leading-tight">Sin estado</div>
-                        <div className="text-[10px] text-ink-muted font-normal">No mostrar nada</div>
-                      </div>
-                      {!estadoActual && <Check size={12} className="text-brand-primary" />}
-                    </button>
-                    {ESTADOS_DISCORD.map(st => (
-                      <button
-                        key={st.id}
-                        type="button"
-                        onClick={() => handleSelectStatus(st.id)}
-                        className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-xl text-left text-xs font-bold transition ${
-                          estadoActual?.id === st.id
-                            ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20'
-                            : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-ink dark:text-ink-light'
-                        }`}
-                      >
-                        <span className="text-sm">{st.emoji}</span>
-                        <div className="flex-1">
-                          <div className="leading-tight">{st.label}</div>
-                          <div className="text-[10px] text-ink-muted font-normal">{st.desc}</div>
-                        </div>
-                        {estadoActual?.id === st.id && <Check size={12} className="text-brand-primary" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
 
             {errorEstado && <div className="mt-2"><ErrorConReintento compacto mensaje={errorEstado} /></div>}
@@ -573,10 +511,10 @@ export default function PerfilView() {
         <div className="p-4 bg-gradient-to-br from-brand-primary-soft via-accent-soft to-teal-50 dark:from-brand-dark dark:to-surface-cardDark border-2 border-accent/40 rounded-2xl space-y-2 shadow-sm animate-fadeIn">
           <div className="flex items-center space-x-2 text-accent">
             <Sparkles size={18} className="shrink-0" />
-            <span className="text-xs font-black uppercase tracking-wider">Tu Primer Logro en Kampus</span>
+            <span className="text-xs font-black uppercase tracking-wider">Tu primer logro</span>
           </div>
           <p className="text-xs text-ink dark:text-ink-light font-bold leading-relaxed">
-            Responde una encuesta académica en tu bandeja para desbloquear tu <strong className="text-accent">Nivel 1 en Apoyo a la investigación</strong> y ganar 30 destinatarios semanales para encuestar a otros compañeros.
+            Responde una encuesta y desbloquea la opción de enviar las tuyas.
           </p>
           <div className="pt-1 flex items-center justify-between">
             <span className="text-[11px] text-ink-muted font-semibold">Progreso: 0 / 1 encuesta</span>
@@ -905,8 +843,8 @@ export default function PerfilView() {
 
       {/* MODAL: EDITAR PERFIL (Fase 3 - M29) */}
       {showEditProfileModal && (
-        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border-2 border-line dark:border-line-dark space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 !m-0 bg-black/75 z-50 flex items-center justify-center px-4 safe-overlay animate-fadeIn">
+          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border-2 border-line dark:border-line-dark space-y-4 max-h-full overflow-y-auto">
             <div className="flex items-center justify-between pb-2 border-b border-line dark:border-line-dark">
               <span className="text-xs font-black uppercase tracking-wider text-brand-primary dark:text-teal-300 flex items-center space-x-1.5">
                 <Edit3 size={16} />
@@ -1152,8 +1090,8 @@ export default function PerfilView() {
 
       {/* MODAL: AGREGAR CERTIFICADO (M31) */}
       {showAddCertModal && (
-        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border-2 border-line dark:border-line-dark space-y-4">
+        <div className="fixed inset-0 !m-0 bg-black/75 z-50 flex items-center justify-center px-4 safe-overlay animate-fadeIn">
+          <div className="w-full max-w-sm max-h-full overflow-y-auto bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border-2 border-line dark:border-line-dark space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-line dark:border-line-dark">
               <span className="text-xs font-black uppercase tracking-wider text-brand-primary dark:text-teal-300 flex items-center space-x-1.5">
                 <FileCheck size={16} />
@@ -1249,8 +1187,8 @@ export default function PerfilView() {
 
       {/* MODAL: DETALLE DE HABILIDAD */}
       {selectedHab && (
-        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border-2 border-line dark:border-line-dark space-y-3.5">
+        <div className="fixed inset-0 !m-0 bg-black/75 z-50 flex items-center justify-center px-4 safe-overlay animate-fadeIn">
+          <div className="w-full max-w-sm max-h-full overflow-y-auto bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border-2 border-line dark:border-line-dark space-y-3.5">
             <div className="flex items-center justify-between pb-2 border-b border-line dark:border-line-dark">
               <span className="text-xs font-black uppercase tracking-wider text-brand-primary dark:text-teal-300">
                 Detalle de Habilidad
@@ -1304,8 +1242,8 @@ export default function PerfilView() {
 
       {/* MODAL: CONFIRMACIÓN DE BORRADO DE CUENTA (Google Play Store compliance) */}
       {showDeleteAccountModal && (
-        <div className="fixed inset-0 bg-ink/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-2xl border-2 border-rose-300 dark:border-rose-900 space-y-4">
+        <div className="fixed inset-0 !m-0 bg-ink/80 z-50 flex items-center justify-center px-4 safe-overlay backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-sm max-h-full overflow-y-auto bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-2xl border-2 border-rose-300 dark:border-rose-900 space-y-4">
             <div className="flex items-center space-x-2.5 text-rose-600 dark:text-rose-400">
               <div className="w-9 h-9 rounded-xl bg-rose-100 dark:bg-rose-950/60 flex items-center justify-center font-bold">
                 <Trash2 size={20} />
@@ -1374,6 +1312,28 @@ export default function PerfilView() {
           </div>
         </div>
       )}
+
+      {/* PANEL: ESTADO (desde abajo, con todas las opciones visibles) */}
+      <PanelInferior
+        abierto={showStatusMenu}
+        onCerrar={() => setShowStatusMenu(false)}
+        titulo="Tu estado"
+        subtitulo="Es opcional. Lo ven los demás alumnos en tu perfil."
+      >
+        <div className="space-y-1">
+          <OpcionPanel emoji="⚪" texto="Sin estado" detalle="No mostrar nada" activa={!estadoActual} onClick={() => handleSelectStatus(null)} />
+          {ESTADOS_DISCORD.map((st) => (
+            <OpcionPanel
+              key={st.id}
+              emoji={st.emoji}
+              texto={st.label}
+              detalle={st.desc}
+              activa={estadoActual?.id === st.id}
+              onClick={() => handleSelectStatus(st.id)}
+            />
+          ))}
+        </div>
+      </PanelInferior>
 
       {/* MODAL: CENTRO DE SEGURIDAD (M33) */}
       <CentroSeguridadModal

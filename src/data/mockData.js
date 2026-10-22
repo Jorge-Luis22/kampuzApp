@@ -67,11 +67,11 @@ export const INTERESES_DISPONIBLES = [
 
 // Persona principal de demostración
 export const USUARIO_DEMO = {
-  id: "usr_luz",
-  nombre: "Luz",
-  apellido: "Martínez",
-  correoInstitucional: "luz.martinez@utp.edu.pe",
-  correoAlterno: "luz.martinez.personal@gmail.com",
+  id: "usr_demo",
+  nombre: "Ana",
+  apellido: "Torres",
+  correoInstitucional: "ana.torres@utp.edu.pe",
+  correoAlterno: "ana.torres.personal@gmail.com",
   fotoUrl: "/fotos/luz.jpg",
   portadaUrl: "/fotos/portada_luz.jpg",
   sede: "Lima Sur",
@@ -109,7 +109,7 @@ export const USUARIO_DEMO = {
       id: "apoyo_investigacion",
       nombre: "Apoyo a la investigación",
       tipo: "blanda",
-      nivel: 1, // Nivel 1 = 1 encuesta. Luz tiene 2 encuestas respondidas. Falta 1 para Nivel 2 (umbral 3)
+      nivel: 1, // Nivel 1 = 1 encuesta. Ana tiene 2 encuestas respondidas. Falta 1 para Nivel 2 (umbral 3)
       estrellas: 2,
       origen: "verificada",
       hechos: [
@@ -398,7 +398,7 @@ export const ESPACIOS_INICIALES = [
     horaUltimoMensaje: "10:42 AM",
     mensajes: [
       { id: "m1", autor: "Carlos Mendoza", texto: "Alguien tiene el formato APA 7 para la carátula de Farmacología?", hora: "08:30 AM", esMio: false },
-      { id: "m2", autor: "Luz Martínez", texto: "Sí Carlos, está en el drive de delegados, te lo reenvío al toque.", hora: "08:35 AM", esMio: true },
+      { id: "m2", autor: "Ana Torres", texto: "Sí Carlos, está en el drive de delegados, te lo reenvío al toque.", hora: "08:35 AM", esMio: true },
       { id: "m3", autor: "Valeria Ríos", texto: "¿La práctica de laboratorio del jueves será con uniforme completo o bata blanca?", hora: "09:15 AM", esMio: false },
       { id: "m4", autor: "Carlos Mendoza", texto: "Bata blanca y calzado clínico cerrado, lo confirmó el delegado.", hora: "09:20 AM", esMio: false },
       { id: "m5", autor: "Andrea Morales", texto: "Chicos, acuérdense que mañana toca entrega del caso clínico de Salud del Adulto.", hora: "10:42 AM", esMio: false }
@@ -444,8 +444,8 @@ export const ESPACIOS_INICIALES = [
     linkInscripcion: "https://portal.utp.edu.pe/talleres/lettering-2026",
     mensajes: [
       { id: "mt1", autor: "Prof. Guía Arte", texto: "Bienvenidos al ciclo. Recuerden traer papel bond de 90gr para no traspasar la tinta.", hora: "08:10 AM", esMio: false },
-      { id: "mt2", autor: "Luz Martínez", texto: "Buenas, ¿sirven los plumones punta cónica o necesariamente punta pincel flexible?", hora: "08:25 AM", esMio: true },
-      { id: "mt3", autor: "Prof. Guía Arte", texto: "Punta pincel preferentemente Luz, para hacer trazos gruesos y delgados.", hora: "08:45 AM", esMio: false }
+      { id: "mt2", autor: "Ana Torres", texto: "Buenas, ¿sirven los plumones punta cónica o necesariamente punta pincel flexible?", hora: "08:25 AM", esMio: true },
+      { id: "mt3", autor: "Prof. Guía Arte", texto: "Punta pincel preferentemente, Ana, para hacer trazos gruesos y delgados.", hora: "08:45 AM", esMio: false }
     ]
   },
   {
@@ -580,7 +580,7 @@ export const CONSULTAS_AGRUPADAS_INICIALES = [
     respuestas: [
       {
         id: "resp_1",
-        asesorNombre: "Luz Martínez",
+        asesorNombre: "Ana Torres",
         asesorCiclo: 5,
         asesorCarrera: "Enfermería",
         esMio: true,
@@ -604,12 +604,12 @@ export const CONSULTAS_AGRUPADAS_INICIALES = [
     textoResumen: "¿Qué metodología de análisis moral (Beauchamp y Childress) se debe seguir para el informe de la semana 8?",
     estado: "abierto",
     nAlumnos: 2,
-    autores: ["David T. (Ciclo 3)", "Sara L. (Ciclo 4)"],
+    autores: ["Mario R. (Ciclo 3)", "Sara L. (Ciclo 4)"],
     fecha: "Ayer 16:30",
     respuestas: []
   },
   {
-    // Consulta donde Luz es autora: permite mostrar M22 (valorar una respuesta recibida).
+    // Consulta donde Ana es autora: permite mostrar M22 (valorar una respuesta recibida).
     // La respuesta está pendiente de valoración, así que sus estrellas aún no se acreditan.
     id: "grp_con_3",
     carrera: "Enfermería",
@@ -619,7 +619,7 @@ export const CONSULTAS_AGRUPADAS_INICIALES = [
     estado: "abierto",
     nAlumnos: 2,
     autorIds: ["usr_luz"],
-    autores: ["Luz M. (Ciclo 5)", "Rosa C. (Ciclo 5)"],
+    autores: ["Ana T. (Ciclo 5)", "Rosa C. (Ciclo 5)"],
     fecha: "Hoy 08:10 AM",
     respuestas: [
       {
@@ -640,7 +640,7 @@ export const CONSULTAS_AGRUPADAS_INICIALES = [
   }
 ];
 
-// Encuestas en bandeja para Luz Martínez (Flujo 3, Sección 6.5 & 7.4)
+// Encuestas en bandeja para Ana Torres (Flujo 3, Sección 6.5 & 7.4)
 export const ENCUESTAS_BANDEJA_INICIALES = [
   {
     id: "enc_tesis_psico",
@@ -692,7 +692,7 @@ export const ENCUESTAS_BANDEJA_INICIALES = [
   }
 ];
 
-// Encuesta propia creada por Luz Martínez
+// Encuesta propia creada por Ana Torres
 export const ENCUESTA_PROPIA_DEMO = {
   id: "enc_luz_salud",
   titulo: "Percepción del rol de enfermería en la prevención comunitaria",

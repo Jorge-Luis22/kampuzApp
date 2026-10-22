@@ -81,6 +81,14 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
 
 ---
 
+- **2026-10-21 (Sprint de 2 días, punto 1: arreglos del APK):**
+  - **Áreas seguras:** con target SDK 36 Android dibuja la app de borde a borde. Se usa el plugin **SystemBars** que trae Capacitor 8 (`insetsHandling: "css"`), que inyecta `--safe-area-inset-*`; el CSS las lee con respaldo en `env(safe-area-inset-*)` (`viewport-fit=cover`). La barra de estado y los botones de Android se respetan; no se usa modo inmersivo. Se quitó la configuración del plugin Keyboard (no está instalado y SystemBars advierte en contra de `resizeOnFullScreen`).
+  - **Modales recortados:** la animación `fadeIn` dejaba un `transform` aplicado y los modales `fixed` quedaban dentro de la vista (el chat ocupaba un tercio de la pantalla). Además `space-y-*` les sumaba margen. Corregido en `index.css` y con `!m-0` en las capas fijas.
+  - **"Contacto":** la relación entre dos alumnos que aceptaron una solicitud se llama Contacto. Los textos están en `src/data/textos.js` (y los del servidor en la migración 013).
+  - **Botón atrás de Android:** las pantallas que se abren encima (chat, paneles, modales) se registran con `useAtras` (`src/lib/atras.js`) y se cierran primero.
+  - **Numeración:** la migración 013 quedó para el login y los contactos; el tablón del punto 2 será la **014** (`014_tablon.sql`), no la 013 que decía el prompt.
+  - **Linter:** el proyecto no tiene ESLint configurado; se valida con `npm run build`.
+
 ## 4. Pendiente de decisión del equipo
 
 ### 4.1 "Estado en vivo" (En campus / En clase / En biblioteca / Buscando equipo / En exámenes)
@@ -147,4 +155,5 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
 - **Solicitudes:** si una solicitud fue ignorada, el mismo emisor no puede reenviarla.
 - **Modo "llamada" (×3) eliminado (decisión del equipo, 2026-10-20):** la llamada no existe en la app (la spec 11.3 la deja fuera del piloto) y el modo lo declaraba quien respondía, así que inflaba estrellas. Ahora solo se orienta por mensaje: estrellas = nAlumnos si son 2 o más. El servidor rechaza cualquier otro modo. Si algún día existe la llamada dentro de la app (con moderación), se puede volver a evaluar el ×3.
 - **Sede** no se usa en el filtro de encuestas: el piloto es de una sola sede.
-- **Login con @usuario:** la función `obtener_correo_por_identificador` permite saber el correo de un @usuario sin sesión (necesario para entrar con @usuario). Si el equipo prefiere no exponerlo, el login debe ser solo con correo.
+- **Login con @usuario (sprint de 2 días):** la función pública `obtener_correo_por_identificador` se eliminó (migración 013) porque le daba a cualquiera el correo de un @usuario. Ahora el login con @usuario pasa por la Edge Function `login`, que resuelve el correo con la service role y devuelve solo la sesión; el mensaje de error es siempre "Usuario o contraseña incorrectos.". El login con correo sigue yendo directo a Supabase Auth. La recuperación de contraseña se pide solo con el correo institucional.
+  - **Riesgo aceptado:** Supabase Auth limita los intentos por IP; con @usuario todos los intentos salen de la IP de la Edge Function. Con un piloto de 10 alumnos no es un problema; si crece, revisar los límites o reenviar la IP del alumno.

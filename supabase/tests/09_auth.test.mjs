@@ -31,8 +31,11 @@ ok(p.rows[0].usuario === 'ana.q', 'usuario normalizado');
 await como(db, a, `update public.perfiles set rol='moderador', ciclo=4 where id=$1`, [a]);
 const p2 = await db.query('select rol, ciclo from public.perfiles where id=$1', [a]);
 ok(p2.rows[0].rol === 'alumno' && p2.rows[0].ciclo === 4, 'no puede escalar rol; sí editar ciclo');
-ok((await como(db, null, `select public.obtener_correo_por_identificador('ANA.Q') c`)).rows[0].c === 'u2320732@utp.edu.pe', 'login por @usuario');
-ok((await como(db, null, `select public.obtener_correo_por_identificador('nadie') c`)).rows[0].c === null, 'usuario inexistente -> null');
+// Login con @usuario: lo resuelve la Edge Function `login` (service role); no hay RPC pública que devuelva correos
+const rpcCorreo = await db.query(`select count(*)::int n from pg_proc where proname = 'obtener_correo_por_identificador'`);
+ok(rpcCorreo.rows[0].n === 0, 'no existe una función pública que devuelva el correo de un @usuario (013)');
+const correosAnon = await como(db, null, `select count(*)::int n from public.perfiles`).catch(() => ({ rows: [{ n: 0 }] }));
+ok(correosAnon.rows[0].n === 0, 'sin sesión no se leen perfiles ni correos');
 const memb = await db.query('select count(*)::int n from public.membresias where usuario_id=$1', [a]);
 ok(memb.rows[0].n === 2, "auto-asignado a carrera y carrera_ciclo (y fuera del ciclo anterior)");
 

@@ -22,6 +22,8 @@ import {
 } from '../lib/chat';
 import { reportarContenido, bloquearUsuario } from '../lib/explore';
 import ErrorConReintento from './ErrorConReintento';
+import { useAtras } from '../lib/atras';
+import { CONTACTO } from '../data/textos';
 
 const nuevoTempId = () => `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -53,6 +55,25 @@ export default function ChatDirectoModal({
   const messagesEndRef = useRef(null);
   const menuRef = useRef(null);
   const miId = currentUser?.id;
+
+  // Botón atrás de Android: primero cierra lo que esté abierto dentro del chat;
+  // si no hay nada, vuelve a la lista de chats.
+  useAtras(true, onClose);
+  useAtras(showMenu, () => setShowMenu(false));
+  useAtras(showReportModal, () => setShowReportModal(false));
+  useAtras(showBlockModal, () => setShowBlockModal(false));
+
+  // Con el teclado abierto la pantalla se achica: se mantiene visible el último mensaje
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const alCambiar = () => scrollToBottom(false);
+    vv?.addEventListener('resize', alCambiar);
+    window.addEventListener('resize', alCambiar);
+    return () => {
+      vv?.removeEventListener('resize', alCambiar);
+      window.removeEventListener('resize', alCambiar);
+    };
+  }, []);
 
   const formatHora = (isoDate) => {
     if (!isoDate) return '';
@@ -191,18 +212,20 @@ export default function ChatDirectoModal({
   const nombreMostrar = `${otherUser?.nombre || 'Compañero'} ${otherUser?.apellido || ''}`.trim();
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex flex-col justify-end sm:items-center sm:justify-center p-0 select-none animate-fadeIn">
-      {/* Ventana de chat tipo WhatsApp / Telegram */}
-      <div className="w-full sm:max-w-md h-full sm:h-[650px] bg-slate-50 dark:bg-surface-dark flex flex-col sm:rounded-3xl shadow-modal overflow-hidden border border-line dark:border-line-dark">
-        {/* Top Header Bar */}
-        <div className="bg-white dark:bg-surface-cardDark px-4 py-3 border-b border-line dark:border-line-dark flex items-center justify-between shadow-xs shrink-0 z-10">
+    // Pantalla completa tipo WhatsApp: cubre la barra inferior de la app mientras está abierto.
+    // El alto lo da "fixed inset-0": con el teclado abierto la vista se achica y el input sigue visible.
+    <div className="fixed inset-0 !m-0 z-50 bg-slate-50 dark:bg-surface-dark flex flex-col select-none animate-fadeIn">
+      <div className="flex-1 min-h-0 w-full flex flex-col">
+        {/* Cabecera fija */}
+        <div className="bg-white dark:bg-surface-cardDark px-3 pb-2.5 pt-[calc(var(--sat)+0.625rem)] border-b border-line dark:border-line-dark flex items-center justify-between shadow-xs shrink-0 z-10">
           <div className="flex items-center space-x-3 min-w-0">
             <button
               onClick={onClose}
               className="p-1 -ml-1 text-ink-muted hover:text-ink dark:hover:text-ink-light rounded-xl transition"
               title="Volver"
+              aria-label="Volver"
             >
-              <ArrowLeft size={20} />
+              <ArrowLeft size={22} />
             </button>
 
             {/* Avatar */}
@@ -218,7 +241,6 @@ export default function ChatDirectoModal({
                   {(otherUser?.nombre?.[0] || 'C').toUpperCase()}
                 </div>
               )}
-              <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-surface-cardDark" />
             </div>
 
             {/* Info usuario */}
@@ -227,7 +249,7 @@ export default function ChatDirectoModal({
                 {nombreMostrar}
               </h3>
               <p className="text-[11px] text-brand-primary dark:text-accent font-semibold truncate">
-                {otherUser?.carrera || 'Estudiante'} · {otherUser?.ciclo || 1}.° Ciclo
+                {otherUser?.carrera || 'Estudiante'}{otherUser?.ciclo ? ` · ${otherUser.ciclo}.° ciclo` : ''}
               </p>
             </div>
           </div>
@@ -265,24 +287,24 @@ export default function ChatDirectoModal({
                   className="w-full px-3.5 py-2 text-left text-xs font-bold text-semantic-danger hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center space-x-2 transition"
                 >
                   <UserX size={15} />
-                  <span>Bloquear usuario</span>
+                  <span>Bloquear</span>
                 </button>
               </div>
             )}
           </div>
         </div>
 
-        {/* Mensaje de aviso de convivencia */}
+        {/* Aviso corto */}
         <div className="bg-brand-primary/5 dark:bg-accent-dark/20 px-3 py-1.5 border-b border-brand-primary/10 text-[11px] text-center text-ink-muted dark:text-teal-200/80 font-medium shrink-0">
-          🔒 Conversación directa institucional para fines académicos y de campus.
+          🔒 {CONTACTO.avisoChat}
         </div>
 
-        {/* Lista de Mensajes (Área de Scroll) */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/70 dark:bg-surface-dark/70">
+        {/* Lista de mensajes: ocupa todo el alto disponible */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-3">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center h-full space-y-2 text-ink-muted">
               <Loader2 size={24} className="animate-spin text-accent" />
-              <p className="text-xs font-semibold">Cargando mensajes directos...</p>
+              <p className="text-xs font-semibold">Cargando mensajes...</p>
             </div>
           ) : errorCarga ? (
             <ErrorConReintento mensaje={errorCarga} onReintentar={cargarHistorial} />
@@ -292,10 +314,10 @@ export default function ChatDirectoModal({
                 <Sparkles size={22} />
               </div>
               <h4 className="text-sm font-black text-ink dark:text-ink-light">
-                ¡Conexión aceptada!
+                {CONTACTO.chatVacioTitulo}
               </h4>
               <p className="text-xs text-ink-muted max-w-xs">
-                Inicia la conversación para coordinar sobre cursos, proyectos o estudio conjunto en campus.
+                {CONTACTO.chatVacioDetalle}
               </p>
             </div>
           ) : (
@@ -356,17 +378,19 @@ export default function ChatDirectoModal({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Bar (WhatsApp style) */}
+        {/* Input pegado abajo, encima de los botones o gestos de Android */}
         <form
           onSubmit={handleEnviar}
-          className="bg-white dark:bg-surface-cardDark p-2.5 sm:p-3 border-t border-line dark:border-line-dark flex items-center space-x-2 shrink-0"
+          className="bg-white dark:bg-surface-cardDark px-2.5 pt-2.5 pb-[calc(var(--sab)+0.625rem)] border-t border-line dark:border-line-dark flex items-center space-x-2 shrink-0"
         >
           <input
             type="text"
             value={nuevoTexto}
             onChange={(e) => setNuevoTexto(e.target.value)}
-            placeholder="Escribe un mensaje académico..."
-            className="flex-1 bg-surface dark:bg-surface-dark px-4 py-2.5 text-sm font-medium text-ink dark:text-ink-light border border-line dark:border-line-dark rounded-2xl focus:outline-none focus:border-brand-primary"
+            onFocus={() => setTimeout(() => scrollToBottom(false), 300)}
+            placeholder="Escribe un mensaje..."
+            enterKeyHint="send"
+            className="flex-1 min-w-0 bg-surface dark:bg-surface-dark px-4 py-2.5 text-sm font-medium text-ink dark:text-ink-light border border-line dark:border-line-dark rounded-2xl focus:outline-none focus:border-brand-primary"
             maxLength={2000}
           />
           <button
@@ -382,8 +406,8 @@ export default function ChatDirectoModal({
 
       {/* Modal: Reportar Conversación / Usuario */}
       {showReportModal && (
-        <div className="fixed inset-0 z-60 bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5">
+        <div className="fixed inset-0 !m-0 z-60 bg-black/60 flex items-center justify-center px-4 safe-overlay">
+          <div className="w-full max-w-sm max-h-full overflow-y-auto bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5">
             <div className="flex items-center justify-between pb-2 border-b border-line dark:border-line-dark">
               <span className="text-xs font-black uppercase text-semantic-danger tracking-wider flex items-center space-x-1.5">
                 <ShieldAlert size={16} />
@@ -460,8 +484,8 @@ export default function ChatDirectoModal({
 
       {/* Modal: Confirmar Bloqueo */}
       {showBlockModal && (
-        <div className="fixed inset-0 z-60 bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5">
+        <div className="fixed inset-0 !m-0 z-60 bg-black/60 flex items-center justify-center px-4 safe-overlay">
+          <div className="w-full max-w-sm max-h-full overflow-y-auto bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5">
             <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/40 text-semantic-danger flex items-center justify-center mx-auto">
               <UserX size={24} />
             </div>
@@ -471,7 +495,7 @@ export default function ChatDirectoModal({
                 ¿Bloquear a {nombreMostrar}?
               </h3>
               <p className="text-xs text-ink-muted leading-relaxed">
-                Este estudiante no podrá enviarte mensajes, solicitudes ni ver tu perfil en Explorar.
+                No podrá enviarte mensajes ni solicitudes, y dejará de verte en Explorar.
               </p>
             </div>
 

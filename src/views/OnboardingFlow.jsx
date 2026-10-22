@@ -297,7 +297,7 @@ export default function OnboardingFlow() {
     limpiarMensajes();
 
     if (!resetIdentifier.trim()) {
-      setErrorMsg('Ingresa tu usuario o correo institucional.');
+      setErrorMsg('Ingresa tu correo institucional.');
       return;
     }
 
@@ -443,7 +443,7 @@ export default function OnboardingFlow() {
   // =========================================================================
   if (currentScreen === 'm02_otp') {
     return (
-      <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
+      <div className="flex-1 px-5 pt-5 pb-[calc(var(--sab)+1.25rem)] flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
         <div>
           <button
             onClick={() => {
@@ -586,7 +586,7 @@ export default function OnboardingFlow() {
   // =========================================================================
   if (currentScreen === 'm05_consentimientos' || soloConsentimientos) {
     return (
-      <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
+      <div className="flex-1 px-5 pt-5 pb-[calc(var(--sab)+1.25rem)] flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
         <form onSubmit={handleGuardarConsentimientos} className="space-y-3">
           {!soloConsentimientos && (
             <button
@@ -658,7 +658,7 @@ export default function OnboardingFlow() {
 
   if (currentScreen === 'm03_onboarding' || currentScreen === 'm04_intereses') {
     return (
-      <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
+      <div className="flex-1 px-5 pt-5 pb-[calc(var(--sab)+1.25rem)] flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
         <div>
           <div className="mb-4">
             <span className="text-[11px] font-black text-accent uppercase tracking-wider">Paso Final</span>
@@ -891,22 +891,21 @@ export default function OnboardingFlow() {
   // Siempre visible si el usuario no tiene sesión activa (nunca queda en blanco)
   // =========================================================================
   return (
-    <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
-      <div className="pt-2">
+    <div className="flex-1 px-5 pt-5 pb-[calc(var(--sab)+1.25rem)] flex flex-col bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
+      {/* my-auto: el formulario queda centrado en la pantalla y, si no entra (registro), se desplaza */}
+      <div className="my-auto w-full max-w-sm mx-auto py-2">
         {/* Logo y Marca */}
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="w-12 h-12 rounded-2xl bg-brand-primary flex items-center justify-center font-black text-white text-2xl tracking-tight shadow-md">
+        <div className="flex flex-col items-center text-center mb-6">
+          <div className="w-14 h-14 rounded-2xl bg-brand-primary flex items-center justify-center font-black text-white text-3xl tracking-tight shadow-md mb-3">
             Z
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="font-black text-xl tracking-wide text-brand-primary dark:text-teal-300">KAMPUZ</span>
-              <span className="text-[11px] bg-accent/15 text-accent font-extrabold px-2 py-0.5 rounded-md">UTP</span>
-            </div>
-            <p className="text-xs text-ink-soft dark:text-ink-muted font-medium">
-              Comunidad Universitaria de Aprendizaje
-            </p>
+          <div className="flex items-center space-x-2">
+            <span className="font-black text-2xl tracking-wide text-brand-primary dark:text-teal-300">KAMPUZ</span>
+            <span className="text-[11px] bg-accent/15 text-accent font-extrabold px-2 py-0.5 rounded-md">UTP</span>
           </div>
+          <p className="text-xs text-ink-soft dark:text-ink-muted font-medium mt-1">
+            Comunidad Universitaria de Aprendizaje
+          </p>
         </div>
 
         {/* Selector de Pestañas: Iniciar Sesión vs Crear Cuenta */}
@@ -977,7 +976,7 @@ export default function OnboardingFlow() {
           <form onSubmit={handleLoginSubmit} className="space-y-3.5">
             <div>
               <label className="text-xs font-black text-ink dark:text-ink-light mb-1 block">
-                Usuario o Correo Institucional
+                Usuario o correo institucional
               </label>
               <div className="relative">
                 <User size={16} className="absolute left-3.5 top-3.5 text-ink-muted" />
@@ -985,7 +984,7 @@ export default function OnboardingFlow() {
                   type="text"
                   required
                   autoFocus
-                  placeholder="ej. jorge_utp o u2320732@utp.edu.pe"
+                  placeholder="Tu usuario o correo institucional"
                   value={loginIdentifier}
                   onChange={(e) => setLoginIdentifier(e.target.value)}
                   className="w-full text-xs pl-10 pr-3 py-3 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
@@ -1015,7 +1014,7 @@ export default function OnboardingFlow() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
-                  placeholder="Tu contraseña secreta"
+                  placeholder="Tu contraseña"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   className="w-full text-xs pl-10 pr-10 py-3 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
@@ -1058,7 +1057,7 @@ export default function OnboardingFlow() {
                 <input
                   type="text"
                   required
-                  placeholder="Jorge"
+                  placeholder="Tus nombres"
                   value={regNombre}
                   onChange={(e) => setRegNombre(e.target.value)}
                   className="w-full text-xs px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
@@ -1071,7 +1070,7 @@ export default function OnboardingFlow() {
                 <input
                   type="text"
                   required
-                  placeholder="Zegarra"
+                  placeholder="Tus apellidos"
                   value={regApellido}
                   onChange={(e) => setRegApellido(e.target.value)}
                   className="w-full text-xs px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
@@ -1113,7 +1112,7 @@ export default function OnboardingFlow() {
                 <input
                   type="text"
                   required
-                  placeholder="jorge_utp"
+                  placeholder="ej. ana.torres"
                   value={regUsuario}
                   onChange={(e) => setRegUsuario(e.target.value.toLowerCase().replace(/[^a-z0-9._]/g, ''))}
                   className={`w-full text-xs pl-7 pr-8 py-2.5 rounded-xl border ${
@@ -1144,7 +1143,7 @@ export default function OnboardingFlow() {
                 <input
                   type="email"
                   required
-                  placeholder="u2320732@utp.edu.pe"
+                  placeholder="tucodigo@utp.edu.pe"
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
                   className="w-full text-xs pl-9 pr-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
@@ -1161,7 +1160,7 @@ export default function OnboardingFlow() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
-                  placeholder="••••••••"
+                  placeholder="Tu contraseña"
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
                   className="w-full text-xs pl-9 pr-9 py-2.5 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
@@ -1217,15 +1216,15 @@ export default function OnboardingFlow() {
                 Recuperar tu contraseña
               </h3>
               <p className="text-xs text-ink-muted mb-3">
-                Te enviaremos un código de seguridad de 6 dígitos a tu correo institucional para que elijas una nueva contraseña.
+                Escribe tu correo institucional. Te enviaremos un código de 6 dígitos para que elijas una nueva contraseña.
               </p>
               <div className="relative">
                 <Mail size={16} className="absolute left-3.5 top-3.5 text-ink-muted" />
                 <input
-                  type="text"
+                  type="email"
                   required
                   autoFocus
-                  placeholder="Tu usuario o correo @utp.edu.pe"
+                  placeholder="tucodigo@utp.edu.pe"
                   value={resetIdentifier}
                   onChange={(e) => setResetIdentifier(e.target.value)}
                   className="w-full text-xs pl-10 pr-3 py-3 rounded-xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark focus:outline-none focus:ring-2 focus:ring-accent font-medium text-ink dark:text-ink-light"
@@ -1253,7 +1252,7 @@ export default function OnboardingFlow() {
       </div>
 
       {/* Pie de pantalla */}
-      <div className="pt-3 text-center">
+      <div className="pt-3 text-center shrink-0">
         <p className="text-[11px] text-ink-muted font-medium">
           Comunidad exclusiva para estudiantes de la Universidad Tecnológica del Perú.
         </p>

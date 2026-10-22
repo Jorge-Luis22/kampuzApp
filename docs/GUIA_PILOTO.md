@@ -23,10 +23,20 @@ Validar en condiciones reales de campus el flujo completo de Kampuz:
 
 1. Supabase → **SQL Editor** → **New query**.
 2. Copia y pega el contenido completo de `supabase/migrations/009_auth_real.sql` → **Run**. Debe decir "Success".
-3. Repite, en este orden, con `010_datos_compartidos.sql`, `011_consentimientos.sql` y `012_reglas_servidor.sql`.
+3. Repite, en este orden, con `010_datos_compartidos.sql`, `011_consentimientos.sql`, `012_reglas_servidor.sql` y `013_login_y_contactos.sql`.
 4. Por último, `supabase/seed.sql` (agrega el correo de revisión de Google a `correos_invitados`).
 5. Todas se pueden volver a ejecutar sin romper nada si una falla a la mitad.
 6. Para una base nueva desde cero, basta con pegar `supabase/full_schema.sql`.
+
+**0.1b Edge Function `login` (entrar con @usuario).** La migración 013 elimina la función que le daba el correo de un @usuario a cualquiera. Ahora el login con @usuario pasa por la Edge Function `supabase/functions/login`, que busca el correo en el servidor y devuelve solo la sesión. Despliégala una vez (necesita la [CLI de Supabase](https://supabase.com/docs/guides/cli)):
+
+```bash
+supabase login
+supabase link --project-ref <ref-del-proyecto>
+supabase functions deploy login --no-verify-jwt
+```
+
+`--no-verify-jwt` es necesario porque la llama gente que todavía no tiene sesión. Mientras no esté desplegada, el login con correo sigue funcionando y con @usuario la app pide entrar con el correo.
 
 Revisa también si quedaron cuentas que entraron con los atajos antiguos (correos que no son @utp.edu.pe ni invitados):
 

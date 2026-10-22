@@ -296,13 +296,13 @@ export default function InicioView() {
       {/* Consultas Agrupadas de tu Carrera (Flujo 1) */}
       <div className="space-y-2.5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+          <div className="min-w-0">
             <h2 className="text-sm font-black uppercase tracking-wider text-ink dark:text-ink-light">
-              Dudas en {user?.carrera || 'tu Carrera'}
+              Dudas en {user?.carrera || 'tu carrera'}
             </h2>
-            <span className="text-xs bg-brand-primary-soft dark:bg-brand-dark text-brand-primary dark:text-teal-300 font-black px-2 py-0.5 rounded-md">
-              Ciclo ≥ 5 orienta
-            </span>
+            <p className="text-[11px] text-ink-muted font-semibold">
+              Responden alumnos de 5.° ciclo en adelante
+            </p>
           </div>
           <button
             onClick={() => setActiveTab('grupos')}

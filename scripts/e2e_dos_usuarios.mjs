@@ -172,44 +172,50 @@ async function main() {
     await tarjetaA.waitFor({ timeout: TIEMPO });
     ok('B ve a A en Explorar');
 
-    await tarjetaA.getByRole('button', { name: /Conectar/ }).click();
-    await b.getByPlaceholder(/Hola, me gustaría coordinar/).fill(`Prueba E2E ${new Date().toISOString()}: coordinar un trabajo`);
-    await b.getByRole('button', { name: /Enviar Solicitud/ }).click();
+    // La tarjeta muestra el estado real antes de tocar nada
+    const botonA = tarjetaA.getByRole('button', { name: /Agregar contacto|Chatear|Solicitud enviada|Responder/ });
+    await botonA.first().waitFor({ timeout: TIEMPO });
+    const textoBoton = (await botonA.first().innerText()).trim();
 
-    const envio = await Promise.race([
-      b.getByText(/Solicitud enviada a/).waitFor({ timeout: TIEMPO }).then(() => 'enviada'),
-      b.getByText(/Ya están conectados|Ya le enviaste/).waitFor({ timeout: TIEMPO }).then(() => 'previa')
-    ]);
     let yaConectados = false;
-    if (envio === 'enviada') {
+    if (/Agregar contacto/.test(textoBoton)) {
+      await botonA.first().click();
+      await b.getByPlaceholder(/Hola, me gustaría coordinar/).fill(`Prueba E2E ${new Date().toISOString()}: coordinar un trabajo`);
+      await b.getByRole('button', { name: /Enviar solicitud/ }).click();
+      await b.getByText(/Solicitud enviada a/).waitFor({ timeout: TIEMPO });
       ok('B envió la solicitud (validada por el servidor)');
-      await a.getByRole('button', { name: /Aceptar Conexión/ }).first().waitFor({ timeout: TIEMPO });
+      await tarjetaA.getByRole('button', { name: /Solicitud enviada/ }).waitFor({ timeout: TIEMPO });
+      ok('La tarjeta de A pasa a "Solicitud enviada" (deshabilitado)');
+      await a.getByRole('button', { name: /^Aceptar$/ }).first().waitFor({ timeout: TIEMPO });
       ok('A recibió la solicitud SIN recargar (Realtime)');
-      await a.getByRole('button', { name: /Aceptar Conexión/ }).first().click();
-      await a.getByPlaceholder('Escribe un mensaje académico...').waitFor({ timeout: TIEMPO });
+      await a.getByRole('button', { name: /^Aceptar$/ }).first().click();
+      await a.getByPlaceholder('Escribe un mensaje...').waitFor({ timeout: TIEMPO });
       ok('A aceptó: el servidor creó la conversación y se abrió el chat');
     } else {
       yaConectados = true;
-      info('A y B ya estaban conectados o con solicitud previa (corrida anterior): se pasa directo al chat');
-      await b.getByRole('button', { name: 'Cancelar' }).click();
+      info(`A y B ya tenían relación de una corrida anterior (la tarjeta dice "${textoBoton}"): se pasa directo al chat`);
+      if (!/Chatear/.test(textoBoton)) {
+        throw new Error(`Se esperaba "Chatear" entre contactos y la tarjeta dice "${textoBoton}"`);
+      }
+      ok('Entre contactos, la tarjeta muestra "Chatear" (no deja enviar otra solicitud)');
       await irATab(a, 'Explorar');
-      await a.getByRole('button', { name: /^Chats 1 a 1/ }).click();
+      await a.getByRole('button', { name: /^Chats/ }).click();
       await a.locator('.k-card', { hasText: perfilB.nombre }).first().click();
-      await a.getByPlaceholder('Escribe un mensaje académico...').waitFor({ timeout: TIEMPO });
+      await a.getByPlaceholder('Escribe un mensaje...').waitFor({ timeout: TIEMPO });
     }
 
     // B abre el chat con A (la lista se actualiza por Realtime al aceptar)
-    await b.getByRole('button', { name: /^Chats 1 a 1/ }).click();
+    await b.getByRole('button', { name: /^Chats/ }).click();
     const convB = b.locator('.k-card', { hasText: perfilA.nombre }).first();
     await convB.waitFor({ timeout: TIEMPO });
-    ok(`B ve la conversación con A en "Chats 1 a 1"${yaConectados ? '' : ' sin recargar'}`);
+    ok(`B ve la conversación con A en "Chats"${yaConectados ? '' : ' sin recargar'}`);
     await convB.click();
-    await b.getByPlaceholder('Escribe un mensaje académico...').waitFor({ timeout: TIEMPO });
+    await b.getByPlaceholder('Escribe un mensaje...').waitFor({ timeout: TIEMPO });
 
     // A escribe; B lo recibe en tiempo real
     const mensaje = `Hola desde A · e2e ${Date.now()}`;
-    await a.getByPlaceholder('Escribe un mensaje académico...').fill(mensaje);
-    await a.getByPlaceholder('Escribe un mensaje académico...').press('Enter');
+    await a.getByPlaceholder('Escribe un mensaje...').fill(mensaje);
+    await a.getByPlaceholder('Escribe un mensaje...').press('Enter');
     await b.getByText(mensaje, { exact: true }).waitFor({ timeout: TIEMPO });
     ok('B recibió el mensaje de A en tiempo real');
 
@@ -220,8 +226,8 @@ async function main() {
     ok('Sin duplicados: el mensaje aparece una sola vez en cada celular');
 
     const respuesta = `Respuesta de B · e2e ${Date.now()}`;
-    await b.getByPlaceholder('Escribe un mensaje académico...').fill(respuesta);
-    await b.getByPlaceholder('Escribe un mensaje académico...').press('Enter');
+    await b.getByPlaceholder('Escribe un mensaje...').fill(respuesta);
+    await b.getByPlaceholder('Escribe un mensaje...').press('Enter');
     await a.getByText(respuesta, { exact: true }).waitFor({ timeout: TIEMPO });
     ok('A recibió la respuesta de B en tiempo real');
 

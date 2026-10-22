@@ -38,7 +38,9 @@ export default function PhoneShell({ children }) {
   };
 
   return (
-    <div className={`min-h-[100dvh] h-[100dvh] md:h-auto md:min-h-screen flex flex-col ${darkMode ? 'dark bg-surface-dark md:bg-[#06080F]' : 'bg-surface md:bg-[#E3E8F0]'}`}>
+    // pt-safe/px-safe: en el celular nada queda debajo de la barra de estado. El borde
+    // inferior lo maneja cada pantalla (barra de la app, input del chat, formularios).
+    <div className={`min-h-[100dvh] h-[100dvh] md:h-auto md:min-h-screen flex flex-col pt-safe px-safe ${darkMode ? 'dark bg-surface-dark md:bg-[#06080F]' : 'bg-surface md:bg-[#E3E8F0]'}`}>
       {/* Top Presentation Toolbar (Desktop / Laptop / Projector Only) */}
       <header className="hidden md:flex bg-brand-primary text-white px-4 py-2 items-center justify-between shadow-clean z-50 select-none border-b border-indigo-900/60">
         <div className="flex items-center space-x-3">
@@ -181,12 +183,13 @@ export default function PhoneShell({ children }) {
           </div>
         ) : deviceFrame ? (
           // Smartphone Bezel: Desktop gets realistic iPhone bezel frame; Mobile gets edge-to-edge native app feel
-          <div className="relative w-full max-w-full md:max-w-[405px] h-[100dvh] md:h-[844px] md:max-h-[92vh] bg-surface dark:bg-surface-dark md:bg-slate-950 rounded-none md:rounded-[52px] shadow-none md:shadow-[0_25px_60px_-15px_rgba(15,23,42,0.4)] p-0 md:p-3 md:ring-1 md:ring-slate-800 md:border-4 md:border-slate-800/80 flex flex-col overflow-hidden">
+          <div className="relative w-full max-w-full md:max-w-[405px] h-full md:h-[844px] md:max-h-[92vh] bg-surface dark:bg-surface-dark md:bg-slate-950 rounded-none md:rounded-[52px] shadow-none md:shadow-[0_25px_60px_-15px_rgba(15,23,42,0.4)] p-0 md:p-3 md:ring-1 md:ring-slate-800 md:border-4 md:border-slate-800/80 flex flex-col overflow-hidden">
             {/* Phone Speaker Slit (Desktop bezel only) */}
             <div className="hidden md:block absolute top-2 left-1/2 -translate-x-1/2 w-20 h-1 bg-slate-800 rounded-full z-40"></div>
 
             {/* Internal Screen Container */}
-            <div className="relative flex-1 w-full h-full bg-surface dark:bg-surface-dark rounded-none md:rounded-[42px] overflow-hidden flex flex-col">
+            {/* md:[transform:translateZ(0)]: en la vista de escritorio, los modales "fixed" quedan dentro del marco del teléfono */}
+            <div className="relative flex-1 w-full h-full bg-surface dark:bg-surface-dark rounded-none md:rounded-[42px] overflow-hidden flex flex-col md:[transform:translateZ(0)]">
               {/* iOS Status Bar (Desktop bezel only - real mobile devices have native status bar) */}
               <div className="hidden md:flex w-full h-10 px-7 items-center justify-between text-ink dark:text-ink-light text-xs font-bold select-none z-30 pt-1 shrink-0">
                 <span className="tracking-tight text-[13px]">9:41</span>

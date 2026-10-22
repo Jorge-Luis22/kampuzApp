@@ -323,8 +323,8 @@ export default function GruposView() {
 
   // Modal "Nueva consulta" (M19): se usa dentro del espacio de carrera
   const modalCrearConsulta = showCrearConsultaModal && (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 animate-fadeIn">
+    <div className="fixed inset-0 !m-0 bg-black/60 z-50 flex items-center justify-center px-4 safe-overlay">
+      <div className="w-full max-w-sm max-h-full overflow-y-auto bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 animate-fadeIn">
         <h3 className="text-sm font-black text-ink dark:text-ink-light">
           Nueva Consulta en {user?.carrera || 'tu Carrera'}
         </h3>
@@ -780,7 +780,7 @@ export default function GruposView() {
 
             {currentConsulta.respuestas.length === 0 ? (
               <div className="k-card p-5 text-center text-xs text-ink-muted rounded-2xl border border-line dark:border-line-dark bg-white dark:bg-surface-cardDark">
-                Aún no hay respuestas. Alumnos de ciclo ≥ 5 pueden orientar.
+                Aún no hay respuestas. Pueden responder alumnos de 5.° ciclo en adelante.
               </div>
             ) : (
               currentConsulta.respuestas.map((r) => (
@@ -872,8 +872,8 @@ export default function GruposView() {
 
         {/* Modal: Responder */}
         {showResponderModal && (
-          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5">
+          <div className="fixed inset-0 !m-0 bg-black/60 z-50 flex items-center justify-center px-4 safe-overlay">
+            <div className="w-full max-w-sm max-h-full overflow-y-auto bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5">
               <h3 className="text-sm font-black text-ink dark:text-ink-light">
                 Orientar en {currentConsulta.curso}
               </h3>
@@ -1097,8 +1097,8 @@ export default function GruposView() {
 
       {/* Modal: Proponer Grupo */}
       {showProponerModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 animate-fadeIn">
+        <div className="fixed inset-0 !m-0 bg-black/60 z-50 flex items-center justify-center px-4 safe-overlay">
+          <div className="w-full max-w-sm max-h-full overflow-y-auto bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 animate-fadeIn">
             <h3 className="text-sm font-black text-ink dark:text-ink-light">
               Proponer una comunidad estudiantil
             </h3>

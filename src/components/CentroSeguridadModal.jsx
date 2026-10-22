@@ -128,8 +128,8 @@ export default function CentroSeguridadModal({ isOpen, onClose, currentUser }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-ink/70 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-surface dark:bg-surface-dark border-2 border-line/80 dark:border-line-dark rounded-3xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 !m-0 z-50 flex items-center justify-center px-3 sm:px-4 safe-overlay bg-ink/70 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-surface dark:bg-surface-dark border-2 border-line/80 dark:border-line-dark rounded-3xl w-full max-w-lg shadow-2xl flex flex-col max-h-full overflow-hidden">
         {/* Cabecera */}
         <div className="px-5 py-4 border-b border-line dark:border-line-dark flex items-center justify-between bg-primary-dark/5 dark:bg-primary-dark/20">
           <div className="flex items-center space-x-2.5">

@@ -14,8 +14,11 @@ import {
 // - Registro: correo + contraseña + @usuario (supabase.auth.signUp).
 // - Verificación: código de 6 dígitos que llega al correo (verifyOtp type 'signup').
 //   La plantilla "Confirm signup" de Supabase debe usar {{ .Token }}.
-// - Login: @usuario o correo + contraseña.
-// - Recuperación: resetPasswordForEmail + código (verifyOtp type 'recovery').
+// - Login: correo + contraseña directo con Supabase Auth; con @usuario, por la Edge
+//   Function `login`, que busca el correo en el servidor y devuelve solo la sesión
+//   (el correo de un @usuario nunca llega al cliente).
+// - Recuperación: con el correo institucional (resetPasswordForEmail + código,
+//   verifyOtp type 'recovery').
 // - El dominio @utp.edu.pe / correos_invitados se valida SOLO en el servidor
 //   (trigger trg_validar_auth_user, migración 009).
 // No existe ningún código local, ni código fijo, ni acceso sin verificar.
@@ -26,6 +29,9 @@ export const FORMATO_USUARIO = /^[a-z0-9._]{3,30}$/;
 export function limpiarUsuario(usuario = '') {
   return usuario.trim().toLowerCase().replace(/^@/, '');
 }
+
+// El mismo mensaje para usuario inexistente y contraseña incorrecta
+const MSG_CREDENCIALES = 'Usuario o contraseña incorrectos.';
 
 /**
  * Traduce errores de Supabase Auth al español.
@@ -46,7 +52,7 @@ function mensajeErrorAuth(error) {
     return 'Ese correo no tiene un formato válido.';
   }
   if (/invalid_credentials|Invalid login credentials/i.test(texto)) {
-    return 'Usuario/correo o contraseña incorrectos.';
+    return MSG_CREDENCIALES;
   }
   if (/email_not_confirmed|Email not confirmed/i.test(texto)) {
     return 'Aún no verificas tu correo. Te enviamos un código nuevo.';
@@ -99,16 +105,49 @@ export async function usuarioDisponible(usuario) {
 }
 
 /**
- * Convierte "@usuario" o "correo" en correo. Lanza si el @usuario no existe.
+ * Inicia sesión con @usuario mediante la Edge Function `login`: el servidor resuelve
+ * el correo con la service role y devuelve solo la sesión, que se guarda aquí.
  */
-async function resolverCorreo(identificador) {
-  const limpio = identificador.trim().toLowerCase().replace(/^@/, '');
-  if (limpio.includes('@')) return limpio;
-  const correo = await rpc('obtener_correo_por_identificador', { p_identificador: limpio });
-  if (!correo) {
-    throw new KampuzError('Usuario/correo o contraseña incorrectos.');
+async function iniciarSesionConUsuario(usuario, password) {
+  if (!isSupabaseConfigured) {
+    throw new KampuzError('La app no está configurada para conectarse al servidor.');
   }
-  return correo;
+  let res;
+  try {
+    res = await conTiempo(supabase.functions.invoke('login', { body: { identificador: usuario, password } }));
+  } catch (err) {
+    if (err instanceof KampuzError) throw err;
+    throw new KampuzError(mensajeError(err), { causa: err });
+  }
+
+  if (res?.error) {
+    // FunctionsHttpError trae la respuesta del servidor en error.context
+    let cuerpo = null;
+    try {
+      cuerpo = await res.error.context?.json?.();
+    } catch (e) {
+      cuerpo = null;
+    }
+    if (cuerpo?.codigo === 'EMAIL_NO_CONFIRMADO') {
+      throw new KampuzError('Aún no verificas tu correo. Entra con tu correo institucional para recibir el código.');
+    }
+    if (cuerpo?.error) throw new KampuzError(cuerpo.error, { codigo: cuerpo.codigo || null });
+    if (res.error.context?.status === 404) {
+      // La Edge Function aún no se desplegó en este proyecto de Supabase
+      throw new KampuzError('Por ahora entra con tu correo institucional.', { causa: res.error });
+    }
+    if (/FunctionsFetchError|FunctionsRelayError/.test(res.error.name || '')) {
+      throw new KampuzError('No pudimos conectar con Kampuz. Revisa tu internet e inténtalo de nuevo.', { causa: res.error });
+    }
+    throw new KampuzError(MSG_CREDENCIALES, { causa: res.error });
+  }
+
+  const sesion = res?.data?.session;
+  if (!sesion?.access_token || !sesion?.refresh_token) {
+    throw new KampuzError(MSG_CREDENCIALES);
+  }
+  const data = await auth(supabase.auth.setSession(sesion));
+  return data.session;
 }
 
 /**
@@ -166,7 +205,11 @@ export async function reenviarCodigoRegistro(email) {
  * Si el correo no está verificado, reenvía el código y lanza codigo EMAIL_NO_CONFIRMADO.
  */
 export async function iniciarSesion(identificador, password) {
-  const correo = await resolverCorreo(identificador);
+  const limpio = identificador.trim().toLowerCase().replace(/^@/, '');
+  if (!limpio.includes('@')) {
+    return iniciarSesionConUsuario(limpio, password);
+  }
+  const correo = limpio;
   try {
     const data = await auth(supabase.auth.signInWithPassword({ email: correo, password }));
     return data.session;
@@ -188,7 +231,11 @@ export async function iniciarSesion(identificador, password) {
  * Envía el código de recuperación de contraseña. Devuelve el correo de destino.
  */
 export async function solicitarRecuperacion(identificador) {
-  const correo = await resolverCorreo(identificador);
+  // Solo con el correo: buscarlo a partir de un @usuario revelaría el correo de otra persona.
+  const correo = identificador.trim().toLowerCase();
+  if (!correo.includes('@')) {
+    throw new KampuzError('Para recuperar tu contraseña, escribe tu correo institucional.');
+  }
   await auth(supabase.auth.resetPasswordForEmail(correo));
   return correo;
 }

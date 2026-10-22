@@ -18,7 +18,7 @@ Estado **real** de cada pantalla de la app (M01–M33) y del panel web (W01–W0
 
 | ID | Pantalla | Estado | Qué hay de verdad / qué falta |
 |---|---|:---:|---|
-| **M01** | Bienvenida y acceso | 🔵 | Login con @usuario o correo + contraseña (Supabase Auth). Registro con correo, contraseña y @usuario. El dominio @utp.edu.pe / `correos_invitados` lo valida **solo el servidor** (trigger en `auth.users`). |
+| **M01** | Bienvenida y acceso | 🔵 | Login con correo + contraseña (Supabase Auth) o con @usuario (Edge Function `login`, sin exponer correos; hay que desplegarla). Registro con correo, contraseña y @usuario. El dominio @utp.edu.pe / `correos_invitados` lo valida **solo el servidor** (trigger en `auth.users`). |
 | **M02** | Código de 6 dígitos | 🔵 | `verifyOtp` de Supabase con el código que llega **al correo**. Sin código local, sin `123456`, sin "Autocompletar". Depende de configurar el SMTP de Gmail y las plantillas (ver `GUIA_PILOTO.md`, sección 0). |
 | **M03** | Perfil declarado | 🔵 | Nombre, @usuario, fecha de nacimiento (edad mínima configurable, 14 por defecto, validada en servidor), carrera, ciclo, sede y foto (solo Storage). Trigger asigna el grupo de carrera y ciclo. |
 | **M04** | Intereses | 🔵 | Mínimo 2, en la misma pantalla que M03. Se guardan en `perfiles.intereses` (fuente del filtro de encuestas). |
@@ -67,7 +67,7 @@ Estado **real** de cada pantalla de la app (M01–M33) y del panel web (W01–W0
 
 | Pieza | Estado | Observaciones |
 |---|:---:|---|
-| Migraciones 001–012 | 🔵 | Probadas en Postgres en memoria (`npm run test:sql`, 114 comprobaciones). **En producción solo están 001–003**: hay que aplicar 009–012 (ver `GUIA_PILOTO.md`). |
+| Migraciones 001–013 | 🔵 | Probadas en Postgres en memoria (`npm run test:sql`). **En producción solo están 001–003**: hay que aplicar 009–012 (ver `GUIA_PILOTO.md`). |
 | Correo con el código (Gmail SMTP, `kampuz.app.pe@gmail.com`) | 🔴 | Pendiente de configurar en Supabase (sección 0.2 de `GUIA_PILOTO.md`). Límite aproximado de 500 correos al día. |
 | APK debug (GitHub Actions) | 🔵 | El workflow era inválido (`secrets` en un `if`); corregido. Falla con un mensaje claro si faltan los secretos. |
 | AAB firmado para Play Store | 🔵 | Falla si falta el keystore (antes generaba un .aab sin firmar). |

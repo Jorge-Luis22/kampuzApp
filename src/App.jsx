@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { StoreProvider, useStore } from './data/store';
 import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
+import { manejarAtras } from './lib/atras';
 import { Loader2 } from 'lucide-react';
 import PhoneShell from './components/PhoneShell';
 import BottomNav from './components/BottomNav';
@@ -72,8 +74,16 @@ function AppContent() {
     activeEspacioId,
     setActiveEspacioId,
     activeConsultaId,
-    setActiveConsultaId
+    setActiveConsultaId,
+    darkMode
   } = useStore();
+
+  // Íconos de la barra de estado y de navegación según el tema de la app (no el del
+  // teléfono): claros sobre fondo oscuro, oscuros sobre fondo claro.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    SystemBars.setStyle({ style: darkMode ? SystemBarsStyle.Dark : SystemBarsStyle.Light }).catch(() => {});
+  }, [darkMode]);
 
   // Control del botón atrás de Android (Fase 8)
   // Navega hacia atrás dentro de la app; en Inicio, sale.
@@ -82,6 +92,8 @@ function AppContent() {
     const initBackButton = async () => {
       try {
         backListener = await CapacitorApp.addListener('backButton', () => {
+          // Primero se cierra lo que esté abierto encima (chat, panel, modal)
+          if (manejarAtras()) return;
           if (activeConsultaId) {
             setActiveConsultaId(null);
             return;

@@ -32,7 +32,9 @@ export default function BottomNav() {
   ];
 
   return (
-    <nav className="w-full bg-white dark:bg-surface-cardDark border-t border-line dark:border-line-dark flex items-center justify-around pt-2 pb-3.5 md:pb-2 px-2 shrink-0 select-none z-20 shadow-md">
+    // El relleno inferior incluye el área de los botones o gestos de Android: la barra
+    // queda encima de ellos y su fondo blanco se extiende por debajo.
+    <nav className="w-full bg-white dark:bg-surface-cardDark border-t border-line dark:border-line-dark flex items-center justify-around pt-2 pb-[calc(var(--sab)+0.5rem)] px-2 shrink-0 select-none z-20 shadow-md">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.id;

@@ -26,7 +26,7 @@ export default function PanelUniversidadView() {
 
   const [activePanelTab, setActivePanelTab] = useState('resumen'); // 'resumen' | 'facultades' | 'talento' | 'talleres'
 
-  // Alumnos en el radar: los pre-cargados + Luz Martínez SI tiene el consentimiento 4 activo
+  // Alumnos en el radar: los pre-cargados + Ana Torres SI tiene el consentimiento 4 activo
   const listaAlumnosDestacados = [
     ...metricasPanel.alumnosDestacadosConsentimiento4,
     ...(user.consentimientos?.perfil_universidad ? [{
@@ -158,7 +158,7 @@ export default function PanelUniversidadView() {
             <div className="p-6 bg-gradient-to-r from-brand-primary to-indigo-900 text-white rounded-2xl shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
               <div>
                 <span className="text-xs font-black text-teal-300 uppercase tracking-wider">
-                  Métrica de Impacto para Dirección Académica (Sección 13.2)
+                  Métrica de Impacto para Dirección Académica
                 </span>
                 <h3 className="text-lg font-black mt-1">
                   {metricasPanel.participacionCiclos1a3}% de alumnos de ciclos 1 a 3 participan en actividades extracurriculares
@@ -177,7 +177,7 @@ export default function PanelUniversidadView() {
             <div className="p-4 bg-slate-100 dark:bg-line-dark/40 border border-line dark:border-line-dark rounded-2xl text-xs text-ink-soft dark:text-ink-muted flex items-start space-x-3">
               <ShieldCheck size={20} className="text-accent shrink-0 mt-0.5" />
               <div className="leading-relaxed">
-                <strong className="text-ink dark:text-ink-light">Garantía de Neutralidad Institucional (Sección 6.6):</strong> La universidad visualiza únicamente datos estadísticos agregados y anonimizados. La UTP no modera el contenido interno ni accede a conversaciones privadas de los alumnos. El umbral de 30 personas se aplica de forma estricta.
+                <strong className="text-ink dark:text-ink-light">Garantía de neutralidad institucional:</strong> La universidad visualiza únicamente datos estadísticos agregados y anonimizados. La UTP no modera el contenido interno ni accede a conversaciones privadas de los alumnos. El umbral de 30 personas se aplica de forma estricta.
               </div>
             </div>
           </div>
@@ -193,7 +193,7 @@ export default function PanelUniversidadView() {
                     Distribución de Alumnos Activos por Facultad
                   </h3>
                   <p className="text-xs text-ink-muted">
-                    Con umbral de 30 aplicado de forma obligatoria en cada segmento
+                    Solo se muestran grupos de 30 alumnos o más, para cuidar el anonimato
                   </p>
                 </div>
                 <span className="text-xs font-bold text-accent">Total: 2,895 registrados</span>
@@ -226,10 +226,10 @@ export default function PanelUniversidadView() {
             <div className="p-4 bg-brand-primary-soft dark:bg-brand-dark/40 border border-brand-primary/20 rounded-2xl space-y-2">
               <div className="flex items-center space-x-2 text-brand-primary dark:text-teal-300 font-black text-xs">
                 <Sparkles size={16} />
-                <span>Segundo Radar para Empleabilidad (Sección 5.8)</span>
+                <span>Segundo Radar para Empleabilidad</span>
               </div>
               <p className="text-xs text-ink-soft dark:text-ink-muted leading-relaxed font-medium">
-                Los programas <strong>Impulsa</strong> y <strong>Generación Top</strong> filtran tradicionalmente solo por promedio ponderado ≥ 17. Kampuz le permite a la UTP detectar alumnos con alto liderazgo, predisposición a enseñar a sus compañeros y constancia extracurricular.
+                Los programas <strong>Impulsa</strong> y <strong>Generación Top</strong> filtran tradicionalmente solo por promedio ponderado de 17 a más. Kampuz le permite a la UTP detectar alumnos con alto liderazgo, predisposición a enseñar a sus compañeros y constancia extracurricular.
               </p>
               <div className="pt-1 text-xs text-accent font-bold flex items-center space-x-1.5">
                 <ShieldCheck size={15} />
@@ -279,14 +279,14 @@ export default function PanelUniversidadView() {
               ))}
             </div>
 
-            {/* Estado de Luz Martínez */}
+            {/* Estado de Ana Torres */}
             <div className="p-4 bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark rounded-2xl flex items-center justify-between text-xs">
               <div>
-                <span className="font-extrabold text-ink dark:text-ink-light text-sm block">Estado de Luz Martínez en este radar:</span>
+                <span className="font-extrabold text-ink dark:text-ink-light text-sm block">Estado de Ana Torres en este radar:</span>
                 <p className="text-ink-muted text-xs mt-0.5">
                   {user.consentimientos?.perfil_universidad
-                    ? 'Consentimiento 4 otorgado en la app. Luz es visible para los reclutadores de Impulsa.'
-                    : 'Consentimiento 4 apagado por defecto. Luz Martínez NO aparece en el radar hasta que decida activarlo en Privacidad.'}
+                    ? 'Consentimiento 4 otorgado en la app. Ana es visible para los reclutadores de Impulsa.'
+                    : 'Consentimiento 4 apagado por defecto. Ana Torres NO aparece en el radar hasta que decida activarlo en Privacidad.'}
                 </p>
               </div>
               <span className={`px-3 py-1 rounded-full font-black text-xs ${
@@ -308,7 +308,7 @@ export default function PanelUniversidadView() {
                 Talleres Oficiales de Bienestar Estudiantil (Horarios Reales)
               </h3>
               <p className="text-xs text-ink-muted">
-                Espejados desde el portal UTP para disparar interacciones recurrentes con horario fijo (Sección 4 & 7.2)
+                Espejados desde el portal UTP para disparar interacciones recurrentes con horario fijo
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2">

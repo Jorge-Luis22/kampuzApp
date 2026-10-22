@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useStore } from '../data/store';
 import { CARRERAS_UTP, INTERESES_DISPONIBLES } from '../data/mockData';
+import { CONTACTO } from '../data/textos';
 import {
   fetchPerfilesExplorar,
   fetchSolicitudes,
@@ -11,8 +12,10 @@ import {
   subscribeToSolicitudes
 } from '../lib/explore';
 import { fetchConversaciones, conversacionCon, subscribeToMisMensajes } from '../lib/chat';
+import { useAtras } from '../lib/atras';
 import ChatDirectoModal from '../components/ChatDirectoModal';
 import ErrorConReintento from '../components/ErrorConReintento';
+import PanelInferior, { OpcionPanel } from '../components/PanelInferior';
 import {
   Search,
   UserPlus,
@@ -25,8 +28,41 @@ import {
   UserX,
   MessageSquare,
   RefreshCw,
-  Send
+  Send,
+  MoreVertical,
+  SlidersHorizontal,
+  Clock,
+  Inbox,
+  UserCheck,
+  User
 } from 'lucide-react';
+
+// Avatar cuadrado con la foto o la inicial
+function Avatar({ persona, tam = 'w-14 h-14', texto = 'text-base' }) {
+  const nombre = `${persona?.nombre || ''} ${persona?.apellido || ''}`.trim();
+  return persona?.foto_url ? (
+    <img
+      src={persona.foto_url}
+      alt={nombre}
+      className={`${tam} rounded-2xl object-cover border border-line dark:border-line-dark shadow-sm shrink-0`}
+    />
+  ) : (
+    <div className={`${tam} rounded-2xl bg-brand-primary text-white font-black ${texto} flex items-center justify-center shadow-sm shrink-0`}>
+      {(persona?.nombre?.[0] || 'U').toUpperCase()}
+    </div>
+  );
+}
+
+function MarcaContacto() {
+  return (
+    <span className="inline-flex items-center space-x-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-accent-soft dark:bg-accent-dark/50 text-accent dark:text-teal-200 shrink-0">
+      <UserCheck size={11} />
+      <span>{CONTACTO.marca}</span>
+    </span>
+  );
+}
+
+const lineaCarrera = (p) => [p?.carrera, p?.ciclo ? `${p.ciclo}.° ciclo` : null].filter(Boolean).join(' · ');
 
 export default function ExplorarView() {
   const { user } = useStore();
@@ -36,6 +72,7 @@ export default function ExplorarView() {
   const [filtroCarrera, setFiltroCarrera] = useState('');
   const [filtroCiclo, setFiltroCiclo] = useState('');
   const [filtroInteres, setFiltroInteres] = useState('');
+  const [showFiltros, setShowFiltros] = useState(false);
 
   // Perfiles de estudiantes
   const [perfiles, setPerfiles] = useState([]);
@@ -49,23 +86,32 @@ export default function ExplorarView() {
   const [isLoadingSolicitudes, setIsLoadingSolicitudes] = useState(false);
   const [errorSolicitudes, setErrorSolicitudes] = useState('');
   const [respondiendoId, setRespondiendoId] = useState(null);
+  const [solicitudResaltada, setSolicitudResaltada] = useState(null);
 
-  // Conversaciones directas activas
+  // Conversaciones (cada contacto tiene una)
   const [conversaciones, setConversaciones] = useState([]);
   const [isLoadingChats, setIsLoadingChats] = useState(false);
   const [errorChats, setErrorChats] = useState('');
+  const [vistaChats, setVistaChats] = useState('conversaciones'); // 'conversaciones' | 'contactos'
 
-  // Modal: Perfil y Solicitud (M08)
+  // Estado de la relación con cada alumno: hasta tener solicitudes y conversaciones
+  // del servidor no se muestra ningún botón (nunca "Agregar" a alguien que ya es contacto).
+  const [relacionesListas, setRelacionesListas] = useState({ solicitudes: false, chats: false });
+  const [errorRelaciones, setErrorRelaciones] = useState('');
+
+  // Perfil de otro alumno (M08)
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [motivoSolicitud, setMotivoSolicitud] = useState('');
   const [isSendingSolicitud, setIsSendingSolicitud] = useState(false);
   const [solicitudEnviadaSuccess, setSolicitudEnviadaSuccess] = useState(false);
   const [solicitudError, setSolicitudError] = useState('');
 
-  // Modal: Chat directo 1 a 1 en tiempo real (M10)
+  // Chat directo 1 a 1 en tiempo real (M10)
   const [activeChat, setActiveChat] = useState(null); // { conversacionId, otherUser }
+  const [errorChatAbrir, setErrorChatAbrir] = useState('');
 
-  // Modal: Reportar y Bloquear (M33)
+  // Menú ⋮ de una tarjeta, reportar y bloquear (M33)
+  const [menuPersona, setMenuPersona] = useState(null);
   const [targetUserOption, setTargetUserOption] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportMotivo, setReportMotivo] = useState('Acoso o mensaje no deseado');
@@ -77,6 +123,17 @@ export default function ExplorarView() {
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [isSubmittingBlock, setIsSubmittingBlock] = useState(false);
   const [blockError, setBlockError] = useState('');
+
+  // Botón atrás de Android
+  useAtras(Boolean(selectedStudent), () => setSelectedStudent(null));
+  useAtras(showReportModal, () => {
+    setShowReportModal(false);
+    setTargetUserOption(null);
+  });
+  useAtras(showBlockModal, () => {
+    setShowBlockModal(false);
+    setTargetUserOption(null);
+  });
 
   // Cargar perfiles reales (Supabase)
   const cargarPerfiles = useCallback(async () => {
@@ -104,8 +161,11 @@ export default function ExplorarView() {
       const { recibidas, enviadas } = await fetchSolicitudes();
       setSolicitudesRecibidas(recibidas);
       setSolicitudesEnviadas(enviadas);
+      setRelacionesListas((r) => ({ ...r, solicitudes: true }));
+      setErrorRelaciones('');
     } catch (err) {
       setErrorSolicitudes(err.message);
+      setErrorRelaciones(err.message);
     } finally {
       setIsLoadingSolicitudes(false);
     }
@@ -116,12 +176,20 @@ export default function ExplorarView() {
     setErrorChats('');
     try {
       setConversaciones(await fetchConversaciones());
+      setRelacionesListas((r) => ({ ...r, chats: true }));
+      setErrorRelaciones('');
     } catch (err) {
       setErrorChats(err.message);
+      setErrorRelaciones(err.message);
     } finally {
       setIsLoadingChats(false);
     }
   }, []);
+
+  const cargarRelaciones = useCallback(() => {
+    cargarSolicitudes({ silencioso: true });
+    cargarConversaciones({ silencioso: true });
+  }, [cargarSolicitudes, cargarConversaciones]);
 
   // Búsqueda con pequeña espera para no consultar en cada tecla
   useEffect(() => {
@@ -129,24 +197,20 @@ export default function ExplorarView() {
     return () => clearTimeout(t);
   }, [cargarPerfiles, user?.id]);
 
-  // Contadores de las pestañas desde el inicio
+  // Solicitudes y conversaciones desde el inicio: definen el botón de cada tarjeta
   useEffect(() => {
-    cargarSolicitudes({ silencioso: true });
-    cargarConversaciones({ silencioso: true });
-  }, [cargarSolicitudes, cargarConversaciones, user?.id]);
+    cargarRelaciones();
+  }, [cargarRelaciones, user?.id]);
 
   // Avisos en vivo (Supabase Realtime): solicitudes nuevas/aceptadas y mensajes nuevos
   useEffect(() => {
-    const unsubSol = subscribeToSolicitudes(() => {
-      cargarSolicitudes({ silencioso: true });
-      cargarConversaciones({ silencioso: true });
-    });
+    const unsubSol = subscribeToSolicitudes(cargarRelaciones);
     const unsubChats = subscribeToMisMensajes(() => cargarConversaciones({ silencioso: true }));
     return () => {
       unsubSol();
       unsubChats();
     };
-  }, [cargarSolicitudes, cargarConversaciones, user?.id]);
+  }, [cargarRelaciones, cargarConversaciones, user?.id]);
 
   useEffect(() => {
     if (activeSubTab === 'solicitudes') {
@@ -156,7 +220,36 @@ export default function ExplorarView() {
     }
   }, [activeSubTab, cargarSolicitudes, cargarConversaciones]);
 
-  // Enviar solicitud con motivo académico (Spec 6.4)
+  // Relación con cada alumno, calculada con lo que devolvió el servidor
+  const relaciones = useMemo(() => {
+    const mapa = new Map();
+    for (const s of solicitudesEnviadas) {
+      // Una solicitud no aceptada se sigue mostrando como enviada (el servidor no deja reenviarla)
+      mapa.set(s.a_id, s.estado === 'aceptada' ? { tipo: 'contacto' } : { tipo: 'enviada', solicitud: s });
+    }
+    for (const s of solicitudesRecibidas) {
+      if (s.estado === 'pendiente') mapa.set(s.de_id, { tipo: 'recibida', solicitud: s });
+      else if (s.estado === 'aceptada') mapa.set(s.de_id, { tipo: 'contacto' });
+    }
+    for (const c of conversaciones) {
+      if (c.otherUser?.id) mapa.set(c.otherUser.id, { tipo: 'contacto', conversacionId: c.id });
+    }
+    return mapa;
+  }, [solicitudesEnviadas, solicitudesRecibidas, conversaciones]);
+
+  const relacionesCargadas = relacionesListas.solicitudes && relacionesListas.chats;
+  const relacionCon = (id) => relaciones.get(id) || { tipo: 'ninguna' };
+
+  // Contactos ordenados por nombre (salen de las conversaciones)
+  const contactos = useMemo(
+    () =>
+      conversaciones
+        .map((c) => ({ ...c.otherUser, conversacionId: c.id }))
+        .sort((a, b) => `${a.nombre} ${a.apellido}`.localeCompare(`${b.nombre} ${b.apellido}`, 'es')),
+    [conversaciones]
+  );
+
+  // Enviar solicitud con motivo (el servidor valida duplicados, bloqueos y si ya son contactos)
   const handleEnviarSolicitud = async () => {
     if (!motivoSolicitud.trim() || !selectedStudent) return;
     setIsSendingSolicitud(true);
@@ -173,6 +266,7 @@ export default function ExplorarView() {
       }, 1300);
     } catch (err) {
       setSolicitudError(err.message);
+      cargarRelaciones(); // por si el estado cambió en otro celular
     } finally {
       setIsSendingSolicitud(false);
     }
@@ -198,20 +292,36 @@ export default function ExplorarView() {
     }
   };
 
-  // Abrir chat directo con un estudiante ya conectado
-  const handleAbrirChatConEstudiante = async (estudiante) => {
-    if (!estudiante?.id) return;
-    setErrorSolicitudes('');
+  // Abrir el chat con un contacto
+  const abrirChat = async (persona, conversacionId = null) => {
+    if (!persona?.id) return;
+    setErrorChatAbrir('');
     try {
-      const conversacionId = await conversacionCon(estudiante.id);
-      if (conversacionId) {
-        setActiveChat({ conversacionId, otherUser: estudiante });
+      const id = conversacionId || relacionCon(persona.id).conversacionId || (await conversacionCon(persona.id));
+      if (id) {
+        setSelectedStudent(null);
+        setActiveChat({ conversacionId: id, otherUser: persona });
       } else {
-        setErrorSolicitudes('Aún no hay un chat abierto con este estudiante.');
+        setErrorChatAbrir('Todavía no tienen un chat abierto.');
       }
     } catch (err) {
-      setErrorSolicitudes(err.message);
+      setErrorChatAbrir(err.message);
     }
+  };
+
+  // "Responder": lleva a la solicitud recibida
+  const irASolicitud = (solicitud) => {
+    setSelectedStudent(null);
+    setTipoSolTab('recibidas');
+    setSolicitudResaltada(solicitud?.id || null);
+    setActiveSubTab('solicitudes');
+  };
+
+  const abrirPerfil = (est) => {
+    setSelectedStudent(est);
+    setMotivoSolicitud('');
+    setSolicitudError('');
+    setSolicitudEnviadaSuccess(false);
   };
 
   // Confirmar reporte
@@ -250,8 +360,7 @@ export default function ExplorarView() {
       setTargetUserOption(null);
       setSelectedStudent(null);
       cargarPerfiles();
-      cargarSolicitudes({ silencioso: true });
-      cargarConversaciones({ silencioso: true });
+      cargarRelaciones();
     } catch (err) {
       setBlockError(err.message);
     } finally {
@@ -259,12 +368,82 @@ export default function ExplorarView() {
     }
   };
 
-  const totalPendientesRecibidas = solicitudesRecibidas.filter(s => s.estado === 'pendiente').length;
+  const pedirReporte = (persona) => {
+    setMenuPersona(null);
+    setTargetUserOption(persona);
+    setReportError('');
+    setShowReportModal(true);
+  };
+
+  const pedirBloqueo = (persona) => {
+    setMenuPersona(null);
+    setTargetUserOption(persona);
+    setBlockError('');
+    setShowBlockModal(true);
+  };
+
+  const totalPendientesRecibidas = solicitudesRecibidas.filter((s) => s.estado === 'pendiente').length;
   const totalMensajesNoLeidos = conversaciones.reduce((acc, c) => acc + (c.noLeidos || 0), 0);
+  const filtrosActivos = [
+    filtroCarrera && { id: 'carrera', texto: filtroCarrera, quitar: () => setFiltroCarrera('') },
+    filtroCiclo && { id: 'ciclo', texto: `${filtroCiclo}.° ciclo`, quitar: () => setFiltroCiclo('') },
+    filtroInteres && { id: 'interes', texto: filtroInteres, quitar: () => setFiltroInteres('') }
+  ].filter(Boolean);
+  const quitarFiltros = () => {
+    setSearchTerm('');
+    setFiltroCarrera('');
+    setFiltroCiclo('');
+    setFiltroInteres('');
+  };
+
+  // Botón principal de una tarjeta o del perfil, según la relación real
+  const botonRelacion = (persona, { ancho = false } = {}) => {
+    const base = `px-3.5 py-2 text-xs font-extrabold rounded-xl transition flex items-center justify-center space-x-1.5 shrink-0 ${ancho ? 'w-full' : ''}`;
+    if (!relacionesCargadas) {
+      return (
+        <span className={`${base} bg-slate-100 dark:bg-slate-800 text-ink-muted`} aria-label="Cargando">
+          <Loader2 size={13} className="animate-spin" />
+        </span>
+      );
+    }
+    const rel = relacionCon(persona.id);
+    if (rel.tipo === 'contacto') {
+      return (
+        <button onClick={() => abrirChat(persona, rel.conversacionId)} className={`${base} bg-accent hover:bg-accent-hover text-white shadow-sm active:scale-95`}>
+          <MessageCircle size={13} />
+          <span>{CONTACTO.chatear}</span>
+        </button>
+      );
+    }
+    if (rel.tipo === 'enviada') {
+      return (
+        <button disabled className={`${base} bg-slate-100 dark:bg-slate-800 text-ink-muted cursor-default`}>
+          <Clock size={13} />
+          <span>{CONTACTO.solicitudEnviada}</span>
+        </button>
+      );
+    }
+    if (rel.tipo === 'recibida') {
+      return (
+        <button onClick={() => irASolicitud(rel.solicitud)} className={`${base} bg-amber-500 hover:bg-amber-600 text-white shadow-sm active:scale-95`}>
+          <Inbox size={13} />
+          <span>{CONTACTO.responder}</span>
+        </button>
+      );
+    }
+    return (
+      <button onClick={() => abrirPerfil(persona)} className={`${base} bg-brand-primary hover:bg-brand-primaryHover text-white shadow-sm active:scale-95`}>
+        <UserPlus size={13} />
+        <span>{CONTACTO.agregar}</span>
+      </button>
+    );
+  };
+
+  const relSeleccionado = selectedStudent && relacionesCargadas ? relacionCon(selectedStudent.id) : null;
 
   return (
-    <div className="flex-1 p-4 pb-24 space-y-4 overflow-y-auto animate-fadeIn select-none bg-surface dark:bg-surface-dark">
-      {/* 3 Sub-pestañas: Explorar Compañeros · Solicitudes · Mensajes */}
+    <div className="flex-1 p-4 pb-6 space-y-4 overflow-y-auto animate-fadeIn select-none bg-surface dark:bg-surface-dark">
+      {/* 3 sub-pestañas: Explorar · Solicitudes · Chats */}
       <div className="flex bg-white dark:bg-surface-cardDark p-1.5 rounded-2xl border border-line dark:border-line-dark shadow-sm">
         <button
           onClick={() => setActiveSubTab('personas')}
@@ -301,7 +480,7 @@ export default function ExplorarView() {
               : 'text-ink-muted hover:text-ink dark:hover:text-ink-light'
           }`}
         >
-          <span>Chats 1 a 1</span>
+          <span>Chats</span>
           {totalMensajesNoLeidos > 0 && (
             <span className="w-4 h-4 bg-emerald-500 text-white text-[10px] rounded-full flex items-center justify-center font-black">
               {totalMensajesNoLeidos}
@@ -309,6 +488,8 @@ export default function ExplorarView() {
           )}
         </button>
       </div>
+
+      {errorChatAbrir && <ErrorConReintento compacto mensaje={errorChatAbrir} />}
 
       {/* --- SUBTAB 1: EXPLORAR COMPAÑEROS (M07) --- */}
       {activeSubTab === 'personas' && (
@@ -325,63 +506,52 @@ export default function ExplorarView() {
             <Search className="absolute left-3.5 top-3 text-ink-muted" size={16} />
           </div>
 
-          {/* Filtros rápidos */}
-          <div className="flex space-x-2 overflow-x-auto pb-1 text-xs">
-            <select
-              value={filtroCarrera}
-              onChange={(e) => setFiltroCarrera(e.target.value)}
-              className="px-3 py-2 bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark rounded-xl text-ink dark:text-ink-light text-xs font-bold shadow-sm"
+          {/* Filtros: un botón que abre el panel y los activos como chips (scroll sin barra) */}
+          <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar -mx-4 px-4">
+            <button
+              onClick={() => setShowFiltros(true)}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold border flex items-center space-x-1.5 shrink-0 shadow-sm transition ${
+                filtrosActivos.length
+                  ? 'bg-brand-primary text-white border-brand-primary'
+                  : 'bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light border-line dark:border-line-dark'
+              }`}
             >
-              <option value="">Todas las carreras</option>
-              {CARRERAS_UTP.map(c => (
-                <option key={c.id} value={c.nombre}>{c.nombre}</option>
-              ))}
-            </select>
-
-            <select
-              value={filtroCiclo}
-              onChange={(e) => setFiltroCiclo(e.target.value)}
-              className="px-3 py-2 bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark rounded-xl text-ink dark:text-ink-light text-xs font-bold shadow-sm"
-            >
-              <option value="">Ciclo</option>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(c => (
-                <option key={c} value={c}>{c}.° Ciclo</option>
-              ))}
-            </select>
-
-            <select
-              value={filtroInteres}
-              onChange={(e) => setFiltroInteres(e.target.value)}
-              className="px-3 py-2 bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark rounded-xl text-ink dark:text-ink-light text-xs font-bold shadow-sm"
-            >
-              <option value="">Interés afín</option>
-              {INTERESES_DISPONIBLES.map(i => (
-                <option key={i} value={i}>{i}</option>
-              ))}
-            </select>
+              <SlidersHorizontal size={13} />
+              <span>Filtros{filtrosActivos.length ? ` (${filtrosActivos.length})` : ''}</span>
+            </button>
+            {filtrosActivos.map((f) => (
+              <button
+                key={f.id}
+                onClick={f.quitar}
+                className="px-3 py-1.5 rounded-full text-xs font-bold bg-brand-primary-soft dark:bg-brand-dark text-brand-primary dark:text-teal-300 border border-brand-primary/20 flex items-center space-x-1 shrink-0"
+                aria-label={`Quitar filtro ${f.texto}`}
+              >
+                <span className="whitespace-nowrap">{f.texto}</span>
+                <X size={12} />
+              </button>
+            ))}
           </div>
+
+          {errorRelaciones && !relacionesCargadas && (
+            <ErrorConReintento compacto mensaje={errorRelaciones} onReintentar={cargarRelaciones} />
+          )}
 
           {/* Lista de estudiantes */}
           {isLoadingPerfiles ? (
             <div className="flex flex-col items-center justify-center py-12 text-ink-muted space-y-2">
               <Loader2 size={24} className="animate-spin text-accent" />
-              <p className="text-xs font-medium">Buscando compañeros en sede...</p>
+              <p className="text-xs font-medium">Buscando compañeros...</p>
             </div>
           ) : errorPerfiles ? (
             <ErrorConReintento mensaje={errorPerfiles} onReintentar={cargarPerfiles} />
           ) : perfiles.length === 0 ? (
             <div className="text-center py-10 px-4 bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark space-y-2">
-              {searchTerm || filtroCarrera || filtroCiclo || filtroInteres ? (
+              {searchTerm || filtrosActivos.length ? (
                 <>
                   <p className="text-sm font-bold text-ink dark:text-ink-light">No encontramos compañeros con estos filtros</p>
-                  <p className="text-xs text-ink-muted">Prueba cambiando la carrera o el ciclo seleccionado.</p>
+                  <p className="text-xs text-ink-muted">Prueba con otra carrera o ciclo.</p>
                   <button
-                    onClick={() => {
-                      setSearchTerm('');
-                      setFiltroCarrera('');
-                      setFiltroCiclo('');
-                      setFiltroInteres('');
-                    }}
+                    onClick={quitarFiltros}
                     className="mt-1 px-4 py-2 bg-brand-primary text-white text-xs font-extrabold rounded-xl shadow-sm"
                   >
                     Quitar filtros
@@ -401,97 +571,53 @@ export default function ExplorarView() {
               {perfiles.map((est) => {
                 const userIntereses = user?.intereses || [];
                 const estIntereses = est.intereses || [];
-                const interesComun =
-                  estIntereses.find(i => userIntereses.includes(i)) ||
-                  estIntereses[0] ||
-                  'Compañero UTP';
-
+                const interesComun = estIntereses.find((i) => userIntereses.includes(i)) || estIntereses[0] || null;
                 const nombreEst = `${est.nombre} ${est.apellido || ''}`.trim();
+                const esContacto = relacionesCargadas && relacionCon(est.id).tipo === 'contacto';
 
                 return (
                   <div
                     key={est.id}
-                    className="k-card p-4 space-y-3 border-2 border-line/90 dark:border-line-dark rounded-2xl shadow-sm hover:border-brand-primary/60 transition group bg-white dark:bg-surface-cardDark"
+                    className="k-card p-4 space-y-3 border-2 border-line/90 dark:border-line-dark rounded-2xl shadow-sm bg-white dark:bg-surface-cardDark"
                   >
-                    {/* Top Row: Avatar circular 48px + Datos */}
-                    <div className="flex items-start space-x-3.5">
-                      <div className="relative shrink-0">
-                        {est.foto_url ? (
-                          <img
-                            src={est.foto_url}
-                            alt={nombreEst}
-                            className="w-14 h-14 rounded-2xl object-cover border border-line dark:border-line-dark shadow-sm group-hover:scale-105 transition duration-200"
-                          />
-                        ) : (
-                          <div className="w-14 h-14 rounded-2xl bg-brand-primary text-white font-black text-base flex items-center justify-center shadow-sm">
-                            {(est.nombre?.[0] || 'U').toUpperCase()}
-                          </div>
-                        )}
-                        <div
-                          className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-surface-cardDark shadow-sm"
-                          title="Estudiante de campus verificado"
-                        />
-                      </div>
+                    <div className="flex items-start space-x-3">
+                      <button onClick={() => abrirPerfil(est)} className="shrink-0" aria-label={`Ver perfil de ${nombreEst}`}>
+                        <Avatar persona={est} />
+                      </button>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <div className="flex items-center space-x-1.5 truncate">
-                            <h3 className="text-sm font-black text-ink dark:text-ink-light truncate group-hover:text-brand-primary transition">
-                              {nombreEst}
-                            </h3>
-                            {est.usuario && (
-                              <span className="text-[11px] font-bold text-accent truncate">
-                                @{est.usuario}
-                              </span>
-                            )}
-                          </div>
-                          {est.rol && (
-                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full shrink-0 bg-slate-100 dark:bg-slate-800 text-ink-muted">
-                              {est.rol}
-                            </span>
-                          )}
+                      <button onClick={() => abrirPerfil(est)} className="flex-1 min-w-0 text-left">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <h3 className="text-sm font-black text-ink dark:text-ink-light truncate">{nombreEst}</h3>
+                          {esContacto && <MarcaContacto />}
                         </div>
-
-                        <p className="text-xs font-bold text-brand-primary dark:text-teal-300 truncate">
-                          {est.carrera} · {est.ciclo}.° Ciclo
-                        </p>
-
+                        {est.usuario && <p className="text-[11px] font-bold text-accent truncate">@{est.usuario}</p>}
+                        <p className="text-xs font-bold text-brand-primary dark:text-teal-300 truncate mt-0.5">{lineaCarrera(est)}</p>
                         <p className="text-[11px] text-ink-muted truncate font-medium mt-0.5">
-                          Sede {est.sede || 'Lima Sur'} {est.bio ? `· ${est.bio}` : ''}
+                          {est.sede ? `Sede ${est.sede}` : ''}
+                          {est.bio ? ` · ${est.bio}` : ''}
                         </p>
-                      </div>
+                      </button>
+
+                      <button
+                        onClick={() => setMenuPersona(est)}
+                        className="p-1.5 -mr-1.5 -mt-1 text-ink-muted hover:text-ink dark:hover:text-ink-light rounded-lg shrink-0"
+                        aria-label="Más opciones"
+                        title="Más opciones"
+                      >
+                        <MoreVertical size={18} />
+                      </button>
                     </div>
 
-                    {/* Bottom Row: Interés común + Botón Conectar */}
-                    <div className="flex items-center justify-between pt-2.5 border-t border-line/80 dark:border-line-dark">
-                      <div className="flex items-center space-x-1.5 text-xs font-bold text-accent dark:text-teal-200 bg-accent-soft/70 dark:bg-accent-dark/40 px-3 py-1 rounded-full border border-accent/20 truncate max-w-[58%] shadow-xs">
-                        <Sparkles size={12} className="shrink-0 text-accent" />
-                        <span className="truncate">{interesComun}</span>
-                      </div>
-
-                      <div className="flex items-center space-x-1.5">
-                        <button
-                          onClick={() => {
-                            setTargetUserOption(est);
-                            setShowReportModal(true);
-                          }}
-                          className="p-1.5 text-ink-muted hover:text-semantic-danger rounded-lg transition"
-                          title="Reportar estudiante"
-                        >
-                          <ShieldAlert size={14} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedStudent(est);
-                            setMotivoSolicitud('');
-                            setSolicitudError('');
-                          }}
-                          className="px-3.5 py-1.5 bg-brand-primary hover:bg-brand-primaryHover active:scale-95 text-white text-xs font-extrabold rounded-xl shadow-sm transition flex items-center space-x-1.5 shrink-0"
-                        >
-                          <UserPlus size={13} />
-                          <span>Conectar</span>
-                        </button>
-                      </div>
+                    <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-line/80 dark:border-line-dark">
+                      {interesComun ? (
+                        <div className="flex items-center space-x-1.5 text-xs font-bold text-accent dark:text-teal-200 bg-accent-soft/70 dark:bg-accent-dark/40 px-3 py-1 rounded-full border border-accent/20 min-w-0">
+                          <Sparkles size={12} className="shrink-0 text-accent" />
+                          <span className="truncate">{interesComun}</span>
+                        </div>
+                      ) : (
+                        <span />
+                      )}
+                      {botonRelacion(est)}
                     </div>
                   </div>
                 );
@@ -508,9 +634,7 @@ export default function ExplorarView() {
             <button
               onClick={() => setTipoSolTab('recibidas')}
               className={`flex-1 py-1.5 rounded-lg transition flex items-center justify-center space-x-1 ${
-                tipoSolTab === 'recibidas'
-                  ? 'bg-white dark:bg-surface-dark text-ink dark:text-ink-light shadow-xs'
-                  : 'text-ink-muted'
+                tipoSolTab === 'recibidas' ? 'bg-white dark:bg-surface-dark text-ink dark:text-ink-light shadow-xs' : 'text-ink-muted'
               }`}
             >
               <span>Recibidas</span>
@@ -523,9 +647,7 @@ export default function ExplorarView() {
             <button
               onClick={() => setTipoSolTab('enviadas')}
               className={`flex-1 py-1.5 rounded-lg transition ${
-                tipoSolTab === 'enviadas'
-                  ? 'bg-white dark:bg-surface-dark text-ink dark:text-ink-light shadow-xs'
-                  : 'text-ink-muted'
+                tipoSolTab === 'enviadas' ? 'bg-white dark:bg-surface-dark text-ink dark:text-ink-light shadow-xs' : 'text-ink-muted'
               }`}
             >
               Enviadas ({solicitudesEnviadas.length})
@@ -544,35 +666,23 @@ export default function ExplorarView() {
           ) : tipoSolTab === 'recibidas' ? (
             solicitudesRecibidas.length === 0 ? (
               <div className="text-center py-10 bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark p-6">
-                <p className="text-xs text-ink-muted font-medium">No tienes solicitudes de conexión recibidas.</p>
+                <p className="text-xs text-ink-muted font-medium">{CONTACTO.sinSolicitudesRecibidas}</p>
               </div>
             ) : (
               solicitudesRecibidas.map((sol) => (
                 <div
                   key={sol.id}
-                  className="k-card p-4 space-y-2.5 border-2 border-line/80 dark:border-line-dark rounded-2xl shadow-sm bg-white dark:bg-surface-cardDark"
+                  className={`k-card p-4 space-y-2.5 border-2 rounded-2xl shadow-sm bg-white dark:bg-surface-cardDark ${
+                    solicitudResaltada === sol.id ? 'border-amber-400 dark:border-amber-500' : 'border-line/80 dark:border-line-dark'
+                  }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      {sol.otroUsuario?.foto_url ? (
-                        <img
-                          src={sol.otroUsuario.foto_url}
-                          alt={sol.otroUsuario.nombre}
-                          className="w-11 h-11 rounded-xl object-cover border border-line shadow-sm shrink-0"
-                        />
-                      ) : (
-                        <div className="w-11 h-11 rounded-xl bg-brand-primary text-white font-bold text-xs flex items-center justify-center shrink-0">
-                          {(sol.otroUsuario?.nombre?.[0] || 'U').toUpperCase()}
-                        </div>
-                      )}
-                      <div>
-                        <h4 className="text-xs font-black text-ink dark:text-ink-light">
-                          {sol.otroUsuario?.nombre} {sol.otroUsuario?.apellido}
-                        </h4>
-                        <p className="text-[11px] text-ink-muted font-medium">
-                          {sol.otroUsuario?.carrera} · Ciclo {sol.otroUsuario?.ciclo}
-                        </p>
-                      </div>
+                  <div className="flex items-center space-x-3">
+                    <Avatar persona={sol.otroUsuario} tam="w-11 h-11" texto="text-xs" />
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-black text-ink dark:text-ink-light truncate">
+                        {sol.otroUsuario?.nombre} {sol.otroUsuario?.apellido}
+                      </h4>
+                      <p className="text-[11px] text-ink-muted font-medium truncate">{lineaCarrera(sol.otroUsuario)}</p>
                     </div>
                   </div>
 
@@ -587,7 +697,7 @@ export default function ExplorarView() {
                         disabled={respondiendoId === sol.id}
                         className="px-3 py-1.5 text-xs font-bold text-ink-muted hover:text-ink disabled:opacity-50"
                       >
-                        Ignorar
+                        {CONTACTO.ignorar}
                       </button>
                       <button
                         onClick={() => handleResponderSolicitud(sol, 'aceptada')}
@@ -595,7 +705,7 @@ export default function ExplorarView() {
                         className="px-4 py-2 bg-accent hover:bg-accent-hover disabled:opacity-60 text-white text-xs font-black rounded-xl shadow-sm transition flex items-center space-x-1"
                       >
                         {respondiendoId === sol.id && <Loader2 size={13} className="animate-spin" />}
-                        <span>Aceptar Conexión</span>
+                        <span>{CONTACTO.aceptar}</span>
                       </button>
                     </div>
                   ) : sol.estado === 'rechazada' ? (
@@ -604,130 +714,142 @@ export default function ExplorarView() {
                     <div className="pt-1.5 flex items-center justify-between text-xs">
                       <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center space-x-1">
                         <Check size={14} />
-                        <span>Conexión aceptada en campus</span>
+                        <span>{CONTACTO.yaSonContactos}</span>
                       </span>
                       <button
-                        onClick={() => handleAbrirChatConEstudiante(sol.otroUsuario)}
+                        onClick={() => abrirChat(sol.otroUsuario)}
                         className="px-3.5 py-1.5 bg-brand-primary text-white text-xs font-bold rounded-xl flex items-center space-x-1 shadow-sm"
                       >
                         <MessageCircle size={14} />
-                        <span>Abrir Chat</span>
+                        <span>{CONTACTO.chatear}</span>
                       </button>
                     </div>
                   )}
                 </div>
               ))
             )
+          ) : solicitudesEnviadas.length === 0 ? (
+            <div className="text-center py-10 bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark p-6">
+              <p className="text-xs text-ink-muted font-medium">No has enviado ninguna solicitud.</p>
+            </div>
           ) : (
-            /* Solicitudes enviadas */
-            solicitudesEnviadas.length === 0 ? (
-              <div className="text-center py-10 bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark p-6">
-                <p className="text-xs text-ink-muted font-medium">No has enviado ninguna solicitud aún.</p>
-              </div>
-            ) : (
-              solicitudesEnviadas.map((sol) => (
-                <div
-                  key={sol.id}
-                  className="k-card p-4 space-y-2 border border-line dark:border-line-dark rounded-2xl shadow-sm bg-white dark:bg-surface-cardDark"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      {sol.otroUsuario?.foto_url ? (
-                        <img
-                          src={sol.otroUsuario.foto_url}
-                          alt={sol.otroUsuario.nombre}
-                          className="w-10 h-10 rounded-xl object-cover border border-line shrink-0"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-700 font-bold text-xs flex items-center justify-center shrink-0">
-                          {(sol.otroUsuario?.nombre?.[0] || 'U').toUpperCase()}
-                        </div>
-                      )}
-                      <div>
-                        <h4 className="text-xs font-black text-ink dark:text-ink-light">
-                          {sol.otroUsuario?.nombre} {sol.otroUsuario?.apellido}
-                        </h4>
-                        <p className="text-[11px] text-ink-muted">
-                          {sol.otroUsuario?.carrera} · Ciclo {sol.otroUsuario?.ciclo}
-                        </p>
-                      </div>
+            solicitudesEnviadas.map((sol) => (
+              <div
+                key={sol.id}
+                className="k-card p-4 space-y-2 border border-line dark:border-line-dark rounded-2xl shadow-sm bg-white dark:bg-surface-cardDark"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <Avatar persona={sol.otroUsuario} tam="w-10 h-10" texto="text-xs" />
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-black text-ink dark:text-ink-light truncate">
+                        {sol.otroUsuario?.nombre} {sol.otroUsuario?.apellido}
+                      </h4>
+                      <p className="text-[11px] text-ink-muted truncate">{lineaCarrera(sol.otroUsuario)}</p>
                     </div>
-
-                    <span
-                      className={`text-[10px] font-black px-2.5 py-1 rounded-full ${
-                        sol.estado === 'aceptada'
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                          : sol.estado === 'rechazada'
-                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
-                          : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
-                      }`}
-                    >
-                      {sol.estado === 'aceptada'
-                        ? 'Aceptada'
-                        : sol.estado === 'rechazada'
-                        ? 'Ignorada'
-                        : 'Pendiente'}
-                    </span>
                   </div>
 
-                  <p className="text-xs text-ink-muted italic bg-surface dark:bg-surface-dark p-2.5 rounded-xl">
-                    "{sol.motivo}"
-                  </p>
-
-                  {sol.estado === 'aceptada' && (
-                    <div className="flex justify-end pt-1">
-                      <button
-                        onClick={() => handleAbrirChatConEstudiante(sol.otroUsuario)}
-                        className="px-3 py-1.5 bg-brand-primary text-white text-xs font-bold rounded-xl flex items-center space-x-1"
-                      >
-                        <MessageCircle size={13} />
-                        <span>Chatear</span>
-                      </button>
-                    </div>
-                  )}
+                  <span
+                    className={`text-[10px] font-black px-2.5 py-1 rounded-full shrink-0 ${
+                      sol.estado === 'aceptada'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                        : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                    }`}
+                  >
+                    {sol.estado === 'aceptada' ? CONTACTO.marca : 'Pendiente'}
+                  </span>
                 </div>
-              ))
-            )
+
+                <p className="text-xs text-ink-muted italic bg-surface dark:bg-surface-dark p-2.5 rounded-xl">"{sol.motivo}"</p>
+
+                {sol.estado === 'aceptada' && (
+                  <div className="flex justify-end pt-1">
+                    <button
+                      onClick={() => abrirChat(sol.otroUsuario)}
+                      className="px-3 py-1.5 bg-brand-primary text-white text-xs font-bold rounded-xl flex items-center space-x-1"
+                    >
+                      <MessageCircle size={13} />
+                      <span>{CONTACTO.chatear}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
           )}
         </div>
       )}
 
-      {/* --- SUBTAB 3: CHATS DIRECTOS 1 A 1 (M10) --- */}
+      {/* --- SUBTAB 3: CHATS Y MIS CONTACTOS (M10) --- */}
       {activeSubTab === 'chats' && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between pb-1">
-            <h3 className="text-xs font-black text-ink dark:text-ink-light uppercase tracking-wider">
-              Conversaciones Privadas
-            </h3>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex bg-slate-100 dark:bg-surface-cardDark p-1 rounded-xl text-xs font-bold flex-1">
+              <button
+                onClick={() => setVistaChats('conversaciones')}
+                className={`flex-1 py-1.5 rounded-lg transition ${
+                  vistaChats === 'conversaciones' ? 'bg-white dark:bg-surface-dark text-ink dark:text-ink-light shadow-xs' : 'text-ink-muted'
+                }`}
+              >
+                Conversaciones
+              </button>
+              <button
+                onClick={() => setVistaChats('contactos')}
+                className={`flex-1 py-1.5 rounded-lg transition ${
+                  vistaChats === 'contactos' ? 'bg-white dark:bg-surface-dark text-ink dark:text-ink-light shadow-xs' : 'text-ink-muted'
+                }`}
+              >
+                {CONTACTO.misContactos} ({contactos.length})
+              </button>
+            </div>
             <button
               onClick={() => cargarConversaciones()}
-              className="text-xs text-brand-primary flex items-center space-x-1 font-bold"
+              className="p-2 text-brand-primary dark:text-accent rounded-lg"
+              aria-label="Actualizar"
+              title="Actualizar"
             >
-              <RefreshCw size={12} className={isLoadingChats ? 'animate-spin' : ''} />
-              <span>Actualizar</span>
+              <RefreshCw size={14} className={isLoadingChats ? 'animate-spin' : ''} />
             </button>
           </div>
 
           {isLoadingChats ? (
             <div className="flex flex-col items-center justify-center py-12 text-ink-muted space-y-2">
               <Loader2 size={24} className="animate-spin text-accent" />
-              <p className="text-xs font-semibold">Cargando tus conversaciones...</p>
+              <p className="text-xs font-semibold">Cargando tus chats...</p>
             </div>
           ) : errorChats ? (
             <ErrorConReintento mensaje={errorChats} onReintentar={() => cargarConversaciones()} />
           ) : conversaciones.length === 0 ? (
             <div className="text-center py-12 bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark p-6 space-y-2">
               <MessageSquare size={32} className="mx-auto text-ink-muted/50" />
-              <h4 className="text-sm font-black text-ink dark:text-ink-light">Aún no tienes chats directos</h4>
-              <p className="text-xs text-ink-muted max-w-xs mx-auto">
-                Explora compañeros y envía una solicitud con motivo académico. Al ser aceptada, el chat aparecerá aquí.
-              </p>
+              <h4 className="text-sm font-black text-ink dark:text-ink-light">{CONTACTO.sinContactos}</h4>
+              <p className="text-xs text-ink-muted max-w-xs mx-auto">{CONTACTO.sinContactosDetalle}</p>
               <button
                 onClick={() => setActiveSubTab('personas')}
                 className="mt-2 px-4 py-2 bg-brand-primary text-white text-xs font-extrabold rounded-xl shadow-sm"
               >
                 Explorar compañeros
               </button>
+            </div>
+          ) : vistaChats === 'contactos' ? (
+            <div className="k-card bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark rounded-2xl divide-y divide-line/70 dark:divide-line-dark">
+              {contactos.map((c) => (
+                <div key={c.id} className="flex items-center space-x-3 p-3">
+                  <Avatar persona={c} tam="w-11 h-11" texto="text-sm" />
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-xs font-black text-ink dark:text-ink-light truncate">
+                      {c.nombre} {c.apellido}
+                    </h4>
+                    <p className="text-[11px] text-ink-muted truncate">{lineaCarrera(c)}</p>
+                  </div>
+                  <button
+                    onClick={() => abrirChat(c, c.conversacionId)}
+                    className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white text-xs font-bold rounded-xl flex items-center space-x-1 shrink-0"
+                  >
+                    <MessageCircle size={13} />
+                    <span>{CONTACTO.chatear}</span>
+                  </button>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="space-y-2">
@@ -736,32 +858,17 @@ export default function ExplorarView() {
                 const nombreOther = `${other?.nombre || 'Compañero'} ${other?.apellido || ''}`.trim();
 
                 return (
-                  <div
+                  <button
                     key={conv.id}
                     onClick={() => setActiveChat({ conversacionId: conv.id, otherUser: other })}
-                    className="k-card p-3.5 flex items-center space-x-3.5 border border-line dark:border-line-dark rounded-2xl hover:border-brand-primary/60 cursor-pointer transition bg-white dark:bg-surface-cardDark shadow-xs"
+                    className="k-card w-full text-left p-3.5 flex items-center space-x-3 border border-line dark:border-line-dark rounded-2xl hover:border-brand-primary/60 transition bg-white dark:bg-surface-cardDark shadow-xs"
                   >
-                    <div className="relative shrink-0">
-                      {other?.foto_url ? (
-                        <img
-                          src={other.foto_url}
-                          alt={nombreOther}
-                          className="w-12 h-12 rounded-2xl object-cover border border-line dark:border-line-dark"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-2xl bg-brand-primary text-white font-black text-sm flex items-center justify-center">
-                          {(other?.nombre?.[0] || 'C').toUpperCase()}
-                        </div>
-                      )}
-                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-surface-cardDark" />
-                    </div>
+                    <Avatar persona={other} tam="w-12 h-12" texto="text-sm" />
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <h4 className="text-xs font-black text-ink dark:text-ink-light truncate">
-                          {nombreOther}
-                        </h4>
-                        <span className="text-[10px] text-ink-muted">
+                      <div className="flex items-center justify-between mb-0.5 gap-2">
+                        <h4 className="text-xs font-black text-ink dark:text-ink-light truncate">{nombreOther}</h4>
+                        <span className="text-[10px] text-ink-muted shrink-0">
                           {conv.ultimoMensajeHora
                             ? new Date(conv.ultimoMensajeHora).toLocaleTimeString([], {
                                 hour: '2-digit',
@@ -771,13 +878,9 @@ export default function ExplorarView() {
                         </span>
                       </div>
 
-                      <p className="text-[11px] text-brand-primary font-semibold truncate">
-                        {other?.carrera} · {other?.ciclo}.° Ciclo
-                      </p>
+                      <p className="text-[11px] text-brand-primary dark:text-teal-300 font-semibold truncate">{lineaCarrera(other)}</p>
 
-                      <p className="text-xs text-ink-muted truncate font-medium mt-0.5">
-                        {conv.ultimoMensaje}
-                      </p>
+                      <p className="text-xs text-ink-muted truncate font-medium mt-0.5">{conv.ultimoMensaje}</p>
                     </div>
 
                     {conv.noLeidos > 0 && (
@@ -785,7 +888,7 @@ export default function ExplorarView() {
                         {conv.noLeidos}
                       </span>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -793,44 +896,96 @@ export default function ExplorarView() {
         </div>
       )}
 
-      {/* --- MODAL: PERFIL DE OTRO ALUMNO Y ENVIAR SOLICITUD (M08) --- */}
-      {selectedStudent && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 animate-fadeIn">
-            <div className="flex items-center justify-between pb-2 border-b border-line dark:border-line-dark">
-              <span className="text-xs font-black uppercase text-ink dark:text-ink-light tracking-wider">
-                Perfil de Compañero
-              </span>
-              <button
-                onClick={() => setSelectedStudent(null)}
-                className="p-1 text-ink-muted hover:text-ink"
+      {/* --- PANEL: FILTROS --- */}
+      <PanelInferior abierto={showFiltros} onCerrar={() => setShowFiltros(false)} titulo="Filtros">
+        <div className="space-y-3">
+          {[
+            {
+              etiqueta: 'Carrera',
+              valor: filtroCarrera,
+              cambiar: setFiltroCarrera,
+              opciones: [{ v: '', t: 'Todas las carreras' }, ...CARRERAS_UTP.map((c) => ({ v: c.nombre, t: c.nombre }))]
+            },
+            {
+              etiqueta: 'Ciclo',
+              valor: filtroCiclo,
+              cambiar: setFiltroCiclo,
+              opciones: [{ v: '', t: 'Todos los ciclos' }, ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((c) => ({ v: String(c), t: `${c}.° ciclo` }))]
+            },
+            {
+              etiqueta: 'Interés',
+              valor: filtroInteres,
+              cambiar: setFiltroInteres,
+              opciones: [{ v: '', t: 'Todos los intereses' }, ...INTERESES_DISPONIBLES.map((i) => ({ v: i, t: i }))]
+            }
+          ].map((f) => (
+            <label key={f.etiqueta} className="block">
+              <span className="text-xs font-black text-ink dark:text-ink-light mb-1 block">{f.etiqueta}</span>
+              <select
+                value={f.valor}
+                onChange={(e) => f.cambiar(e.target.value)}
+                className="w-full px-3 py-2.5 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-sm font-semibold text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary"
               >
-                <X size={18} />
-              </button>
+                {f.opciones.map((o) => (
+                  <option key={o.v} value={o.v}>
+                    {o.t}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+          <div className="flex items-center space-x-2 pt-1">
+            <button
+              onClick={() => {
+                setFiltroCarrera('');
+                setFiltroCiclo('');
+                setFiltroInteres('');
+              }}
+              className="flex-1 py-2.5 text-xs font-bold text-ink-muted bg-slate-100 dark:bg-slate-800 rounded-xl"
+            >
+              Quitar filtros
+            </button>
+            <button onClick={() => setShowFiltros(false)} className="flex-1 py-2.5 text-xs font-extrabold text-white bg-brand-primary rounded-xl">
+              Ver resultados
+            </button>
+          </div>
+        </div>
+      </PanelInferior>
+
+      {/* --- MODAL: PERFIL DE OTRO ALUMNO (M08) --- */}
+      {selectedStudent && (
+        <div className="fixed inset-0 !m-0 bg-black/60 z-50 flex items-center justify-center px-4 safe-overlay" onClick={() => setSelectedStudent(null)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm max-h-full overflow-y-auto bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 animate-fadeIn"
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-line dark:border-line-dark">
+              <span className="text-xs font-black uppercase text-ink dark:text-ink-light tracking-wider">Perfil</span>
+              <div className="flex items-center">
+                <button
+                  onClick={() => setMenuPersona(selectedStudent)}
+                  className="p-1 text-ink-muted hover:text-ink dark:hover:text-ink-light"
+                  aria-label="Más opciones"
+                >
+                  <MoreVertical size={18} />
+                </button>
+                <button onClick={() => setSelectedStudent(null)} className="p-1 text-ink-muted hover:text-ink" aria-label="Cerrar">
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center space-x-3.5">
-              {selectedStudent.foto_url ? (
-                <img
-                  src={selectedStudent.foto_url}
-                  alt={selectedStudent.nombre}
-                  className="w-14 h-14 rounded-2xl object-cover border-2 border-brand-primary/20 shadow-sm shrink-0"
-                />
-              ) : (
-                <div className="w-14 h-14 rounded-2xl bg-brand-primary text-white font-black text-lg flex items-center justify-center shrink-0">
-                  {(selectedStudent.nombre?.[0] || 'U').toUpperCase()}
-                </div>
-              )}
+              <Avatar persona={selectedStudent} tam="w-14 h-14" texto="text-lg" />
               <div className="min-w-0">
-                <h3 className="text-base font-black text-ink dark:text-ink-light truncate">
-                  {selectedStudent.nombre} {selectedStudent.apellido}
-                </h3>
-                <p className="text-xs text-brand-primary dark:text-accent font-bold truncate">
-                  {selectedStudent.carrera} · Ciclo {selectedStudent.ciclo}
-                </p>
-                <p className="text-[11px] text-ink-muted">
-                  Sede {selectedStudent.sede || 'Lima Sur'}
-                </p>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <h3 className="text-base font-black text-ink dark:text-ink-light truncate">
+                    {selectedStudent.nombre} {selectedStudent.apellido}
+                  </h3>
+                  {relSeleccionado?.tipo === 'contacto' && <MarcaContacto />}
+                </div>
+                <p className="text-xs text-brand-primary dark:text-accent font-bold truncate">{lineaCarrera(selectedStudent)}</p>
+                {selectedStudent.sede && <p className="text-[11px] text-ink-muted">Sede {selectedStudent.sede}</p>}
               </div>
             </div>
 
@@ -843,74 +998,50 @@ export default function ExplorarView() {
             {solicitudEnviadaSuccess ? (
               <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl text-center space-y-1.5 border border-emerald-300">
                 <Check size={26} className="text-emerald-600 mx-auto" />
-                <p className="text-xs font-extrabold text-emerald-800 dark:text-emerald-300">
-                  Solicitud enviada a {selectedStudent.nombre}
-                </p>
-                <p className="text-[11px] text-ink-muted">
-                  Podrán chatear una vez que acepte tu solicitud.
-                </p>
+                <p className="text-xs font-extrabold text-emerald-800 dark:text-emerald-300">{CONTACTO.enviadaA(selectedStudent.nombre)}</p>
+                <p className="text-[11px] text-ink-muted">{CONTACTO.enviadaDetalle}</p>
               </div>
+            ) : !relSeleccionado ? (
+              <div className="flex justify-center py-3 text-ink-muted">
+                <Loader2 size={20} className="animate-spin" />
+              </div>
+            ) : relSeleccionado.tipo !== 'ninguna' ? (
+              // Ya son contactos, hay una solicitud enviada o una por responder: sin campo de motivo
+              botonRelacion(selectedStudent, { ancho: true })
             ) : (
               <>
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-bold text-ink dark:text-ink-light">
-                      Motivo académico de contacto (Spec 6.4):
-                    </label>
-                  </div>
+                  <label className="text-xs font-bold text-ink dark:text-ink-light mb-1.5 block">{CONTACTO.motivoEtiqueta}</label>
                   <textarea
                     rows={2}
-                    placeholder="Hola, me gustaría coordinar sobre cursos o proyectos afines..."
+                    placeholder={CONTACTO.motivoPlaceholder}
                     value={motivoSolicitud}
                     onChange={(e) => setMotivoSolicitud(e.target.value)}
+                    maxLength={300}
                     className="w-full p-3 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-xs text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary resize-none font-medium"
                   />
-                  {solicitudError && (
-                    <p className="text-xs text-semantic-danger font-semibold mt-1">
-                      {solicitudError}
-                    </p>
-                  )}
-                  <p className="text-[10px] text-ink-muted mt-1">
-                    🔒 No hay mensajes directos libres. La otra persona debe aceptar tu motivo para abrir el chat.
-                  </p>
+                  {solicitudError && <p className="text-xs text-semantic-danger font-semibold mt-1">{solicitudError}</p>}
+                  <p className="text-[10px] text-ink-muted mt-1">🔒 {CONTACTO.motivoAyuda}</p>
                 </div>
 
-                <div className="flex items-center justify-between pt-1">
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={() => {
-                        setTargetUserOption(selectedStudent);
-                        setShowBlockModal(true);
-                      }}
-                      className="text-[11px] text-ink-muted hover:text-semantic-danger font-bold flex items-center space-x-1 py-1 px-2 rounded-lg"
-                    >
-                      <UserX size={13} />
-                      <span>Bloquear</span>
-                    </button>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => setSelectedStudent(null)}
-                      className="px-3 py-2 text-xs font-bold text-ink-muted hover:text-ink"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={handleEnviarSolicitud}
-                      disabled={!motivoSolicitud.trim() || isSendingSolicitud}
-                      className="px-4 py-2 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white text-xs font-extrabold rounded-xl flex items-center space-x-1.5 shadow-sm transition"
-                    >
-                      {isSendingSolicitud ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <>
-                          <span>Enviar Solicitud</span>
-                          <Send size={13} />
-                        </>
-                      )}
-                    </button>
-                  </div>
+                <div className="flex items-center justify-end space-x-2 pt-1">
+                  <button onClick={() => setSelectedStudent(null)} className="px-3 py-2 text-xs font-bold text-ink-muted hover:text-ink">
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleEnviarSolicitud}
+                    disabled={!motivoSolicitud.trim() || isSendingSolicitud}
+                    className="px-4 py-2 bg-brand-primary hover:bg-brand-primaryHover disabled:opacity-50 text-white text-xs font-extrabold rounded-xl flex items-center space-x-1.5 shadow-sm transition"
+                  >
+                    {isSendingSolicitud ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <>
+                        <span>{CONTACTO.enviarSolicitud}</span>
+                        <Send size={13} />
+                      </>
+                    )}
+                  </button>
                 </div>
               </>
             )}
@@ -918,7 +1049,38 @@ export default function ExplorarView() {
         </div>
       )}
 
-      {/* --- MODAL: CHAT DIRECTO EN TIEMPO REAL (M10) --- */}
+      {/* --- PANEL: MENÚ ⋮ (después del perfil, para quedar encima si se abre desde ahí) --- */}
+      <PanelInferior
+        abierto={Boolean(menuPersona)}
+        onCerrar={() => setMenuPersona(null)}
+        titulo={menuPersona ? `${menuPersona.nombre} ${menuPersona.apellido || ''}`.trim() : ''}
+      >
+        {menuPersona && (
+          <div className="space-y-1">
+            {selectedStudent?.id !== menuPersona.id && (
+              <OpcionPanel
+                icono={User}
+                texto="Ver perfil"
+                onClick={() => {
+                  const p = menuPersona;
+                  setMenuPersona(null);
+                  abrirPerfil(p);
+                }}
+              />
+            )}
+            <OpcionPanel icono={ShieldAlert} texto="Reportar" detalle="Avisar a moderación" onClick={() => pedirReporte(menuPersona)} />
+            <OpcionPanel
+              icono={UserX}
+              texto="Bloquear"
+              detalle="Dejará de verte y no podrá escribirte"
+              peligro
+              onClick={() => pedirBloqueo(menuPersona)}
+            />
+          </div>
+        )}
+      </PanelInferior>
+
+      {/* --- CHAT DIRECTO EN TIEMPO REAL (M10), pantalla completa --- */}
       {activeChat && (
         <ChatDirectoModal
           conversacionId={activeChat.conversacionId}
@@ -926,20 +1088,20 @@ export default function ExplorarView() {
           currentUser={user}
           onClose={() => {
             setActiveChat(null);
-            cargarConversaciones();
+            cargarConversaciones({ silencioso: true });
           }}
           onUserBlocked={() => {
             setActiveChat(null);
             cargarPerfiles();
-            cargarConversaciones();
+            cargarRelaciones();
           }}
         />
       )}
 
-      {/* --- MODAL: REPORTAR USUARIO / CONTENIDO --- */}
+      {/* --- MODAL: REPORTAR --- */}
       {showReportModal && targetUserOption && (
-        <div className="fixed inset-0 z-60 bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5">
+        <div className="fixed inset-0 !m-0 z-60 bg-black/60 flex items-center justify-center px-4 safe-overlay">
+          <div className="w-full max-w-sm max-h-full overflow-y-auto bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5">
             <div className="flex items-center justify-between pb-2 border-b border-line dark:border-line-dark">
               <span className="text-xs font-black uppercase text-semantic-danger tracking-wider flex items-center space-x-1.5">
                 <ShieldAlert size={16} />
@@ -951,6 +1113,7 @@ export default function ExplorarView() {
                   setTargetUserOption(null);
                 }}
                 className="p-1 text-ink-muted hover:text-ink"
+                aria-label="Cerrar"
               >
                 <X size={18} />
               </button>
@@ -959,19 +1122,21 @@ export default function ExplorarView() {
             {reportSuccess ? (
               <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl text-center space-y-1 text-emerald-800 dark:text-emerald-300">
                 <Check size={24} className="mx-auto text-emerald-600" />
-                <p className="text-xs font-extrabold">Reporte enviado con éxito.</p>
+                <p className="text-xs font-extrabold">Reporte enviado.</p>
                 <p className="text-[11px] text-ink-muted">El equipo de moderación revisará este caso.</p>
               </div>
             ) : (
               <>
                 <p className="text-xs text-ink-soft dark:text-ink-muted">
-                  Reportarás a <strong className="text-ink dark:text-ink-light">{targetUserOption.nombre} {targetUserOption.apellido}</strong>.
+                  Reportarás a{' '}
+                  <strong className="text-ink dark:text-ink-light">
+                    {targetUserOption.nombre} {targetUserOption.apellido}
+                  </strong>
+                  .
                 </p>
 
                 <div>
-                  <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1.5">
-                    Motivo principal:
-                  </label>
+                  <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1.5">Motivo principal:</label>
                   <select
                     value={reportMotivo}
                     onChange={(e) => setReportMotivo(e.target.value)}
@@ -979,21 +1144,19 @@ export default function ExplorarView() {
                   >
                     <option value="Acoso o mensaje no deseado">Acoso o mensaje no deseado</option>
                     <option value="Suplantación de identidad">Suplantación de identidad</option>
-                    <option value="Contenido inapropiado / spam">Contenido inapropiado / spam</option>
-                    <option value="Comportamiento antideportivo o violento">Comportamiento antideportivo o violento</option>
+                    <option value="Contenido inapropiado / spam">Contenido inapropiado o spam</option>
+                    <option value="Comportamiento antideportivo o violento">Comportamiento violento</option>
                     <option value="Otro motivo de seguridad">Otro motivo de seguridad</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1.5">
-                    Detalle de lo ocurrido:
-                  </label>
+                  <label className="block text-xs font-bold text-ink dark:text-ink-light mb-1.5">Detalle de lo ocurrido:</label>
                   <textarea
                     rows={3}
                     value={reportDetalle}
                     onChange={(e) => setReportDetalle(e.target.value)}
-                    placeholder="Describe brevemente la infracción..."
+                    placeholder="Describe brevemente lo que pasó..."
                     className="w-full p-3 bg-surface dark:bg-surface-dark border border-line dark:border-line-dark rounded-xl text-xs text-ink dark:text-ink-light focus:outline-none resize-none font-medium"
                   />
                 </div>
@@ -1016,7 +1179,7 @@ export default function ExplorarView() {
                     disabled={!reportDetalle.trim() || isSubmittingReport}
                     className="px-4 py-2 bg-semantic-danger hover:opacity-90 disabled:opacity-50 text-white text-xs font-extrabold rounded-xl shadow-sm transition"
                   >
-                    {isSubmittingReport ? 'Enviando...' : 'Enviar Reporte'}
+                    {isSubmittingReport ? 'Enviando...' : 'Enviar reporte'}
                   </button>
                 </div>
               </>
@@ -1027,19 +1190,15 @@ export default function ExplorarView() {
 
       {/* --- MODAL: CONFIRMAR BLOQUEO --- */}
       {showBlockModal && targetUserOption && (
-        <div className="fixed inset-0 z-60 bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5">
+        <div className="fixed inset-0 !m-0 z-60 bg-black/60 flex items-center justify-center px-4 safe-overlay">
+          <div className="w-full max-w-sm max-h-full overflow-y-auto bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5">
             <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/40 text-semantic-danger flex items-center justify-center mx-auto">
               <UserX size={24} />
             </div>
 
             <div className="text-center space-y-1">
-              <h3 className="text-base font-black text-ink dark:text-ink-light">
-                ¿Bloquear a {targetUserOption.nombre}?
-              </h3>
-              <p className="text-xs text-ink-muted leading-relaxed">
-                Este estudiante no podrá enviarte mensajes, solicitudes ni ver tu perfil en Explorar.
-              </p>
+              <h3 className="text-base font-black text-ink dark:text-ink-light">¿Bloquear a {targetUserOption.nombre}?</h3>
+              <p className="text-xs text-ink-muted leading-relaxed">No podrá enviarte mensajes ni solicitudes, y dejará de verte en Explorar.</p>
             </div>
 
             {blockError && <ErrorConReintento compacto mensaje={blockError} />}
@@ -1060,7 +1219,7 @@ export default function ExplorarView() {
                 disabled={isSubmittingBlock}
                 className="flex-1 py-2.5 bg-semantic-danger hover:opacity-90 disabled:opacity-50 text-white text-xs font-extrabold rounded-xl shadow-sm transition"
               >
-                {isSubmittingBlock ? 'Bloqueando...' : 'Sí, Bloquear'}
+                {isSubmittingBlock ? 'Bloqueando...' : 'Sí, bloquear'}
               </button>
             </div>
           </div>

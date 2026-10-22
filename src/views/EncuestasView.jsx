@@ -339,7 +339,7 @@ export default function EncuestasView() {
                 ¡Encuesta completada con éxito!
               </h3>
               <p className="text-xs text-ink-muted leading-relaxed">
-                Tus respuestas fueron agregadas anónimamente. Desbloqueaste alcance en tu habilidad <strong>Apoyo a la Investigación</strong>.
+                Tus respuestas fueron agregadas anónimamente. Suma a tu habilidad <strong>Apoyo a la investigación</strong>.
               </p>
             </div>
           ) : errorResponder && !currentP ? (
@@ -434,19 +434,19 @@ export default function EncuestasView() {
 
             <div>
               <span className="text-xs font-black text-amber-600 uppercase tracking-wider block">
-                Audiencia insuficiente
+                Faltan compañeros
               </span>
               <h1 className="text-lg font-black text-ink dark:text-ink-light tracking-tight mt-1">
-                Se necesitan al menos {umbralMinimo} compañeros
+                Para cuidar el anonimato, tu encuesta necesita llegar a más compañeros
               </h1>
             </div>
 
             <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-900">
               <div className="text-3xl font-black text-amber-700 dark:text-amber-300">
-                {alcanceCalculado} alumnos encontrados
+                {alcanceCalculado} {alcanceCalculado === 1 ? 'compañero' : 'compañeros'} con este filtro
               </div>
               <p className="text-xs text-amber-900 dark:text-amber-200 font-semibold mt-1.5 leading-relaxed">
-                Para proteger la privacidad de todos y asegurar que ninguna respuesta sea deducible, la audiencia mínima es de {umbralMinimo} estudiantes.
+                Necesitas al menos {umbralMinimo} para que nadie pueda deducir quién respondió qué.
               </p>
             </div>
 
@@ -469,7 +469,7 @@ export default function EncuestasView() {
             }}
             className="w-full py-3.5 bg-brand-primary hover:bg-brand-primaryHover text-white font-extrabold text-sm rounded-2xl shadow-sm transition"
           >
-            Ampliar filtro automáticamente (&ge;{umbralMinimo})
+            Ampliar el filtro automáticamente
           </button>
           <button
             onClick={() => setCrearStep('filtro')}
@@ -501,14 +501,14 @@ export default function EncuestasView() {
             </div>
             <div>
               <span className="text-xs font-black text-accent uppercase tracking-wider block">
-                Alcance semanal: 0
+                Aún no puedes enviar encuestas
               </span>
               <h1 className="text-lg font-black text-ink dark:text-ink-light tracking-tight mt-1">
                 Primero ayuda a alguien
               </h1>
             </div>
             <p className="text-sm text-ink-soft dark:text-ink-muted leading-relaxed">
-              Responde una encuesta de otro alumno para desbloquear <strong>30 destinatarios</strong> por semana. Mientras más apoyas la investigación de otros, a más gente llegas con la tuya.
+              Responde una encuesta de otro alumno y desbloquea la opción de enviar las tuyas. Mientras más encuestas respondas, a más compañeros podrá llegar la tuya.
             </p>
           </div>
         </div>
@@ -701,7 +701,7 @@ export default function EncuestasView() {
             <div className="flex items-center justify-between">
               <span className="text-xs font-black text-teal-300 uppercase tracking-wider flex items-center space-x-1.5">
                 <Unlock size={14} />
-                <span>Alcance Semanal Desbloqueado</span>
+                <span>Tus encuestas</span>
               </span>
               <span className="text-xs bg-white/20 font-black px-2.5 py-0.5 rounded-full">
                 Nivel {nivelApoyo} de 3
@@ -710,11 +710,11 @@ export default function EncuestasView() {
 
             <div className="flex items-baseline space-x-2">
               <span className="text-3xl font-black tracking-tight">{alcanceSemanal}</span>
-              <span className="text-xs text-indigo-100 font-semibold">alumnos alcanzables por semana</span>
+              <span className="text-xs text-indigo-100 font-semibold">compañeros por semana pueden recibir tus encuestas</span>
             </div>
 
             <p className="text-xs text-indigo-200 pt-1.5 border-t border-white/10 font-medium">
-              Desbloqueas alcance apoyando encuestas: [0, 30, 80, 200] según tu nivel.
+              Mientras más encuestas de otros respondas, a más compañeros podrá llegar la tuya.
             </p>
           </div>
 
@@ -830,12 +830,12 @@ export default function EncuestasView() {
             ) : alcanceCalculado < umbralMinimo ? (
               <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 border border-amber-200">
                 <AlertTriangle size={15} />
-                <span>Pocos compañeros ({alcanceCalculado}/{umbralMinimo}). Amplía el filtro para enviar.</span>
+                <span>Para cuidar el anonimato, tu encuesta necesita llegar a más compañeros. Amplía el filtro.</span>
               </div>
             ) : (
               <div className="mt-2 p-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 border border-emerald-200">
                 <CheckCircle2 size={15} />
-                <span>Audiencia suficiente y anónima ({alcanceCalculado} compañeros)</span>
+                <span>Listo: llega a suficientes compañeros para cuidar el anonimato</span>
               </div>
             )}
           </div>
@@ -1012,8 +1012,8 @@ export default function EncuestasView() {
 
       {/* Modal: Resultados Agregados de Encuesta (M28) */}
       {encuestaResultadosSeleccionada && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm max-h-[85vh] bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 flex flex-col animate-fadeIn">
+        <div className="fixed inset-0 !m-0 bg-black/60 z-50 flex items-center justify-center px-4 safe-overlay">
+          <div className="w-full max-w-sm max-h-full overflow-y-auto bg-white dark:bg-surface-cardDark rounded-3xl p-5 shadow-modal border border-line dark:border-line-dark space-y-3.5 flex flex-col animate-fadeIn">
             <div className="flex items-center justify-between pb-2 border-b border-line dark:border-line-dark shrink-0">
               <span className="text-xs font-black uppercase text-ink dark:text-ink-light tracking-wider">
                 Resultados de la Encuesta

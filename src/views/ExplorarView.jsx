@@ -382,7 +382,11 @@ export default function ExplorarView() {
     setShowBlockModal(true);
   };
 
-  const totalPendientesRecibidas = solicitudesRecibidas.filter((s) => s.estado === 'pendiente').length;
+  // En Solicitudes solo se ven las pendientes: las aceptadas viven en "Mis contactos" y las
+  // ignoradas no se muestran. Las listas completas siguen sirviendo para el estado de cada tarjeta.
+  const recibidasPendientes = solicitudesRecibidas.filter((s) => s.estado === 'pendiente');
+  const enviadasPendientes = solicitudesEnviadas.filter((s) => s.estado === 'pendiente');
+  const totalPendientesRecibidas = recibidasPendientes.length;
   const totalMensajesNoLeidos = conversaciones.reduce((acc, c) => acc + (c.noLeidos || 0), 0);
   const filtrosActivos = [
     filtroCarrera && { id: 'carrera', texto: filtroCarrera, quitar: () => setFiltroCarrera('') },
@@ -650,7 +654,7 @@ export default function ExplorarView() {
                 tipoSolTab === 'enviadas' ? 'bg-white dark:bg-surface-dark text-ink dark:text-ink-light shadow-xs' : 'text-ink-muted'
               }`}
             >
-              Enviadas ({solicitudesEnviadas.length})
+              Enviadas ({enviadasPendientes.length})
             </button>
           </div>
 
@@ -664,12 +668,12 @@ export default function ExplorarView() {
               <p className="text-xs font-semibold mt-1">Cargando solicitudes...</p>
             </div>
           ) : tipoSolTab === 'recibidas' ? (
-            solicitudesRecibidas.length === 0 ? (
+            recibidasPendientes.length === 0 ? (
               <div className="text-center py-10 bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark p-6">
                 <p className="text-xs text-ink-muted font-medium">{CONTACTO.sinSolicitudesRecibidas}</p>
               </div>
             ) : (
-              solicitudesRecibidas.map((sol) => (
+              recibidasPendientes.map((sol) => (
                 <div
                   key={sol.id}
                   className={`k-card p-4 space-y-2.5 border-2 rounded-2xl shadow-sm bg-white dark:bg-surface-cardDark ${
@@ -690,50 +694,32 @@ export default function ExplorarView() {
                     "{sol.motivo}"
                   </div>
 
-                  {sol.estado === 'pendiente' ? (
-                    <div className="flex items-center justify-end space-x-2 pt-1">
-                      <button
-                        onClick={() => handleResponderSolicitud(sol, 'rechazada')}
-                        disabled={respondiendoId === sol.id}
-                        className="px-3 py-1.5 text-xs font-bold text-ink-muted hover:text-ink disabled:opacity-50"
-                      >
-                        {CONTACTO.ignorar}
-                      </button>
-                      <button
-                        onClick={() => handleResponderSolicitud(sol, 'aceptada')}
-                        disabled={respondiendoId === sol.id}
-                        className="px-4 py-2 bg-accent hover:bg-accent-hover disabled:opacity-60 text-white text-xs font-black rounded-xl shadow-sm transition flex items-center space-x-1"
-                      >
-                        {respondiendoId === sol.id && <Loader2 size={13} className="animate-spin" />}
-                        <span>{CONTACTO.aceptar}</span>
-                      </button>
-                    </div>
-                  ) : sol.estado === 'rechazada' ? (
-                    <div className="pt-1.5 text-xs text-ink-muted font-semibold">Ignoraste esta solicitud.</div>
-                  ) : (
-                    <div className="pt-1.5 flex items-center justify-between text-xs">
-                      <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center space-x-1">
-                        <Check size={14} />
-                        <span>{CONTACTO.yaSonContactos}</span>
-                      </span>
-                      <button
-                        onClick={() => abrirChat(sol.otroUsuario)}
-                        className="px-3.5 py-1.5 bg-brand-primary text-white text-xs font-bold rounded-xl flex items-center space-x-1 shadow-sm"
-                      >
-                        <MessageCircle size={14} />
-                        <span>{CONTACTO.chatear}</span>
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-end space-x-2 pt-1">
+                    <button
+                      onClick={() => handleResponderSolicitud(sol, 'rechazada')}
+                      disabled={respondiendoId === sol.id}
+                      className="px-3 py-1.5 text-xs font-bold text-ink-muted hover:text-ink disabled:opacity-50"
+                    >
+                      {CONTACTO.ignorar}
+                    </button>
+                    <button
+                      onClick={() => handleResponderSolicitud(sol, 'aceptada')}
+                      disabled={respondiendoId === sol.id}
+                      className="px-4 py-2 bg-accent hover:bg-accent-hover disabled:opacity-60 text-white text-xs font-black rounded-xl shadow-sm transition flex items-center space-x-1"
+                    >
+                      {respondiendoId === sol.id && <Loader2 size={13} className="animate-spin" />}
+                      <span>{CONTACTO.aceptar}</span>
+                    </button>
+                  </div>
                 </div>
               ))
             )
-          ) : solicitudesEnviadas.length === 0 ? (
+          ) : enviadasPendientes.length === 0 ? (
             <div className="text-center py-10 bg-white dark:bg-surface-cardDark rounded-2xl border border-line dark:border-line-dark p-6">
-              <p className="text-xs text-ink-muted font-medium">No has enviado ninguna solicitud.</p>
+              <p className="text-xs text-ink-muted font-medium">No tienes solicitudes enviadas pendientes.</p>
             </div>
           ) : (
-            solicitudesEnviadas.map((sol) => (
+            enviadasPendientes.map((sol) => (
               <div
                 key={sol.id}
                 className="k-card p-4 space-y-2 border border-line dark:border-line-dark rounded-2xl shadow-sm bg-white dark:bg-surface-cardDark"
@@ -749,30 +735,13 @@ export default function ExplorarView() {
                     </div>
                   </div>
 
-                  <span
-                    className={`text-[10px] font-black px-2.5 py-1 rounded-full shrink-0 ${
-                      sol.estado === 'aceptada'
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                        : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
-                    }`}
-                  >
-                    {sol.estado === 'aceptada' ? CONTACTO.marca : 'Pendiente'}
+                  <span className="text-[10px] font-black px-2.5 py-1 rounded-full shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                    Pendiente
                   </span>
                 </div>
 
                 <p className="text-xs text-ink-muted italic bg-surface dark:bg-surface-dark p-2.5 rounded-xl">"{sol.motivo}"</p>
 
-                {sol.estado === 'aceptada' && (
-                  <div className="flex justify-end pt-1">
-                    <button
-                      onClick={() => abrirChat(sol.otroUsuario)}
-                      className="px-3 py-1.5 bg-brand-primary text-white text-xs font-bold rounded-xl flex items-center space-x-1"
-                    >
-                      <MessageCircle size={13} />
-                      <span>{CONTACTO.chatear}</span>
-                    </button>
-                  </div>
-                )}
               </div>
             ))
           )}

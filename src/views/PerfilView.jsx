@@ -363,7 +363,7 @@ export default function PerfilView() {
             <h1 className="text-xl font-black text-ink dark:text-ink-light leading-snug">
               {user.nombre} {user.apellido}
             </h1>
-            {user.usuario && <p className="text-xs font-bold text-accent">@{user.usuario}</p>}
+            {user.usuario && <p className="text-[11px] font-medium text-ink-muted">@{user.usuario}</p>}
             <p className="text-sm font-bold text-brand-primary dark:text-teal-300 mt-0.5">
               {user.carrera} · {user.ciclo}.° ciclo
             </p>

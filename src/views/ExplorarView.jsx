@@ -590,7 +590,7 @@ export default function ExplorarView() {
                           <h3 className="text-sm font-black text-ink dark:text-ink-light truncate">{nombreEst}</h3>
                           {esContacto && <MarcaContacto />}
                         </div>
-                        {est.usuario && <p className="text-[11px] font-bold text-accent truncate">@{est.usuario}</p>}
+                        {est.usuario && <p className="text-[11px] font-medium text-ink-muted truncate">@{est.usuario}</p>}
                         <p className="text-xs font-bold text-brand-primary dark:text-teal-300 truncate mt-0.5">{lineaCarrera(est)}</p>
                         <p className="text-[11px] text-ink-muted truncate font-medium mt-0.5">
                           {est.sede ? `Sede ${est.sede}` : ''}
@@ -984,6 +984,9 @@ export default function ExplorarView() {
                   </h3>
                   {relSeleccionado?.tipo === 'contacto' && <MarcaContacto />}
                 </div>
+                {selectedStudent.usuario && (
+                  <p className="text-[11px] font-medium text-ink-muted truncate">@{selectedStudent.usuario}</p>
+                )}
                 <p className="text-xs text-brand-primary dark:text-accent font-bold truncate">{lineaCarrera(selectedStudent)}</p>
                 {selectedStudent.sede && <p className="text-[11px] text-ink-muted">Sede {selectedStudent.sede}</p>}
               </div>

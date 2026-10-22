@@ -248,6 +248,9 @@ export default function ChatDirectoModal({
               <h3 className="text-sm font-black text-ink dark:text-ink-light truncate leading-tight">
                 {nombreMostrar}
               </h3>
+              {otherUser?.usuario && (
+                <p className="text-[11px] font-medium text-ink-muted truncate leading-tight">@{otherUser.usuario}</p>
+              )}
               <p className="text-[11px] text-brand-primary dark:text-accent font-semibold truncate">
                 {otherUser?.carrera || 'Estudiante'}{otherUser?.ciclo ? ` · ${otherUser.ciclo}.° ciclo` : ''}
               </p>

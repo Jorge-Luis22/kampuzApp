@@ -111,6 +111,12 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
   - Barra inferior: **Inicio · Tablón · Grupos · Chats · Perfil**. Explorar se abre con la lupa del Inicio; Chats junta los chats 1 a 1, "Mis contactos" y las solicitudes; Encuestas se abre desde el Perfil (no se borró nada). El contador de Chats suma solicitudes pendientes y mensajes sin leer; el del Perfil, encuestas pendientes.
   - En Solicitudes solo se muestran las pendientes.
 
+- **2026-10-22 (Migración 016: arreglos del tablón y del chat):**
+  - "Me interesa" entre contactos envía el mensaje en su chat y lo abre; si no son contactos, la solicitud lleva el mismo texto.
+  - "Quiénes respondieron": cada persona abre su chat (de ayuda o de contacto) o permite agregarla como contacto.
+  - **Eliminar en el chat sin borrar datos.** "Eliminar chat para mí" guarda hasta qué momento lo oculté (`conversaciones_ocultas`): sale de mi lista, la RLS me deja leer solo los mensajes posteriores y reaparece si llega uno nuevo; la otra persona no ve cambios. "Eliminar para todos" (solo el autor, dentro de 24 h) vacía el texto y marca `eliminado_en`; el original se copia a `mensajes_directos_eliminados`, que solo pueden leer moderadores. Explicado en `public/privacidad.html`.
+  - La app ya no puede elegir la fecha de un mensaje ni crearlo "eliminado": solo inserta conversación, autor y texto.
+
 ## 4. Pendiente de decisión del equipo
 
 ### 4.1 "Estado en vivo" (En campus / En clase / En biblioteca / Buscando equipo / En exámenes)

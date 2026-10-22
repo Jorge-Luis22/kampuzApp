@@ -7,7 +7,25 @@ import { supabase, ejecutar, rpc, uidActual } from './supabase.js';
 // Realtime en mensajes_directos.
 // =============================================================================
 
-const CAMPOS_MENSAJE = 'id, conversacion_id, autor_id, texto, leido, creado_en';
+const CAMPOS_MENSAJE = 'id, conversacion_id, autor_id, texto, leido, creado_en, eliminado_en';
+
+// Se puede "Eliminar para todos" un mensaje propio durante 24 h (lo valida el servidor)
+export const HORAS_PARA_ELIMINAR = 24;
+
+/**
+ * "Eliminar chat para mí": sale de mi lista y solo veré los mensajes que lleguen después.
+ * No borra nada y la otra persona no ve cambios.
+ */
+export function ocultarConversacion(conversacionId) {
+  return rpc('ocultar_conversacion', { p_conversacion_id: conversacionId });
+}
+
+/**
+ * "Eliminar para todos": ambos verán "Este mensaje fue eliminado".
+ */
+export function eliminarMensajeParaTodos(mensajeId) {
+  return rpc('eliminar_mensaje_para_todos', { p_mensaje_id: mensajeId });
+}
 
 /**
  * Bandeja de chats con interlocutor, último mensaje y no leídos (una sola llamada).

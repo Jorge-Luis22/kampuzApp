@@ -11,15 +11,21 @@ import {
   Loader2,
   AlertCircle,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Trash2,
+  Ban
 } from 'lucide-react';
 import {
   fetchMensajesDirectos,
   enviarMensajeDirecto,
   marcarMensajesComoLeidos,
   subscribeToConversacion,
-  fusionarMensaje
+  fusionarMensaje,
+  ocultarConversacion,
+  eliminarMensajeParaTodos,
+  HORAS_PARA_ELIMINAR
 } from '../lib/chat';
+import PanelInferior from './PanelInferior';
 import { reportarContenido, bloquearUsuario } from '../lib/explore';
 import ErrorConReintento from './ErrorConReintento';
 import { useAtras } from '../lib/atras';
@@ -54,6 +60,14 @@ export default function ChatDirectoModal({
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [isSubmittingBlock, setIsSubmittingBlock] = useState(false);
   const [blockError, setBlockError] = useState('');
+
+  // Eliminar chat para mí / eliminar un mensaje para todos
+  const [confirmarOcultar, setConfirmarOcultar] = useState(false);
+  const [ocultando, setOcultando] = useState(false);
+  const [mensajeAEliminar, setMensajeAEliminar] = useState(null);
+  const [eliminando, setEliminando] = useState(false);
+  const [errorAccion, setErrorAccion] = useState('');
+  const presionRef = useRef(null);
 
   const messagesEndRef = useRef(null);
   const menuRef = useRef(null);
@@ -168,6 +182,45 @@ export default function ChatDirectoModal({
     setNuevoTexto('');
     setTimeout(() => scrollToBottom(true), 50);
     enviar(texto, tempId);
+  };
+
+  const puedeEliminar = (m) =>
+    !m.optimista &&
+    !m.eliminado_en &&
+    Date.now() - new Date(m.creado_en).getTime() < HORAS_PARA_ELIMINAR * 3600000;
+
+  const pedirEliminar = (m) => {
+    setErrorAccion('');
+    setMensajeAEliminar(m);
+  };
+
+  const confirmarEliminarMensaje = async () => {
+    const m = mensajeAEliminar;
+    setEliminando(true);
+    setErrorAccion('');
+    try {
+      await eliminarMensajeParaTodos(m.id);
+      // Se muestra al instante; Realtime lo confirma en los dos celulares
+      setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, texto: '', eliminado_en: new Date().toISOString() } : x)));
+      setMensajeAEliminar(null);
+    } catch (err) {
+      setErrorAccion(err.message);
+    } finally {
+      setEliminando(false);
+    }
+  };
+
+  const confirmarOcultarChat = async () => {
+    setOcultando(true);
+    setErrorAccion('');
+    try {
+      await ocultarConversacion(conversacionId);
+      setConfirmarOcultar(false);
+      onClose();
+    } catch (err) {
+      setErrorAccion(err.message);
+      setOcultando(false);
+    }
   };
 
   const descartarMensaje = (tempId) => setMensajes((prev) => prev.filter((m) => m.id !== tempId));
@@ -287,6 +340,16 @@ export default function ChatDirectoModal({
                 </button>
                 <button
                   onClick={() => {
+                    setConfirmarOcultar(true);
+                    setShowMenu(false);
+                  }}
+                  className="w-full px-3.5 py-2 text-left text-xs font-bold text-ink dark:text-ink-light hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center space-x-2 transition"
+                >
+                  <Trash2 size={15} />
+                  <span>Eliminar chat para mí</span>
+                </button>
+                <button
+                  onClick={() => {
                     setShowBlockModal(true);
                     setShowMenu(false);
                   }}
@@ -332,6 +395,25 @@ export default function ChatDirectoModal({
             mensajes.map((m) => {
               const esPropio = m.autor_id === currentUser?.id;
               const hora = formatHora(m.creado_en);
+              const eliminado = Boolean(m.eliminado_en);
+              const eliminable = esPropio && puedeEliminar(m);
+              // Mantener presionado (o clic derecho) un mensaje propio de las últimas 24 h
+              const presion = eliminable
+                ? {
+                    onPointerDown: () => {
+                      clearTimeout(presionRef.current);
+                      presionRef.current = setTimeout(() => pedirEliminar(m), 500);
+                    },
+                    onPointerUp: () => clearTimeout(presionRef.current),
+                    onPointerLeave: () => clearTimeout(presionRef.current),
+                    onPointerCancel: () => clearTimeout(presionRef.current),
+                    onContextMenu: (e) => {
+                      e.preventDefault();
+                      clearTimeout(presionRef.current);
+                      pedirEliminar(m);
+                    }
+                  }
+                : {};
 
               return (
                 <div
@@ -339,16 +421,26 @@ export default function ChatDirectoModal({
                   className={`flex flex-col ${esPropio ? 'items-end' : 'items-start'}`}
                 >
                   <div
+                    {...presion}
                     className={`max-w-[78%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-xs ${
-                      esPropio
+                      eliminado
+                        ? 'bg-transparent border border-dashed border-line dark:border-line-dark text-ink-muted'
+                        : esPropio
                         ? 'bg-brand-primary text-white rounded-br-xs'
                         : 'bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light border border-line/80 dark:border-line-dark rounded-bl-xs'
-                    }`}
+                    } ${mensajeAEliminar?.id === m.id ? 'ring-2 ring-accent' : ''}`}
                   >
-                    <p className="whitespace-pre-wrap break-words font-medium">{m.texto}</p>
+                    {eliminado ? (
+                      <p className="italic flex items-center gap-1.5 font-medium">
+                        <Ban size={13} />
+                        <span>Este mensaje fue eliminado</span>
+                      </p>
+                    ) : (
+                      <p className="whitespace-pre-wrap break-words font-medium">{m.texto}</p>
+                    )}
                     <div
                       className={`flex items-center justify-end space-x-1 mt-1 text-[10px] ${
-                        esPropio ? 'text-white/80' : 'text-ink-muted'
+                        esPropio && !eliminado ? 'text-white/80' : 'text-ink-muted'
                       }`}
                     >
                       <span>{hora}</span>
@@ -417,6 +509,59 @@ export default function ChatDirectoModal({
         </form>
         )}
       </div>
+
+      {/* Panel: eliminar un mensaje propio para todos */}
+      <PanelInferior
+        abierto={Boolean(mensajeAEliminar)}
+        onCerrar={() => setMensajeAEliminar(null)}
+        titulo="¿Eliminar este mensaje para todos?"
+        subtitulo="Ambos verán «Este mensaje fue eliminado». Solo se puede durante las primeras 24 horas."
+      >
+        <div className="space-y-3">
+          {mensajeAEliminar && (
+            <p className="p-3 rounded-xl bg-surface dark:bg-surface-dark text-xs text-ink-soft dark:text-ink-muted italic break-words">
+              "{mensajeAEliminar.texto}"
+            </p>
+          )}
+          {errorAccion && <p className="text-xs text-semantic-danger font-semibold">{errorAccion}</p>}
+          <div className="flex gap-2">
+            <button onClick={() => setMensajeAEliminar(null)} className="flex-1 py-2.5 text-xs font-bold text-ink-muted bg-slate-100 dark:bg-slate-800 rounded-xl">
+              Cancelar
+            </button>
+            <button
+              onClick={confirmarEliminarMensaje}
+              disabled={eliminando}
+              className="flex-1 py-2.5 text-xs font-extrabold text-white bg-semantic-danger disabled:opacity-50 rounded-xl flex items-center justify-center"
+            >
+              {eliminando ? <Loader2 size={15} className="animate-spin" /> : 'Eliminar para todos'}
+            </button>
+          </div>
+        </div>
+      </PanelInferior>
+
+      {/* Panel: eliminar el chat solo para mí */}
+      <PanelInferior
+        abierto={confirmarOcultar}
+        onCerrar={() => setConfirmarOcultar(false)}
+        titulo="¿Eliminar este chat para ti?"
+        subtitulo={`Saldrá de tu lista y no verás los mensajes anteriores. ${nombreMostrar} no verá ningún cambio. Si te escribe de nuevo, el chat volverá a aparecer.`}
+      >
+        <div className="space-y-3">
+          {errorAccion && <p className="text-xs text-semantic-danger font-semibold">{errorAccion}</p>}
+          <div className="flex gap-2">
+            <button onClick={() => setConfirmarOcultar(false)} className="flex-1 py-2.5 text-xs font-bold text-ink-muted bg-slate-100 dark:bg-slate-800 rounded-xl">
+              Cancelar
+            </button>
+            <button
+              onClick={confirmarOcultarChat}
+              disabled={ocultando}
+              className="flex-1 py-2.5 text-xs font-extrabold text-white bg-semantic-danger disabled:opacity-50 rounded-xl flex items-center justify-center"
+            >
+              {ocultando ? <Loader2 size={15} className="animate-spin" /> : 'Eliminar para mí'}
+            </button>
+          </div>
+        </div>
+      </PanelInferior>
 
       {/* Modal: Reportar Conversación / Usuario */}
       {showReportModal && (

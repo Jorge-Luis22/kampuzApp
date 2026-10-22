@@ -9,7 +9,8 @@ import {
   textoVence,
   textoFecha,
   textoParticipantes,
-  formatoPrecio
+  formatoPrecio,
+  textoMeInteresa
 } from '../data/tablon';
 import {
   fetchTablon,
@@ -24,7 +25,7 @@ import {
   subirFotoPublicacion,
   subscribeToTablon
 } from '../lib/tablon';
-import { conversacionCon } from '../lib/chat';
+import { conversacionCon, conversacionDeContacto } from '../lib/chat';
 import ChatDirectoModal from '../components/ChatDirectoModal';
 import ErrorConReintento from '../components/ErrorConReintento';
 import PanelInferior, { OpcionPanel } from '../components/PanelInferior';
@@ -359,10 +360,19 @@ export default function TablonView() {
       setChat({ conversacionId, otherUser: pub.autor, origen: 'ayuda', publicacionTitulo: pub.titulo });
     });
 
-  const abrirInteres = (pub) => {
-    setMotivoInteres(`Hola, me interesa tu publicación "${pub.titulo}". ¿Sigue disponible?`.slice(0, 300));
-    setInteresPub(pub);
-  };
+  // Si ya son contactos, el servidor manda el mensaje en su chat y se abre ese chat.
+  // Si no, se muestra el panel con el motivo de la solicitud ya escrito.
+  const abrirInteres = (pub) =>
+    conAccion(pub, async () => {
+      const conversacionId = await conversacionDeContacto(pub.autor.id);
+      if (!conversacionId) {
+        setMotivoInteres(textoMeInteresa(pub.titulo));
+        setInteresPub(pub);
+        return;
+      }
+      await meInteresa(pub.id, null);
+      setChat({ conversacionId, otherUser: pub.autor });
+    });
 
   const enviarInteres = async () => {
     const pub = interesPub;
@@ -373,11 +383,8 @@ export default function TablonView() {
       if (r === 'solicitud_enviada') {
         setAviso({ texto: `Le enviamos tu solicitud a ${nombre}. Podrán chatear cuando la acepte.`, tipo: 'ok' });
       } else if (r === 'contacto') {
-        setAviso({
-          texto: `${nombre} ya es tu contacto. Escríbele por el chat.`,
-          tipo: 'ok',
-          accion: { texto: 'Chatear', fn: () => abrirChatContacto(pub.autor) }
-        });
+        // Se hicieron contactos mientras tanto: el mensaje ya está en su chat
+        await abrirChatContacto(pub.autor);
       } else if (r === 'solicitud_pendiente') {
         setAviso({ texto: `Ya hay una solicitud pendiente entre tú y ${nombre}. Revisa Chats → Solicitudes.`, tipo: 'ok' });
       } else {

@@ -1,8 +1,9 @@
 -- ==============================================================================
--- KAMPUZ - ESQUEMA COMPLETO (generado): migraciones 001 a 015 + seed, en orden.
+-- KAMPUZ - ESQUEMA COMPLETO (generado): migraciones 001 a 016 + seed, en orden.
 -- Úsalo solo para crear una base NUEVA desde cero. Es idempotente (se puede
--- ejecutar dos veces). Para actualizar la base existente, ejecuta las que falten (009 a 015)
+-- ejecutar dos veces). Para actualizar la base existente, ejecuta las que falten
 -- (ver docs/GUIA_PILOTO.md, sección 0).
+-- Se genera con: node scripts/generar_full_schema.mjs
 -- ==============================================================================
 
 -- ==============================================================================
@@ -326,7 +327,6 @@ create index if not exists idx_mensajes_directos_conv on public.mensajes_directo
 create index if not exists idx_envios_destinatario_fecha on public.envios_encuesta(destinatario_id, enviado_en desc);
 create index if not exists idx_consultas_agrupacion on public.consultas(carrera, curso, tema, estado);
 create index if not exists idx_grupos_consulta_clave on public.grupos_consulta(carrera, curso, tema, estado);
-
 
 -- ==============================================================================
 -- KAMPUS MVP - MIGRACIÓN 002: Row Level Security (RLS), Realtime y Storage
@@ -820,7 +820,6 @@ create policy "Usuarios eliminan avatar en su propia carpeta"
         and (storage.foldername(name))[1] = auth.uid()::text
     );
 
-
 -- ==============================================================================
 -- KAMPUS MVP - MIGRACIÓN 003: Funciones RPC, Triggers y Reglas en Base de Datos
 -- Basado en PROMPT_ANTIGRAVITY_MVP.md (Reglas 3, 4, 5 y Fases 5, 6, 7)
@@ -1201,7 +1200,6 @@ begin
 end;
 $$ language plpgsql security definer;
 
-
 -- ==============================================================================
 -- KAMPUS MVP - MIGRACIÓN 004: Trigger de Servidor para Dominio @utp.edu.pe
 -- Basado en PROMPT_ANTIGRAVITY_MVP.md (Fase 2: Valida en el servidor)
@@ -1228,7 +1226,6 @@ create trigger trg_validar_auth_user
     before insert on auth.users
     for each row
     execute function public.validar_dominio_auth_user();
-
 
 -- ==============================================================================
 -- KAMPUS MVP - MIGRACIÓN 005: Habilidades Calculadas (Spec 5.1 & 5.3)
@@ -1360,7 +1357,6 @@ begin
 end;
 $$ language plpgsql security definer;
 
-
 -- ==============================================================================
 -- KAMPUS MVP - MIGRACIÓN 006: CONSULTAS AGRUPADAS (reemplazada)
 --
@@ -1377,7 +1373,6 @@ $$ language plpgsql security definer;
 -- ==============================================================================
 
 drop function if exists public.crear_o_agrupar_consulta(text, text, text, text, uuid, text);
-
 
 -- Migration 007: Procedimiento seguro para eliminación irreversible de cuenta (Google Play Store compliance)
 -- Permite al estudiante solicitar el borrado total de sus datos y de su cuenta de autenticación.
@@ -1427,8 +1422,6 @@ CREATE POLICY "Moderadores pueden actualizar estado de reportes"
         )
     );
 
-
-
 -- Migration 008: Soporte para Nombre de Usuario y Autenticación con Contraseña
 -- Agrega columna usuario única en perfiles y función para login con usuario o correo.
 
@@ -1464,7 +1457,6 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.obtener_correo_por_identificador(text) TO anon, authenticated;
-
 
 -- ==============================================================================
 -- KAMPUZ - MIGRACIÓN 009: Autenticación real y validación de dominio en servidor
@@ -1701,7 +1693,6 @@ create trigger trg_proteger_perfil
     before insert or update on public.perfiles
     for each row
     execute function public.proteger_perfil();
-
 
 -- ==============================================================================
 -- KAMPUZ - MIGRACIÓN 010: Datos compartidos solo en Supabase
@@ -3152,7 +3143,6 @@ begin
     end;
 end $$;
 
-
 -- ==============================================================================
 -- KAMPUZ - MIGRACIÓN 011: Cuatro consentimientos separados (spec 6.8, Ley 29733)
 -- Auditoría (docs/PROMPT_CLAUDE_CODE_AUDITORIA.md, paso 4).
@@ -3324,7 +3314,6 @@ create trigger trg_descartar_encuestas_al_revocar
     for each row
     execute function public.descartar_encuestas_al_revocar();
 
-
 -- ==============================================================================
 -- KAMPUZ - MIGRACIÓN 012: Reglas que deben vivir en el servidor
 -- Auditoría (docs/PROMPT_CLAUDE_CODE_AUDITORIA.md, pasos 5 y 7).
@@ -3427,7 +3416,6 @@ where id = 'avatares';
 -- ------------------------------------------------------------------------------
 revoke all on function public.umbral_visibilidad() from public, anon;
 grant execute on function public.umbral_visibilidad() to authenticated;
-
 
 -- ==============================================================================
 -- KAMPUZ - MIGRACIÓN 013: Login con @usuario sin exponer correos y textos de "Contacto"
@@ -4577,6 +4565,80 @@ begin
     exception when duplicate_object then null;
     end;
 end $$;
+
+-- ==============================================================================
+-- KAMPUZ - MIGRACIÓN 016: Arreglos del tablón y del chat
+-- Idempotente: se puede ejecutar más de una vez.
+-- Funciones nuevas: sin EXECUTE para public ni anon; authenticated solo en las
+-- que llama la app.
+-- ==============================================================================
+
+-- ------------------------------------------------------------------------------
+-- 1. "ME INTERESA" ENTRE CONTACTOS
+--    Si ya son contactos, en vez de una solicitud se envía un mensaje en su chat:
+--    'Hola, me interesa tu publicación «TÍTULO» del mercadito.' (solo la primera
+--    vez que se toca). Si no son contactos, la solicitud lleva ese mismo motivo.
+-- ------------------------------------------------------------------------------
+create or replace function public.me_interesa(p_publicacion_id uuid, p_motivo text default null)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_yo uuid := auth.uid();
+    v_pub record;
+    v_nueva integer;
+    v_conv uuid;
+    v_texto text;
+begin
+    if v_yo is null then
+        raise exception 'KAMPUZ_SESION: Tu sesión expiró. Vuelve a iniciar sesión.';
+    end if;
+    select * into v_pub from public.publicaciones where id = p_publicacion_id;
+    if not found or v_pub.tipo <> 'mercadito' then
+        raise exception 'KAMPUZ_TABLON: No encontramos esta publicación.';
+    end if;
+
+    -- El trigger valida que siga activa, que no sea propia y que no haya bloqueo
+    insert into public.publicacion_respuestas (publicacion_id, usuario_id, tipo)
+    values (p_publicacion_id, v_yo, 'interesa')
+    on conflict (publicacion_id, usuario_id) do nothing;
+    get diagnostics v_nueva = row_count;
+
+    v_texto := left('Hola, me interesa tu publicación «' || v_pub.titulo || '» del mercadito.', 300);
+
+    select id into v_conv from public.conversaciones
+    where usuario_a_id = least(v_yo, v_pub.autor_id) and usuario_b_id = greatest(v_yo, v_pub.autor_id)
+      and origen = 'solicitud';
+
+    if v_conv is not null then
+        if v_nueva > 0 and not public.hay_bloqueo(v_yo, v_pub.autor_id) then
+            insert into public.mensajes_directos (conversacion_id, autor_id, texto)
+            values (v_conv, v_yo, v_texto);
+        end if;
+        return 'contacto';
+    end if;
+
+    if exists (
+        select 1 from public.solicitudes_mensaje
+        where estado = 'pendiente'
+          and ((de_id = v_yo and a_id = v_pub.autor_id) or (de_id = v_pub.autor_id and a_id = v_yo))
+    ) then
+        return 'solicitud_pendiente';
+    end if;
+
+    if exists (select 1 from public.solicitudes_mensaje where de_id = v_yo and a_id = v_pub.autor_id) then
+        return 'registrado'; -- ya hubo una solicitud que no se aceptó: no se insiste
+    end if;
+
+    perform public.enviar_solicitud(v_pub.autor_id, left(coalesce(nullif(trim(p_motivo), ''), v_texto), 300));
+    return 'solicitud_enviada';
+end;
+$$;
+
+revoke all on function public.me_interesa(uuid, text) from public, anon;
+grant execute on function public.me_interesa(uuid, text) to authenticated;
 
 -- ==============================================================================
 -- KAMPUS MVP - SEED DATA INICIAL

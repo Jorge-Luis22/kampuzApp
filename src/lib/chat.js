@@ -52,6 +52,24 @@ export async function conversacionCon(otroId) {
   return fila?.id || null;
 }
 
+/**
+ * Id del chat con otro alumno solo si son contactos (origen 'solicitud'), o null.
+ */
+export async function conversacionDeContacto(otroId) {
+  const uid = await uidActual();
+  const [a, b] = uid < otroId ? [uid, otroId] : [otroId, uid];
+  const fila = await ejecutar(
+    supabase
+      .from('conversaciones')
+      .select('id')
+      .eq('usuario_a_id', a)
+      .eq('usuario_b_id', b)
+      .eq('origen', 'solicitud')
+      .maybeSingle()
+  );
+  return fila?.id || null;
+}
+
 export async function fetchMensajesDirectos(conversacionId) {
   const filas = await ejecutar(
     supabase

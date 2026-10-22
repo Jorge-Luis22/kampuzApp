@@ -86,6 +86,9 @@ export const LUGARES_SUGERIDOS = [
   'Auditorio'
 ];
 
+// Mensaje (o motivo de la solicitud) de "Me interesa" en el mercadito
+export const textoMeInteresa = (titulo) => `Hola, me interesa tu publicación «${titulo}» del mercadito.`.slice(0, 300);
+
 export const MSG_TRAMPA =
   'Kampuz no permite ofrecer ayuda para hacer trampa en evaluaciones. Puedes ofrecer tutorías o apuntes propios.';
 

@@ -12,8 +12,9 @@ ok(!!inv, 'acepta invitado de revisión');
 await db.query(`update public.correos_invitados set activo=false where correo='kampuz.app.pe@gmail.com'`);
 try { await crearUsuarioAuth(db, 'kampuz.app.pe@gmail.com'); ok(false, 'inactivo'); } catch { ok(true, 'rechaza invitado inactivo'); }
 // lectura de invitados
-const r = await como(db, null, 'select count(*)::int n from public.correos_invitados');
-ok(r.rows[0].n === 0, 'anon no lee correos_invitados');
+// Desde 014, anon ni siquiera tiene permiso sobre la tabla
+const r = await como(db, null, 'select count(*)::int n from public.correos_invitados').catch((e) => ({ denegado: /permission denied/.test(e.message) }));
+ok(r.denegado || r.rows?.[0]?.n === 0, 'anon no lee correos_invitados');
 // usuario disponible
 ok((await como(db, null, `select public.usuario_disponible('ana.q') v`)).rows[0].v === false, 'usuario reservado en metadata no disponible');
 ok((await como(db, null, `select public.usuario_disponible('libre_1') v`)).rows[0].v === true, 'usuario libre disponible');

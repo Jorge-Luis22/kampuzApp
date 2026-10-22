@@ -1,5 +1,5 @@
 // Ejecuta las pruebas de las migraciones en un Postgres en memoria (PGlite).
-// Cada archivo *.test.mjs aplica 001..012 + seed desde cero y prueba las reglas
+// Cada archivo *.test.mjs aplica todas las migraciones + seed desde cero y prueba las reglas
 // del servidor (RLS, triggers y RPC) actuando como distintos alumnos.
 //
 // Uso: npm run test:sql

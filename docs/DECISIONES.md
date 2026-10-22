@@ -86,8 +86,15 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
   - **Modales recortados:** la animación `fadeIn` dejaba un `transform` aplicado y los modales `fixed` quedaban dentro de la vista (el chat ocupaba un tercio de la pantalla). Además `space-y-*` les sumaba margen. Corregido en `index.css` y con `!m-0` en las capas fijas.
   - **"Contacto":** la relación entre dos alumnos que aceptaron una solicitud se llama Contacto. Los textos están en `src/data/textos.js` (y los del servidor en la migración 013).
   - **Botón atrás de Android:** las pantallas que se abren encima (chat, paneles, modales) se registran con `useAtras` (`src/lib/atras.js`) y se cierran primero.
-  - **Numeración:** la migración 013 quedó para el login y los contactos; el tablón del punto 2 será la **014** (`014_tablon.sql`), no la 013 que decía el prompt.
+  - **Numeración:** la migración 013 quedó para el login y los contactos y la 014 para los arreglos de seguridad; el tablón del punto 2 será la **015** (`015_tablon.sql`), no la 013 que decía el prompt.
   - **Linter:** el proyecto no tiene ESLint configurado; se valida con `npm run build`.
+
+- **2026-10-22 (Auditoría de Supabase, migración 014):**
+  - Las funciones de trigger (y las de event trigger, como `rls_auto_enable` si existe) ya no son ejecutables por `public`, `anon` ni `authenticated`. Los triggers se siguen disparando: Postgres solo pide EXECUTE al crear el trigger.
+  - `search_path = public` fijo en `proteger_perfil`, `default_origen_campos`, `validar_correo_institucional`, `validar_consentimiento`, `moderar_consulta_servidor`, `firma_alumno` y `clasificar_certificado`.
+  - `correos_invitados`: sin permisos de tabla para la app y con una política explícita que niega todo. Solo la leen `correo_permitido` y `validar_correo_institucional` (security definer).
+  - **Ojo al crear funciones nuevas (tablón):** Supabase da EXECUTE a `anon` y `authenticated` por defecto. Cada función nueva debe hacer `revoke all ... from public, anon` y dar `grant execute ... to authenticated` solo si la app la llama.
+  - Perfiles sin @usuario (creados antes de que existiera): al entrar eligen uno en una pantalla propia; solo se guarda si el perfil no tenía (no sirve para cambiarlo).
 
 ## 4. Pendiente de decisión del equipo
 

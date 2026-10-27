@@ -9,7 +9,11 @@ values
     -- PILOTO: 5 en vez de 30 (spec 6.5) porque el piloto tiene ~10 alumnos. Volver a 30
     -- antes de abrir Kampuz a más alumnos. Ver docs/DECISIONES.md 2.1.
     ('umbral_minimo_segmento', '5', 'Mínimo de alumnos en un segmento para enviar encuestas. PILOTO: 5 (la spec pide 30); volver a 30 al abrir a más alumnos.'),
-    ('edad_minima_registro', '14', 'Edad mínima para crear un perfil en Kampuz (años cumplidos). No bajar de 14 sin un flujo de consentimiento de los padres.')
+    ('edad_minima_registro', '14', 'Edad mínima para crear un perfil en Kampuz (años cumplidos). No bajar de 14 sin un flujo de consentimiento de los padres.'),
+    -- PILOTO (migración 017): 5 apoyos en vez de 15 para abrir un grupo de interés, y "Me ayudó"
+    -- acredita estrellas con 1 alumno en vez de 2. Volver a 15 y 2 al abrir a más alumnos.
+    ('umbral_apoyos_grupo', '5', 'Mínimo de apoyos para que una propuesta de grupo sea visible. PILOTO: 5 (la spec pide 15); volver a 15 al abrir a más alumnos. El umbral real es el mayor entre este valor y el 3 % de la base.'),
+    ('min_alumnos_estrellas', '1', 'Alumnos distintos con la misma duda para que "Me ayudó" acredite estrellas. PILOTO: 1 (la spec pedía 2); volver a 2 al abrir a más alumnos.')
 on conflict (clave) do update set valor = excluded.valor;
 
 -- 2. CORREOS INVITADOS (únicos correos sin @utp.edu.pe que pueden registrarse)
@@ -118,6 +122,12 @@ where not exists (select 1 from public.espacios where nombre = 'Taller de Karate
 insert into public.espacios (tipo, nombre, descripcion, portada_url, sede, horario, oficial, estado, link_inscripcion)
 select 'taller', 'Taller de IA Aplicada a la Universidad', 'Uso ético y práctico de modelos generativos, automatización de resúmenes y asistencia en investigación.', '/grupos/ia.jpg', 'Lima Sur', 'Viernes 19:00 - 21:00 (Lab 401)', true, 'visible', 'https://portal.utp.edu.pe/talleres/ia-2026'
 where not exists (select 1 from public.espacios where nombre = 'Taller de IA Aplicada a la Universidad');
+
+-- Los talleres formativos otorgan puntos de una habilidad al terminarlos (migración 017).
+-- Los deportivos y recreativos no suman puntos; los crea el personal de la UTP con habilidad y puntos.
+update public.espacios
+set habilidad_taller = 'Inteligencia artificial', puntos_taller = 20
+where tipo = 'taller' and nombre = 'Taller de IA Aplicada a la Universidad' and habilidad_taller is null;
 
 -- 8. ESPACIOS DE CARRERA INICIALES
 insert into public.espacios (tipo, nombre, descripcion, portada_url, carrera, sede, oficial, estado)

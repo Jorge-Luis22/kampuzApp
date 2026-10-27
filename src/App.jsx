@@ -14,6 +14,7 @@ import TablonView from './views/TablonView';
 import GruposView from './views/GruposView';
 import EncuestasView from './views/EncuestasView';
 import PerfilView from './views/PerfilView';
+import ProyectosView from './views/ProyectosView';
 import PanelUniversidadView from './views/PanelUniversidadView';
 
 class ErrorBoundary extends React.Component {
@@ -204,8 +205,9 @@ function AppContent() {
         {activeTab === 'grupos' && <GruposView />}
         {activeTab === 'chats' && <ExplorarView key="chats" modo="chats" />}
         {activeTab === 'perfil' && <PerfilView />}
-        {/* Fuera de la barra: Explorar se abre desde el Inicio y Encuestas desde el Perfil */}
+        {/* Fuera de la barra: Explorar y Proyectos se abren desde el Inicio y Encuestas desde el Perfil */}
         {activeTab === 'explorar' && <ExplorarView key="explorar" modo="explorar" />}
+        {activeTab === 'proyectos' && <ProyectosView />}
         {activeTab === 'encuestas' && (
           <div className="flex flex-col min-h-full">
             <div className="px-4 pt-3">

@@ -5,6 +5,7 @@ import { fetchEspacios } from '../lib/spaces';
 import { fetchConsultasCarrera } from '../lib/consultas';
 import { fetchTablon, subscribeToTablon } from '../lib/tablon';
 import { fetchRecienLlegados, enviarSolicitudMensaje } from '../lib/explore';
+import { fetchProyectos, tipoProyecto } from '../lib/proyectos';
 import { textoVence, textoFecha } from '../data/tablon';
 import { ESTADOS_EN_VIVO } from '../data/estados';
 import { CONTACTO } from '../data/textos';
@@ -60,6 +61,7 @@ export default function InicioView() {
   const [consultas, setConsultas] = useState([]);
   const [publicaciones, setPublicaciones] = useState([]);
   const [recien, setRecien] = useState([]);
+  const [proyectos, setProyectos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState('');
 
@@ -86,14 +88,16 @@ export default function InicioView() {
       fetchEspacios(),
       fetchConsultasCarrera(user?.id),
       fetchTablon(null),
-      fetchRecienLlegados(5)
+      fetchRecienLlegados(5),
+      fetchProyectos()
     ]);
-    const [b, e, c, t, r] = resultados;
+    const [b, e, c, t, r, pr] = resultados;
     if (b.status === 'fulfilled') setEncuestasBandeja(b.value);
     if (e.status === 'fulfilled') setEspacios(e.value);
     if (c.status === 'fulfilled') setConsultas(c.value);
     if (t.status === 'fulfilled') setPublicaciones(t.value);
     if (r.status === 'fulfilled') setRecien(r.value);
+    if (pr.status === 'fulfilled') setProyectos(pr.value);
     const fallo = resultados.find((x) => x.status === 'rejected');
     if (fallo) setErrorCarga(fallo.reason?.message || 'No pudimos cargar tu inicio.');
     setCargando(false);
@@ -128,6 +132,7 @@ export default function InicioView() {
   const salon = espacios.find((e) => e.tipo === 'carrera_ciclo');
   const carreraEspacio = espacios.find((e) => e.tipo === 'carrera');
   const consultasAbiertas = consultas.filter((c) => c.estado === 'abierto');
+  const proyectosAbiertos = proyectos.filter((p) => p.estado === 'abierto' && !p.soyAutor && !p.miPostulacion).slice(0, 4);
   const estado = ESTADOS_EN_VIVO.find((s) => s.id === user?.estadoEnVivo) || null;
 
   const irAlTablon = (filtro = null) => {
@@ -305,7 +310,42 @@ export default function InicioView() {
         )}
       </Seccion>
 
-      {/* 4. Dudas de tu carrera */}
+      {/* 4. Proyectos reales buscando equipo */}
+      <Seccion titulo="Proyectos buscando equipo" subtitulo="Hackatones, startups y tesis de tu universidad" accion="Ver todos" onAccion={() => setActiveTab('proyectos')}>
+        {proyectosAbiertos.length === 0 ? (
+          <div className="p-4 rounded-2xl bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark flex items-center justify-between gap-3">
+            <p className="text-xs text-ink-soft dark:text-ink-muted font-medium">¿Vas a una hackatón o armas una startup? Cuenta qué buscas y te encuentran.</p>
+            <button
+              onClick={() => setActiveTab('proyectos')}
+              className="px-3 py-2 bg-brand-primary text-white text-xs font-extrabold rounded-xl flex items-center gap-1 shrink-0"
+            >
+              <Plus size={14} />
+              <span>Publicar</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4 scroll-px-4 snap-x snap-mandatory pb-1">
+            {proyectosAbiertos.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setActiveTab('proyectos')}
+                className="snap-start shrink-0 w-64 text-left p-3.5 rounded-2xl bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark shadow-sm space-y-2"
+              >
+                <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary dark:text-teal-300">
+                  {tipoProyecto(p.tipo).emoji} {tipoProyecto(p.tipo).label}
+                </span>
+                <p className="text-sm font-black text-ink dark:text-ink-light leading-snug line-clamp-2">{p.titulo}</p>
+                <p className="text-[11px] text-ink-muted line-clamp-2">{p.roles.length ? `Buscan: ${p.roles.join(', ')}` : p.descripcion}</p>
+                <p className="text-[11px] font-bold text-accent">
+                  {p.cuposLibres} lugar{p.cuposLibres === 1 ? '' : 'es'} libre{p.cuposLibres === 1 ? '' : 's'} · {p.autorNombre}
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
+      </Seccion>
+
+      {/* 5. Dudas de tu carrera */}
       <Seccion titulo={`Dudas de ${user?.carrera || 'tu carrera'}`} subtitulo="Responden alumnos de 5.° ciclo en adelante" accion="Ver dudas" onAccion={() => (carreraEspacio ? goToEspacio(carreraEspacio.id) : setActiveTab('grupos'))}>
         {consultasAbiertas.length === 0 ? (
           <p className="text-xs text-ink-muted bg-white dark:bg-surface-cardDark rounded-2xl p-3.5 border border-line dark:border-line-dark">
@@ -333,7 +373,7 @@ export default function InicioView() {
         )}
       </Seccion>
 
-      {/* 5. Recién llegados de otras carreras */}
+      {/* 6. Recién llegados de otras carreras */}
       {recien.length > 0 && (
         <Seccion titulo="Recién llegados" subtitulo="Alumnos nuevos de otras carreras de tu sede" accion="Buscar más" onAccion={() => setActiveTab('explorar')}>
           <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
@@ -368,7 +408,7 @@ export default function InicioView() {
         </Seccion>
       )}
 
-      {/* 6. Tus grupos */}
+      {/* 7. Tus grupos */}
       {(salon || carreraEspacio) && (
         <Seccion titulo="Tus grupos" accion="Ver todos" onAccion={() => setActiveTab('grupos')}>
           <div className="grid grid-cols-2 gap-2.5">

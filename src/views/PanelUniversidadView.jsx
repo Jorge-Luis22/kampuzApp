@@ -36,7 +36,7 @@ export default function PanelUniversidadView() {
       ciclo: user.ciclo,
       hechosClave: `${user.habilidades?.predisposicion_ayudar?.hechos?.[0] || 'Orientó consultas académicas de carrera'} · Respondió ${user.habilidades?.apoyo_investigacion?.progresoActual || 2} encuestas de tesis`,
       habilidadesPrincipales: [
-        `Predisposición a ayudar (Nivel ${user.habilidades?.predisposicion_ayudar?.nivel || 1})`,
+        `Solidaridad (Nivel ${user.habilidades?.predisposicion_ayudar?.nivel || 1})`,
         `Apoyo a la investigación (Nivel ${user.habilidades?.apoyo_investigacion?.nivel || 1})`
       ],
       consentimiento4Activo: true

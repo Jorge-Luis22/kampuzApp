@@ -10,7 +10,8 @@ import {
   enviarMensajeEspacio,
   subscribeToMensajesEspacio,
   fusionarMensajeEspacio,
-  fetchCursosDeCarrera
+  fetchCursosDeCarrera,
+  fetchInfoTalleres
 } from '../lib/spaces';
 import {
   fetchConsultasCarrera,
@@ -18,9 +19,11 @@ import {
   validarPermisoOrientar,
   publicarOrientacion,
   valorarRespuesta,
-  moderarConsultaTexto
+  moderarConsultaTexto,
+  fetchReglasPiloto
 } from '../lib/consultas';
 import ErrorConReintento from '../components/ErrorConReintento';
+import { BannerPuntosTaller, EtiquetaPuntosTaller, CrearTallerBoton } from '../components/TallerPuntos';
 import {
   MessageSquare,
   Sparkles,
@@ -64,6 +67,8 @@ export default function GruposView() {
   const [isLoadingConsultas, setIsLoadingConsultas] = useState(false);
   const [errorConsultas, setErrorConsultas] = useState('');
   const [cursosCarrera, setCursosCarrera] = useState([]);
+  const [minAlumnosEstrellas, setMinAlumnosEstrellas] = useState(1);
+  const [infoTalleres, setInfoTalleres] = useState({});
 
   const [activeCategory, setActiveCategory] = useState('todos'); // 'todos' | 'cohorte' | 'carrera' | 'talleres'
   const [showProponerModal, setShowProponerModal] = useState(false);
@@ -111,6 +116,21 @@ export default function GruposView() {
 
   const currentEspacio = espaciosList.find((e) => e.id === activeEspacioId);
 
+  // Puntos de habilidad y constancia de cada taller (si falla, la lista sigue funcionando sin ellos)
+  const cargarInfoTalleres = useCallback(async () => {
+    try {
+      setInfoTalleres(await fetchInfoTalleres());
+    } catch (err) {
+      setInfoTalleres({});
+    }
+  }, []);
+
+  useEffect(() => {
+    cargarInfoTalleres();
+  }, [cargarInfoTalleres, user?.id]);
+
+  const esPersonalUTP = user?.rol === 'moderador' || user?.rol === 'admin_universidad';
+
   const cargarConsultas = useCallback(async () => {
     setIsLoadingConsultas(true);
     setErrorConsultas('');
@@ -132,6 +152,12 @@ export default function GruposView() {
         .catch(() => setCursosCarrera([]));
     }
   }, [currentEspacio?.id, currentEspacio?.tipo, cargarConsultas, user?.carrera]);
+
+  useEffect(() => {
+    fetchReglasPiloto()
+      .then((r) => setMinAlumnosEstrellas(r.minAlumnosEstrellas))
+      .catch(() => {});
+  }, [user?.id]);
 
   const currentConsulta = consultasList.find((c) => c.id === activeConsultaId);
 
@@ -205,7 +231,7 @@ export default function GruposView() {
     }
   };
 
-  // Proponer grupo: el servidor fija el umbral max(15, 3% de la base) (M16)
+  // Proponer grupo: el servidor fija el umbral max(config piloto, 3% de la base) (M16)
   const handleProponerSubmit = async (e) => {
     e.preventDefault();
     if (!propNombre.trim()) return;
@@ -541,6 +567,15 @@ export default function GruposView() {
           )}
         </div>
 
+        {isTaller && (
+          <BannerPuntosTaller
+            espacio={currentEspacio}
+            info={infoTalleres[currentEspacio.id]}
+            esMiembro={esMiembro}
+            onCambio={cargarInfoTalleres}
+          />
+        )}
+
         {errorAccion && (
           <div className="px-4 pt-3">
             <ErrorConReintento compacto mensaje={errorAccion} />
@@ -717,8 +752,8 @@ export default function GruposView() {
     const permisoOrientar = validarPermisoOrientar(user, currentConsulta);
     const puedoOrientar = permisoOrientar.puede;
     const soyAutor = currentConsulta.soyAutor;
-    // Solo por mensaje: una estrella por cada alumno con la misma duda (si son 2 o más)
-    const estrellasPotenciales = currentConsulta.nAlumnos >= 2 ? currentConsulta.nAlumnos : 0;
+    // Solo por mensaje: una estrella por cada alumno con la misma duda (si llegan al mínimo de la regla)
+    const estrellasPotenciales = currentConsulta.nAlumnos >= minAlumnosEstrellas ? currentConsulta.nAlumnos : 0;
 
     return (
       <div className="flex-1 flex flex-col h-full bg-surface dark:bg-surface-dark select-none animate-fadeIn overflow-y-auto">
@@ -748,7 +783,7 @@ export default function GruposView() {
                 {currentConsulta.curso}
               </span>
               <span className="px-2.5 py-1 bg-amber-100 text-amber-900 font-bold text-xs rounded-full">
-                {currentConsulta.nAlumnos} alumnos consultan
+                {currentConsulta.nAlumnos} {currentConsulta.nAlumnos === 1 ? 'alumno consulta' : 'alumnos consultan'}
               </span>
             </div>
 
@@ -760,9 +795,9 @@ export default function GruposView() {
               "{currentConsulta.textoResumen}"
             </p>
 
-            {currentConsulta.nAlumnos < 2 && (
+            {currentConsulta.nAlumnos < minAlumnosEstrellas && (
               <div className="p-2.5 bg-surface dark:bg-surface-dark rounded-xl text-xs text-ink-soft dark:text-ink-muted font-semibold border border-line dark:border-line-dark">
-                Solo 1 alumno preguntó esto. Las consultas de una sola persona no dan estrellas: cuando alguien más tenga la misma duda, se agrupa y empieza a contar.
+                Solo {currentConsulta.nAlumnos} alumno{currentConsulta.nAlumnos === 1 ? '' : 's'} preguntó esto. Hacen falta {minAlumnosEstrellas} con la misma duda para dar estrellas: cuando alguien más la tenga, se agrupa y empieza a contar.
               </div>
             )}
 
@@ -805,7 +840,7 @@ export default function GruposView() {
                           ? 'bg-accent-soft text-accent border-accent/20'
                           : 'bg-surface dark:bg-surface-dark text-ink-muted border-line dark:border-line-dark'
                       }`}
-                      title={r.calificadoPorSolicitante ? 'Estrellas acreditadas' : 'Se acreditan cuando quien preguntó valora la respuesta'}
+                      title={r.calificadoPorSolicitante ? 'Estrellas acreditadas' : 'Se acreditan cuando quien preguntó confirma con "Me ayudó"'}
                     >
                       ★ +{r.estrellasCalculadas}{!r.calificadoPorSolicitante && ' pendiente'}
                     </span>
@@ -825,7 +860,7 @@ export default function GruposView() {
                             disabled={accionEnCurso === r.id}
                             className="px-2.5 py-1 text-ink-muted font-bold rounded-lg disabled:opacity-50"
                           >
-                            No me sirvió
+                            No me ayudó
                           </button>
                           <button
                             onClick={() => handleValorarRespuesta(r.id, true)}
@@ -833,18 +868,18 @@ export default function GruposView() {
                             className="px-3 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-lg flex items-center space-x-1.5 shadow-sm disabled:opacity-50"
                           >
                             <ThumbsUp size={12} />
-                            <span>Me sirvió</span>
+                            <span>Me ayudó</span>
                           </button>
                         </div>
                       ) : (
                         <span className="text-ink-muted font-semibold italic">
-                          Esperando valoración de quien preguntó
+                          Esperando que quien preguntó confirme si le ayudó
                         </span>
                       )
                     ) : (
                       <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center space-x-1">
                         <CheckCircle2 size={14} />
-                        <span>Validada por Alumnos</span>
+                        <span>Le ayudó a quien preguntó</span>
                       </span>
                     )}
                   </div>
@@ -889,8 +924,8 @@ export default function GruposView() {
 
               <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 rounded-xl text-xs text-amber-800 dark:text-amber-300 font-bold border border-amber-200">
                 {estrellasPotenciales > 0
-                  ? `★ +${estrellasPotenciales} estrellas de ayuda cuando quien preguntó valore tu respuesta`
-                  : 'Esta consulta es de 1 sola persona: no da estrellas hasta que se agrupe'}
+                  ? `★ +${estrellasPotenciales} estrellas de ayuda y sube tu Solidaridad cuando quien preguntó confirme con "Me ayudó"`
+                  : `Esta consulta aún no llega a ${minAlumnosEstrellas} alumnos con la misma duda: no da estrellas hasta que se agrupe`}
               </div>
 
               {errorRespuesta && (
@@ -935,13 +970,24 @@ export default function GruposView() {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowProponerModal(true)}
-          className="px-3.5 py-2 bg-brand-primary hover:bg-brand-primaryHover text-white text-xs font-extrabold rounded-xl flex items-center space-x-1.5 shadow-sm transition"
-        >
-          <Plus size={15} />
-          <span>Proponer</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          {esPersonalUTP && (
+            <CrearTallerBoton
+              onCreado={async (id) => {
+                await cargarEspacios();
+                await cargarInfoTalleres();
+                setActiveEspacioId(id);
+              }}
+            />
+          )}
+          <button
+            onClick={() => setShowProponerModal(true)}
+            className="px-3.5 py-2 bg-brand-primary hover:bg-brand-primaryHover text-white text-xs font-extrabold rounded-xl flex items-center space-x-1.5 shadow-sm transition"
+          >
+            <Plus size={15} />
+            <span>Proponer</span>
+          </button>
+        </div>
       </div>
 
       {/* Category Pills */}
@@ -1042,6 +1088,8 @@ export default function GruposView() {
                         <span className="truncate">{esp.horario}</span>
                       </div>
                     )}
+
+                    {isTaller && <EtiquetaPuntosTaller info={infoTalleres[esp.id]} />}
 
                     {/* Propuesta: Contador de apoyos */}
                     {isPropuesta && (

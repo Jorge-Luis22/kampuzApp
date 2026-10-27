@@ -45,7 +45,7 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
 ### 2.3 Espacios y Moderación
 - **Tres tipos de espacios:** Cohorte de Carrera y Ciclo (automático), Espacio de Carrera (todos los ciclos, sede de consultas agrupadas), y Grupos de Interés/Talleres.
 - **Talleres Oficiales:** Espejados con horario real de bienestar estudiantil UTP (Lettering, Futsal, Karate, IA aplicada) con sello "Oficial".
-- **Propuestas de Alumnos:** Umbral de visibilidad dinámico: $\max(15, \text{round}(\text{base} \times 0.03))$. El grupo se crea oculto y pasa a visible en Explorar al alcanzar el umbral.
+- **Propuestas de Alumnos:** Umbral de visibilidad dinámico: $\max(\text{config}, \text{round}(\text{base} \times 0.03))$, con `config.umbral_apoyos_grupo` en **15** en la spec y en **5** en el piloto (migración 017, ver sección 3). El grupo se crea oculto y pasa a visible en Explorar al alcanzar el umbral.
 - **Moderación de Docentes:** Regla *"Se habla del curso, no de la persona"*. Detección en servidor mediante regex estricta sin flag `/i` en nombres propios ("el profesor dijo..." permitido; mención + juicio de valor bloqueado).
 
 ---
@@ -117,6 +117,19 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
   - **Eliminar en el chat sin borrar datos.** "Eliminar chat para mí" guarda hasta qué momento lo oculté (`conversaciones_ocultas`): sale de mi lista, la RLS me deja leer solo los mensajes posteriores y reaparece si llega uno nuevo; la otra persona no ve cambios. "Eliminar para todos" (solo el autor, dentro de 24 h) vacía el texto y marca `eliminado_en`; el original se copia a `mensajes_directos_eliminados`, que solo pueden leer moderadores. Explicado en `public/privacidad.html`.
   - La app ya no puede elegir la fecha de un mensaje ni crearlo "eliminado": solo inserta conversación, autor y texto.
 
+- **2026-10-27 (Migración 017: Solidaridad, talleres con puntos, proyectos y umbral del piloto)** — decisiones de Jorge (Product Owner):
+  - **Solidaridad.** La habilidad `predisposicion_ayudar` (Predisposición a ayudar) se muestra como **Solidaridad** y la alimenta el botón **"Me ayudó"** de quien preguntó (antes "Me sirvió"). Sube de nivel por **alumnos distintos** ayudados (1, 2 y 5 → niveles 1, 2 y 3): repetir con el mismo alumno suma estrellas pero no nivel. No cuentan los alumnos que ya son contactos directos del asesor (para que dos amigos no se inflen la habilidad); un chat de "Yo te ayudo" del tablón no se considera contacto. Se conserva la clave interna `predisposicion_ayudar` para no romper el Panel UTP ni las medallas.
+  - **Estrellas con un solo alumno (piloto).** `config.min_alumnos_estrellas` pasa a **1** (la spec pide 2). Con ~10 alumnos casi ninguna duda se agrupa y la Solidaridad nunca arrancaba. Orientar sigue pidiendo ciclo 5 o superior y mayor que el de quien preguntó.
+  - **Talleres de la UTP con puntos.** Cada taller puede dar una habilidad y puntos (`espacios.habilidad_taller`, `puntos_taller`; el de IA da 20 de "Inteligencia artificial"). Quien termina recibe una **constancia** (`constancias_taller`, una por alumno y taller) que **solo entrega el personal UTP** (rol `moderador` o `admin_universidad`, asignado por SQL) o el admin del taller; un alumno no puede darse una constancia. Los puntos de la misma habilidad se acumulan entre talleres: 20 = nivel 1, 40 = nivel 2, 60 = nivel 3 (la habilidad aparece en el perfil como `taller_<habilidad>`). El personal UTP crea talleres desde Grupos ("Crear taller"). Asistir no basta: la constancia la decide quien dicta el taller.
+  - **Proyectos reales buscando equipo** (hackatones, startups, tesis, concursos, investigación). Tablas `proyectos` y `postulaciones_proyecto` sin acceso directo: todo por funciones del servidor. Reglas: solo los ve la misma universidad, máximo 3 proyectos abiertos por alumno y 5 postulaciones esperando respuesta, mensaje de postulación de 10 a 400 caracteres, no se postula a un proyecto propio ni de alguien que lo bloqueó. Al aceptar se abre un chat de contactos entre ambos y, si los cupos se llenan, el proyecto se cierra solo. Se abre desde "Proyectos buscando equipo" en el Inicio.
+  - **Umbral para abrir un grupo (piloto).** `config.umbral_apoyos_grupo` en **5** (la spec pide 15). El umbral real es el mayor entre ese valor, 2 y el 3 % de la base. Las propuestas ocultas que ya lo cumplían pasan a visibles al aplicar la migración.
+  - **Antes de abrir Kampuz a más alumnos, volver a los valores de la spec** (y cambiar también `supabase/seed.sql`, que los sobrescribe):
+    ```sql
+    update public.config set valor = '15' where clave = 'umbral_apoyos_grupo';
+    update public.config set valor = '2'  where clave = 'min_alumnos_estrellas';
+    ```
+  - La app lee estas dos reglas con `reglas_piloto()` para que los textos ("hacen falta N alumnos con la misma duda") siempre coincidan con el servidor.
+
 ## 4. Pendiente de decisión del equipo
 
 ### 4.1 "Estado en vivo" (En campus / En clase / En biblioteca / Buscando equipo / En exámenes)
@@ -181,7 +194,7 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
 - **Constancia** cuenta talleres o grupos de interés donde el alumno es miembro **y escribió** al menos un mensaje (spec 5.6: asistir no es evidencia). **Liderazgo** cuenta grupos creados que **alcanzaron el umbral** (una propuesta oculta no es un grupo).
 - **Propuestas:** máximo 2 propuestas ocultas a la vez por alumno (anti-spam).
 - **Solicitudes:** si una solicitud fue ignorada, el mismo emisor no puede reenviarla.
-- **Modo "llamada" (×3) eliminado (decisión del equipo, 2026-10-20):** la llamada no existe en la app (la spec 11.3 la deja fuera del piloto) y el modo lo declaraba quien respondía, así que inflaba estrellas. Ahora solo se orienta por mensaje: estrellas = nAlumnos si son 2 o más. El servidor rechaza cualquier otro modo. Si algún día existe la llamada dentro de la app (con moderación), se puede volver a evaluar el ×3.
+- **Modo "llamada" (×3) eliminado (decisión del equipo, 2026-10-20):** la llamada no existe en la app (la spec 11.3 la deja fuera del piloto) y el modo lo declaraba quien respondía, así que inflaba estrellas. Ahora solo se orienta por mensaje: estrellas = nAlumnos si llegan al mínimo de `config.min_alumnos_estrellas` (2 en la spec, 1 en el piloto). El servidor rechaza cualquier otro modo. Si algún día existe la llamada dentro de la app (con moderación), se puede volver a evaluar el ×3.
 - **Sede** no se usa en el filtro de encuestas: el piloto es de una sola sede.
 - **Login con @usuario (sprint de 2 días):** la función pública `obtener_correo_por_identificador` se eliminó (migración 013) porque le daba a cualquiera el correo de un @usuario. Ahora el login con @usuario pasa por la Edge Function `login`, que resuelve el correo con la service role y devuelve solo la sesión; el mensaje de error es siempre "Usuario o contraseña incorrectos.". El login con correo sigue yendo directo a Supabase Auth. La recuperación de contraseña se pide solo con el correo institucional.
   - **Riesgo aceptado:** Supabase Auth limita los intentos por IP; con @usuario todos los intentos salen de la IP de la Edge Function. Con un piloto de 10 alumnos no es un problema; si crece, revisar los límites o reenviar la IP del alumno.

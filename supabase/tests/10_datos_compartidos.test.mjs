@@ -50,7 +50,7 @@ ok(true, 'A se une a un taller');
 await falla(como(db, A, `insert into public.espacios (tipo,nombre,sede,estado,creador_id) values ('interes','X','Lima Sur','visible',$1)`, [A]), /row-level security/, 'no crea espacios visibles directo');
 const prop = (await como(db, A, `select public.proponer_grupo('Club de Ajedrez','Partidas los viernes') id`)).rows[0].id;
 const p1 = (await como(db, B, `select * from public.listar_espacios() where id=$1`, [prop])).rows[0];
-ok(p1 && p1.estado === 'oculto' && p1.apoyos === 1 && p1.umbral === 15, 'propuesta oculta, 1 apoyo, umbral 15 visible para B');
+ok(p1 && p1.estado === 'oculto' && p1.apoyos === 1 && p1.umbral === 5, 'propuesta oculta, 1 apoyo, umbral 5 (piloto) visible para B');
 ok((await como(db, B, `select public.apoyar_propuesta($1) e`, [prop])).rows[0].e === 'oculto', 'B apoya');
 await falla(como(db, B, `select public.apoyar_propuesta($1)`, [prop]), /Ya apoyaste/, 'apoyo único');
 await falla(como(db, B, `insert into public.membresias (usuario_id, espacio_id) values ($1,$2)`, [B, prop]), /row-level security/, 'no se une a propuesta oculta');

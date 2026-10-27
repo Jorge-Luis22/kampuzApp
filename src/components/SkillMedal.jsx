@@ -102,6 +102,16 @@ export default function SkillMedal({
           />
         );
       default:
+        if (typeof skillKey === 'string' && skillKey.startsWith('taller_')) {
+          return (
+            // Birrete: habilidad ganada al terminar un taller de la UTP
+            <path
+              d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"
+              fill="white"
+              transform="scale(1.7) translate(3, 3)"
+            />
+          );
+        }
         return (
           // Estrella genérica
           <path

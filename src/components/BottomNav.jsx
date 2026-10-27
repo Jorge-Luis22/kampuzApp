@@ -6,7 +6,7 @@ import { fetchConversaciones } from '../lib/chat';
 import { Home, Flame, Users, MessageCircle, User } from 'lucide-react';
 
 // Pantallas fuera de la barra: se marca la pestaña desde la que se abren
-const PESTANA_DE = { explorar: 'inicio', encuestas: 'perfil' };
+const PESTANA_DE = { explorar: 'inicio', proyectos: 'inicio', encuestas: 'perfil' };
 
 export default function BottomNav() {
   const { activeTab, setActiveTab, user } = useStore();

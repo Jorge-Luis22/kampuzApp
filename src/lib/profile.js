@@ -143,18 +143,21 @@ export async function cambiarFotoPerfil(file) {
 // -----------------------------------------------------------------------------
 const NOMBRES_HABILIDAD = {
   apoyo_investigacion: 'Apoyo a la investigación',
-  predisposicion_ayudar: 'Predisposición a ayudar',
+  predisposicion_ayudar: 'Solidaridad',
   constancia: 'Constancia',
   liderazgo: 'Liderazgo'
 };
 
-const hechoDe = (id, n, estrellas) => {
+const hechoDe = (id, n, estrellas, h = {}) => {
   if (!n) return [];
+  if (h.taller) {
+    return [`Terminó ${h.talleres} taller${h.talleres === 1 ? '' : 'es'} de la UTP · ${n} punto${n === 1 ? '' : 's'} en ${h.nombre}`];
+  }
   switch (id) {
     case 'apoyo_investigacion':
       return [`Respondió ${n} encuesta${n === 1 ? '' : 's'} de otros alumnos`];
     case 'predisposicion_ayudar':
-      return [`Resolvió ${n} consulta${n === 1 ? '' : 's'} agrupada${n === 1 ? '' : 's'} de ciclos menores · ${estrellas} estrellas`];
+      return [`Ayudó a ${n} alumno${n === 1 ? '' : 's'} que lo confirmaron con "Me ayudó"`];
     case 'constancia':
       return [`Participa activamente en ${n} grupo${n === 1 ? '' : 's'} o taller${n === 1 ? '' : 'es'}`];
     case 'liderazgo':
@@ -171,12 +174,13 @@ export async function calcularHabilidadesReales(userId) {
     const metas = h.metas || [1, 2, 3];
     resultado[id] = {
       id,
-      nombre: NOMBRES_HABILIDAD[id] || id,
+      nombre: h.nombre || NOMBRES_HABILIDAD[id] || id,
       tipo: 'blanda',
+      deTaller: Boolean(h.taller),
       nivel: h.nivel,
       estrellas: h.estrellas,
       origen: 'verificada',
-      hechos: hechoDe(id, h.progreso, h.estrellas),
+      hechos: hechoDe(id, h.progreso, h.estrellas, h),
       progresoActual: h.progreso,
       siguienteNivelMeta: metas[Math.min(h.nivel, metas.length - 1)],
       alcanceSemanal: h.alcance_semanal

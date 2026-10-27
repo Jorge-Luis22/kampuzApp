@@ -96,14 +96,27 @@ export function validarPermisoOrientar(user, consulta) {
   return { puede: true, motivo: null };
 }
 
-// Solo por mensaje: estrellas = nAlumnos (si son 2 o más), pendientes hasta la valoración.
+// Solo por mensaje: estrellas = nAlumnos (si llegan al mínimo de la regla), pendientes hasta el "Me ayudó".
 export async function publicarOrientacion({ grupoId, texto }) {
   return rpc('responder_consulta', { p_grupo_id: grupoId, p_texto: texto });
 }
 
 /**
- * Solo un autor de la consulta puede valorar; ahí se acreditan las estrellas.
+ * Solo quien preguntó confirma con "Me ayudó" (util = true) o "No me ayudó" (false).
+ * Con "Me ayudó" se acreditan las estrellas y suma a la habilidad Solidaridad de quien orientó.
  */
 export async function valorarRespuesta({ asesoriaId, util = true }) {
   return rpc('valorar_asesoria', { p_asesoria_id: asesoriaId, p_util: util });
+}
+
+/**
+ * Reglas del piloto que cambian los textos de la app (las fija el servidor):
+ * cuántos alumnos con la misma duda hacen falta para dar estrellas y cuántos apoyos abren un grupo.
+ */
+export async function fetchReglasPiloto() {
+  const r = (await rpc('reglas_piloto')) || {};
+  return {
+    minAlumnosEstrellas: Number(r.min_alumnos_estrellas) || 1,
+    umbralApoyosGrupo: Number(r.umbral_apoyos_grupo) || 15
+  };
 }

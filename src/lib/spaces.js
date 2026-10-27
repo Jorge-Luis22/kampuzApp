@@ -59,7 +59,7 @@ export async function apoyarPropuestaEspacio(espacioId) {
 }
 
 /**
- * Propone un grupo de interés. El servidor lo crea oculto, con umbral max(15, 3% de la base).
+ * Propone un grupo de interés. El servidor lo crea oculto, con umbral max(config piloto, 3% de la base).
  */
 export async function proponerNuevoEspacio({ nombre, descripcion }) {
   return rpc('proponer_grupo', { p_nombre: nombre, p_descripcion: descripcion });
@@ -164,4 +164,57 @@ export async function fetchCursosDeCarrera(carrera) {
     supabase.from('cursos').select('nombre, carreras!inner(nombre)').eq('carreras.nombre', carrera).order('nombre')
   )) || [];
   return filas.map((c) => c.nombre);
+}
+
+// -----------------------------------------------------------------------------
+// Talleres de la UTP con puntos de habilidad y constancia (migración 017).
+// Todo pasa por funciones del servidor: el alumno no puede darse una constancia.
+// -----------------------------------------------------------------------------
+
+/**
+ * Por cada taller: qué habilidad da, cuántos puntos, si ya tengo mi constancia
+ * y si puedo gestionarlas (personal UTP o admin del taller). Devuelve un mapa por id.
+ */
+export async function fetchInfoTalleres() {
+  const filas = (await rpc('info_talleres')) || [];
+  const mapa = {};
+  for (const t of filas) {
+    mapa[t.espacio_id] = {
+      habilidad: t.habilidad || null,
+      puntos: t.puntos,
+      constanciaEn: t.constancia_en || null,
+      puedoGestionar: Boolean(t.puedo_gestionar)
+    };
+  }
+  return mapa;
+}
+
+/** Inscritos del taller y quién ya tiene constancia (solo quien gestiona). */
+export async function fetchMiembrosTaller(espacioId) {
+  const filas = (await rpc('miembros_taller', { p_espacio_id: espacioId })) || [];
+  return filas.map((m) => ({
+    id: m.usuario_id,
+    nombre: `${m.nombre || ''} ${m.apellido || ''}`.trim() || 'Alumno',
+    carrera: m.carrera,
+    ciclo: m.ciclo,
+    mensajes: m.mensajes || 0,
+    constanciaEn: m.constancia_en || null
+  }));
+}
+
+/** Entrega la constancia y los puntos a los alumnos elegidos. Devuelve cuántas se entregaron. */
+export async function entregarConstancias(espacioId, usuarioIds) {
+  return rpc('otorgar_constancias_taller', { p_espacio_id: espacioId, p_usuarios: usuarioIds });
+}
+
+/** Solo personal de la UTP: crea un taller oficial que da puntos en una habilidad. */
+export async function crearTallerOficial({ nombre, descripcion, horario, link, habilidad, puntos }) {
+  return rpc('crear_taller', {
+    p_nombre: nombre,
+    p_descripcion: descripcion || '',
+    p_horario: horario || '',
+    p_link: link || '',
+    p_habilidad: habilidad || '',
+    p_puntos: Number(puntos) || 20
+  });
 }

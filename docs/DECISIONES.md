@@ -130,6 +130,15 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
     ```
   - La app lee estas dos reglas con `reglas_piloto()` para que los textos ("hacen falta N alumnos con la misma duda") siempre coincidan con el servidor.
 
+- **2026-11-08 (Migración 018: encuestas robustas y habilidades visibles)** — cierra M26 y M08 de `ESTADO_MVP.md`:
+  - **Tres tipos de pregunta en la app** (la spec ya los define: `unica|multiple|abierta`). Antes la interfaz solo creaba y respondía "una opción". Ahora se puede redactar, responder y ver resultados de preguntas de una opción, de varias opciones y de respuesta escrita.
+  - **Respuestas validadas en el servidor.** Antes `responder_encuesta` aceptaba cualquier texto como "opción": con la API se podía meter texto propio y el autor lo veía como una opción más en sus resultados. Ahora cada respuesta debe ser una opción real de la pregunta, en "varias opciones" no se repiten, y el texto escrito admite hasta 500 caracteres. Un rechazo no deja nada guardado y se puede reintentar.
+  - **Límites al redactar (también en el servidor):** pregunta de hasta 300 caracteres (la interfaz pone 200), de 2 a 6 opciones de hasta 100 caracteres, sin repetir (se comparan sin espacios sobrantes). Una pregunta escrita no guarda opciones.
+  - **Resultados:** en "varias opciones" el porcentaje es sobre quienes respondieron (pueden sumar más de 100 %). Las respuestas escritas llegan al autor en orden aleatorio y sin vínculo con quien las escribió.
+  - **Habilidades de otro alumno (M08).** Antes `calcular_habilidades_usuario` la podía llamar cualquier alumno con el UUID de cualquier otro, aunque lo hubiera bloqueado o fuera de otra universidad, y devolvía datos privados como el alcance semanal. Ahora el cálculo está en `calcular_habilidades_base` (sin acceso desde la app) y la puerta es `calcular_habilidades_usuario`: tu propio perfil sale completo; el de otro alumno solo si es de tu universidad y sin bloqueos, y únicamente con nombre, nivel y estrellas de lo que ya alcanzó (nivel 1 o más). El mensaje de error es el mismo para "no existe", "otra universidad" y "bloqueo".
+  - **La migración se puede repetir** (`full_schema.sql` promete ser idempotente): si la 017 vuelve a ejecutarse y pisa la puerta, la 018 deja la lógica completa como base y recrea la puerta. Está cubierto en `supabase/tests/18_encuestas_y_habilidades.test.mjs`.
+  - **Pendiente:** las respuestas escritas no se moderan (podrían traer insultos o datos personales; la pantalla avisa que no pongan nombres). Y ver [4.3](#43-habilidades-visibles-para-otros-alumnos).
+
 ## 4. Pendiente de decisión del equipo
 
 ### 4.1 "Estado en vivo" (En campus / En clase / En biblioteca / Buscando equipo / En exámenes)
@@ -144,6 +153,11 @@ Este documento registra las decisiones tomadas para la transición de `kampusApp
 - **Por qué no menos de 14:** según el reglamento de la Ley 29733, para tratar datos de menores de 14 años se necesita el consentimiento de sus padres o tutores, y Kampuz no tiene ese flujo. El servidor no baja de 14 aunque se configure un valor menor.
 - **Encuestas:** el filtro de edad de una encuesta nueva sigue empezando en 18 (el autor puede bajarlo hasta 14). Investigar con menores suele requerir autorización de los padres; que lo decida el equipo con el curso o el comité de ética.
 - **Pendiente:** validar con un especialista legal el tratamiento de datos de alumnos de 14 a 17 años (consentimientos, consentimiento 4 sobre convocatorias, chats con adultos) y avisar a Jorge, porque cambia una regla de la spec.
+
+### 4.3 Habilidades visibles para otros alumnos
+- **Qué se hizo (migración 018):** el perfil de otro alumno (M08) muestra las habilidades que ya alcanzó, con su nombre y nivel, junto a carrera y ciclo. Hoy no hay un consentimiento propio para esto: se tratan como parte del perfil que ya ven los alumnos de la misma universidad.
+- **Riesgo:** un nivel alto o bajo en "Apoyo a la investigación" o "Solidaridad" muestra qué hace la persona dentro de la app; alguien podría no querer exhibirlo.
+- **A decidir por Jorge / el equipo:** mantenerlo así, agregar en Privacidad (M32) un interruptor para ocultarlas, o mostrar solo las de nivel 2 o más.
 
 ---
 

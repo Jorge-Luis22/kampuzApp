@@ -25,7 +25,7 @@ Estado **real** de cada pantalla de la app (M01–M33) y del panel web (W01–W0
 | **M05** | Consentimientos | 🔵 | **Los 4 separados** (spec 6.8): el 1 bloqueado "Necesario", el 4 apagado. Tabla `consentimientos` + historial con versión y fecha. Cuentas antiguas pasan por M05 al entrar. |
 | **M06** | Inicio | 🔵 | "Pasando hoy en tu sede": ahora mismo (tablón), próximos eventos y talleres de hoy, dudas de la carrera, recién llegados de otras carreras y grupos. Todo de Supabase. |
 | **M07** | Explorar | 🔵 | Perfiles reales con filtros en el servidor; sin perfiles de muestra. Excluye bloqueos en ambos sentidos. |
-| **M08** | Perfil de otro alumno + solicitud | 🔵 | Modal con datos reales y solicitud con motivo (validada por `enviar_solicitud`). Falta mostrar las habilidades del otro alumno. |
+| **M08** | Perfil de otro alumno + solicitud | 🔵 | Modal con datos reales y solicitud con motivo (validada por `enviar_solicitud`). Muestra las habilidades que el otro alumno ya alcanzó (nombre y nivel, sin progreso ni alcance semanal); el servidor solo las entrega si es de tu universidad y no hay un bloqueo entre ambos (migración 018). |
 | **M09** | Solicitudes | 🔵 | Recibidas/enviadas desde Supabase, aviso en vivo (Realtime). Aceptar crea la conversación en el servidor. |
 | **M10** | Chat 1 a 1 | 🔵 | Realtime en `mensajes_directos`, envío optimista sin duplicados, "leído", reintento si falla. |
 | **M11** | Grupos | 🔵 | `listar_espacios` con conteos reales; solo tu grupo de carrera y ciclo. |
@@ -43,7 +43,7 @@ Estado **real** de cada pantalla de la app (M01–M33) y del panel web (W01–W0
 | **M23** | Bandeja de encuestas | 🔵 | `mi_bandeja_encuestas` libera la cola si hay cupo (tope 3/semana). |
 | **M24** | Crear encuesta: filtro en vivo | 🔵 | Conteo por RPC (solo un número), solo cuenta a quien dio el consentimiento 2. |
 | **M25** | Bloqueo bajo el umbral | 🔵 | Pantalla propia; el servidor bloquea igual aunque se llame a la RPC a mano. |
-| **M26** | Redactar preguntas | 🔵 | Solo preguntas de opción única en la interfaz (el servidor acepta también múltiple y abierta). |
+| **M26** | Redactar preguntas | 🔵 | Cada pregunta puede ser de una opción, de varias opciones o de respuesta escrita (hasta 500 caracteres), al redactar, al responder (M27) y en los resultados (M28). El servidor valida que cada respuesta sea una opción real (migración 018). |
 | **M27** | Responder (una por pantalla) | 🔵 | `responder_encuesta`, todo en una transacción. |
 | **M28** | Resultados agregados | 🔵 | Solo para el autor; nunca quién respondió qué. |
 | **M29** | Mi perfil | 🔵 | Habilidades calculadas en el servidor desde los hechos; edición con foto solo en Storage; enlaces profesionales y estado opcional guardados en Supabase. |
@@ -67,7 +67,7 @@ Estado **real** de cada pantalla de la app (M01–M33) y del panel web (W01–W0
 
 | Pieza | Estado | Observaciones |
 |---|:---:|---|
-| Migraciones 001–015 | 🔵 | Probadas en Postgres en memoria (`npm run test:sql`). La 015 agrega el tablón "Pasando hoy". **En producción solo están 001–003**: hay que aplicar 009–012 (ver `GUIA_PILOTO.md`). |
+| Migraciones 001–018 | 🔵 | Probadas en Postgres en memoria (`npm run test:sql`). La 015 agrega el tablón "Pasando hoy"; la 018 endurece las encuestas y limita quién puede leer las habilidades de otro alumno. **En producción solo están 001–003**: hay que aplicar 009–012 (ver `GUIA_PILOTO.md`). |
 | Correo con el código (Gmail SMTP, `kampuz.app.pe@gmail.com`) | 🔴 | Pendiente de configurar en Supabase (sección 0.2 de `GUIA_PILOTO.md`). Límite aproximado de 500 correos al día. |
 | APK debug (GitHub Actions) | 🔵 | El workflow era inválido (`secrets` en un `if`); corregido. Falla con un mensaje claro si faltan los secretos. |
 | AAB firmado para Play Store | 🔵 | Falla si falta el keystore (antes generaba un .aab sin firmar). |

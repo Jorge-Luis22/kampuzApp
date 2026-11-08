@@ -14,6 +14,7 @@ import {
 import { fetchConversaciones, conversacionCon, subscribeToMisMensajes } from '../lib/chat';
 import { useAtras } from '../lib/atras';
 import ChatDirectoModal from '../components/ChatDirectoModal';
+import HabilidadesDeAlumno from '../components/HabilidadesDeAlumno';
 import ErrorConReintento from '../components/ErrorConReintento';
 import PanelInferior, { OpcionPanel } from '../components/PanelInferior';
 import {
@@ -1008,6 +1009,8 @@ export default function ExplorarView({ modo = 'chats' }) {
                 "{selectedStudent.bio}"
               </p>
             )}
+
+            <HabilidadesDeAlumno key={selectedStudent.id} alumnoId={selectedStudent.id} />
 
             {solicitudEnviadaSuccess ? (
               <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl text-center space-y-1.5 border border-emerald-300">

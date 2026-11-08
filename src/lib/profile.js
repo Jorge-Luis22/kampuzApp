@@ -189,6 +189,26 @@ export async function calcularHabilidadesReales(userId) {
   return resultado;
 }
 
+/**
+ * Habilidades de OTRO alumno (M08). El servidor solo responde si es de tu misma
+ * universidad y no hay un bloqueo entre ambos, y solo devuelve nombre, nivel y
+ * estrellas de lo que ya alcanzó (nunca progreso exacto ni alcance semanal).
+ * Devuelve la lista ordenada de mayor a menor nivel.
+ */
+export async function fetchHabilidadesDeAlumno(userId) {
+  const datos = (await rpc('calcular_habilidades_usuario', { p_usuario_id: userId })) || {};
+  return Object.entries(datos)
+    .map(([id, h]) => ({
+      id,
+      nombre: h.nombre || NOMBRES_HABILIDAD[id] || id,
+      nivel: Number(h.nivel) || 0,
+      estrellas: Number(h.estrellas) || 0,
+      deTaller: Boolean(h.taller)
+    }))
+    .filter((h) => h.nivel >= 1)
+    .sort((a, b) => b.nivel - a.nivel || b.estrellas - a.estrellas || a.nombre.localeCompare(b.nombre));
+}
+
 // -----------------------------------------------------------------------------
 // Certificados (M31, spec 5.5). Solo cuenta el más alto por habilidad.
 // -----------------------------------------------------------------------------

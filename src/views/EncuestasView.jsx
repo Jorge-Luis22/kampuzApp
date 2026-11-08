@@ -126,11 +126,28 @@ export default function EncuestasView() {
     }
   };
 
-  const handleSeleccionarOpcionRespuesta = (preguntaId, opcion) => {
-    setRespuestasUsuario(prev => ({
-      ...prev,
-      [preguntaId]: opcion
-    }));
+  // Una opción: reemplaza. Varias opciones: marca o desmarca. Escrita: guarda el texto.
+  const handleSeleccionarOpcionRespuesta = (pregunta, opcion) => {
+    setRespuestasUsuario(prev => {
+      if (pregunta.tipo === 'multiple') {
+        const actuales = Array.isArray(prev[pregunta.id]) ? prev[pregunta.id] : [];
+        const nuevas = actuales.includes(opcion) ? actuales.filter(o => o !== opcion) : [...actuales, opcion];
+        return { ...prev, [pregunta.id]: nuevas };
+      }
+      return { ...prev, [pregunta.id]: opcion };
+    });
+  };
+
+  const handleTextoRespuesta = (preguntaId, texto) => {
+    setRespuestasUsuario(prev => ({ ...prev, [preguntaId]: texto }));
+  };
+
+  // ¿Esta pregunta ya tiene una respuesta válida para poder avanzar?
+  const preguntaRespondida = (pregunta, respuestas) => {
+    const r = respuestas[pregunta.id];
+    if (pregunta.tipo === 'multiple') return Array.isArray(r) && r.length > 0;
+    if (pregunta.tipo === 'abierta') return typeof r === 'string' && r.trim().length > 0;
+    return typeof r === 'string' && r.length > 0;
   };
 
   const handleSiguientePregunta = async () => {
@@ -184,7 +201,7 @@ export default function EncuestasView() {
   if (encuestaParaResponder) {
     const totalPreguntas = preguntasParaResponder.length;
     const currentP = preguntasParaResponder[preguntaIndex];
-    const tieneRespuesta = currentP && !!respuestasUsuario[currentP.id];
+    const tieneRespuesta = currentP && preguntaRespondida(currentP, respuestasUsuario);
 
     return (
       <div className="flex-1 p-5 flex flex-col justify-between bg-surface dark:bg-surface-dark select-none animate-fadeIn">
@@ -238,33 +255,60 @@ export default function EncuestasView() {
                 {currentP.texto}
               </h2>
 
-              {/* Opciones */}
-              <div className="space-y-2.5 pt-2">
-                {(currentP.opciones || []).map((opcion) => {
-                  const seleccionada = respuestasUsuario[currentP.id] === opcion;
-                  return (
-                    <button
-                      key={opcion}
-                      type="button"
-                      onClick={() => handleSeleccionarOpcionRespuesta(currentP.id, opcion)}
-                      className={`w-full p-4 rounded-2xl border-2 text-left text-sm font-semibold transition ${
-                        seleccionada
-                          ? 'bg-brand-primary text-white border-brand-primary shadow-sm'
-                          : 'bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light border-line dark:border-line-dark hover:border-brand-primary/50'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                          seleccionada ? 'border-white bg-white text-brand-primary' : 'border-ink-muted'
-                        }`}>
-                          {seleccionada && <div className="w-2.5 h-2.5 rounded-full bg-brand-primary" />}
+              {currentP.tipo === 'abierta' ? (
+                /* Respuesta escrita */
+                <div className="pt-2 space-y-1.5">
+                  <textarea
+                    value={respuestasUsuario[currentP.id] || ''}
+                    onChange={(e) => handleTextoRespuesta(currentP.id, e.target.value)}
+                    maxLength={500}
+                    rows={5}
+                    aria-label="Tu respuesta"
+                    placeholder="Escribe tu respuesta aquí"
+                    className="w-full p-4 rounded-2xl border-2 border-line dark:border-line-dark bg-white dark:bg-surface-cardDark text-sm font-medium text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary resize-none select-text"
+                  />
+                  <p className="text-[11px] text-ink-muted text-right">
+                    {(respuestasUsuario[currentP.id] || '').length}/500 · No incluyas nombres ni datos que te identifiquen.
+                  </p>
+                </div>
+              ) : (
+                /* Una opción o varias opciones */
+                <div className="space-y-2.5 pt-2" role={currentP.tipo === 'multiple' ? 'group' : 'radiogroup'}>
+                  {currentP.tipo === 'multiple' && (
+                    <p className="text-[11px] font-bold text-ink-muted">Puedes elegir varias.</p>
+                  )}
+                  {(currentP.opciones || []).map((opcion) => {
+                    const esMultiple = currentP.tipo === 'multiple';
+                    const valor = respuestasUsuario[currentP.id];
+                    const seleccionada = esMultiple ? Array.isArray(valor) && valor.includes(opcion) : valor === opcion;
+                    return (
+                      <button
+                        key={opcion}
+                        type="button"
+                        role={esMultiple ? 'checkbox' : 'radio'}
+                        aria-checked={seleccionada}
+                        onClick={() => handleSeleccionarOpcionRespuesta(currentP, opcion)}
+                        className={`w-full p-4 rounded-2xl border-2 text-left text-sm font-semibold transition ${
+                          seleccionada
+                            ? 'bg-brand-primary text-white border-brand-primary shadow-sm'
+                            : 'bg-white dark:bg-surface-cardDark text-ink dark:text-ink-light border-line dark:border-line-dark hover:border-brand-primary/50'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-5 h-5 border-2 flex items-center justify-center shrink-0 ${esMultiple ? 'rounded-md' : 'rounded-full'} ${
+                            seleccionada ? 'border-white bg-white text-brand-primary' : 'border-ink-muted'
+                          }`}>
+                            {seleccionada && (esMultiple
+                              ? <CheckCircle2 size={14} className="text-brand-primary" />
+                              : <div className="w-2.5 h-2.5 rounded-full bg-brand-primary" />)}
+                          </div>
+                          <span className="leading-snug">{opcion}</span>
                         </div>
-                        <span className="leading-snug">{opcion}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ) : null}
         </div>
@@ -572,17 +616,39 @@ export default function EncuestasView() {
               ) : resultadosAgregados?.preguntas && resultadosAgregados.preguntas.length > 0 ? (
                 resultadosAgregados.preguntas.map((q, qIdx) => {
                   const conteos = q.conteo_respuestas || {};
-                  const totalVotos = Object.values(conteos).reduce((acc, v) => acc + (Number(v) || 0), 0);
+                  // El porcentaje es sobre quienes respondieron: en "varias opciones" cada persona
+                  // puede marcar más de una y los porcentajes pueden sumar más de 100.
+                  const respondieron = Number(resultadosAgregados.total_respuestas) || 0;
+
+                  if (q.tipo === 'abierta') {
+                    const textos = q.textos || [];
+                    return (
+                      <div key={q.pregunta_id || qIdx} className="p-3 bg-surface dark:bg-surface-dark rounded-xl space-y-2">
+                        <p className="text-xs font-extrabold text-ink dark:text-ink-light">{q.texto}</p>
+                        <p className="text-[11px] text-ink-muted">
+                          {textos.length} {textos.length === 1 ? 'respuesta escrita' : 'respuestas escritas'}, en orden aleatorio y sin nombres.
+                        </p>
+                        <ul className="space-y-1.5">
+                          {textos.map((t, i) => (
+                            <li key={i} className="px-3 py-2 rounded-xl bg-white dark:bg-surface-cardDark border border-line dark:border-line-dark text-xs text-ink dark:text-ink-light leading-snug whitespace-pre-wrap break-words select-text">
+                              {t}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div key={q.pregunta_id || qIdx} className="p-3 bg-surface dark:bg-surface-dark rounded-xl space-y-2">
                       <p className="text-xs font-extrabold text-ink dark:text-ink-light">
                         {q.texto}
                       </p>
+                      {q.tipo === 'multiple' && <p className="text-[11px] text-ink-muted">Cada persona pudo elegir varias opciones.</p>}
                       <div className="space-y-2">
                         {q.opciones?.map((opc) => {
                           const votos = Number(conteos[opc] || 0);
-                          const pct = totalVotos > 0 ? Math.round((votos / totalVotos) * 100) : 0;
+                          const pct = respondieron > 0 ? Math.round((votos / respondieron) * 100) : 0;
 
                           return (
                             <div key={opc} className="space-y-1">

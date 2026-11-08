@@ -16,11 +16,19 @@ const MAX_OPCIONES = 6;
 const CICLOS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const EDADES = Array.from({ length: 22 }, (_, i) => 14 + i); // 14 a 35
 
+// Los tres tipos que acepta el servidor (enviar_encuesta_segura / responder_encuesta).
+const TIPOS_PREGUNTA = [
+  { id: 'unica', nombre: 'Una opción', ayuda: 'Respuestas posibles (se elige una):' },
+  { id: 'multiple', nombre: 'Varias opciones', ayuda: 'Respuestas posibles (se pueden elegir varias):' },
+  { id: 'abierta', nombre: 'Respuesta escrita', ayuda: 'Cada compañero escribirá su respuesta (hasta 500 caracteres). Tú solo verás los textos, sin saber quién escribió cada uno.' }
+];
+
 let siguienteId = 1;
-const preguntaVacia = () => ({ id: siguienteId++, texto: '', opciones: ['', ''] });
+const preguntaVacia = () => ({ id: siguienteId++, texto: '', tipo: 'unica', opciones: ['', ''] });
 
 const opcionesLimpias = (p) => p.opciones.map((o) => o.trim()).filter(Boolean);
-const preguntaCompleta = (p) => p.texto.trim().length > 0 && new Set(opcionesLimpias(p)).size >= 2;
+const preguntaCompleta = (p) =>
+  p.texto.trim().length > 0 && (p.tipo === 'abierta' || new Set(opcionesLimpias(p)).size >= 2);
 
 function BarraProgreso({ paso }) {
   return (
@@ -158,7 +166,13 @@ export default function CrearEncuesta({ user, umbralMinimo, alcanceSemanal, onEn
         titulo,
         descripcion: objetivo,
         filtro,
-        preguntas: preguntas.map((p) => ({ texto: p.texto.trim(), tipo: 'unica', opciones: opcionesLimpias(p) }))
+        preguntas: preguntas.map((p, i) => ({
+          orden: i + 1,
+          texto: p.texto.trim(),
+          tipo: p.tipo,
+          // Sin vacías ni repetidas: el servidor rechaza las opciones repetidas
+          opciones: p.tipo === 'abierta' ? [] : Array.from(new Set(opcionesLimpias(p)))
+        }))
       });
       setResultado(res);
     } catch (err) {
@@ -363,34 +377,68 @@ export default function CrearEncuesta({ user, umbralMinimo, alcanceSemanal, onEn
                   placeholder={idx === 0 ? 'Ej.: ¿Cuántas horas estudias por semana fuera de clase?' : 'Escribe la pregunta'}
                   className="w-full px-3 py-2.5 rounded-xl border border-line dark:border-line-dark bg-surface dark:bg-surface-dark text-sm font-medium text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary"
                 />
-                <p className="text-[11px] text-ink-muted">Respuestas posibles (se elige una):</p>
-                <div className="space-y-1.5">
-                  {p.opciones.map((o, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="w-4 h-4 rounded-full border-2 border-line dark:border-line-dark shrink-0" />
-                      <input
-                        value={o}
-                        onChange={(e) => cambiarOpcion(p.id, i, e.target.value)}
-                        maxLength={100}
-                        placeholder={`Opción ${i + 1}`}
-                        className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-line dark:border-line-dark bg-surface dark:bg-surface-dark text-sm text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary"
-                      />
-                      {p.opciones.length > 2 && (
-                        <button onClick={() => quitarOpcion(p.id, i)} className="p-1 text-ink-muted hover:text-semantic-danger" aria-label={`Quitar la opción ${i + 1}`}>
-                          <X size={15} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                <div role="radiogroup" aria-label={`Tipo de la pregunta ${idx + 1}`} className="flex gap-1.5">
+                  {TIPOS_PREGUNTA.map((t) => {
+                    const activo = p.tipo === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        role="radio"
+                        aria-checked={activo}
+                        onClick={() => cambiarPregunta(p.id, { tipo: t.id })}
+                        className={`flex-1 px-2 py-1.5 rounded-xl border text-[11px] font-bold leading-tight transition ${
+                          activo
+                            ? 'bg-brand-primary text-white border-brand-primary'
+                            : 'border-line dark:border-line-dark text-ink-muted hover:border-brand-primary'
+                        }`}
+                      >
+                        {t.nombre}
+                      </button>
+                    );
+                  })}
                 </div>
-                {p.opciones.length < MAX_OPCIONES && (
-                  <button onClick={() => agregarOpcion(p.id)} className="text-xs font-bold text-accent flex items-center gap-1">
-                    <Plus size={14} />
-                    <span>Agregar opción</span>
-                  </button>
+                <p className="text-[11px] text-ink-muted">{TIPOS_PREGUNTA.find((t) => t.id === p.tipo).ayuda}</p>
+                {p.tipo !== 'abierta' && (
+                  <>
+                    <div className="space-y-1.5">
+                      {p.opciones.map((o, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <span
+                            className={`w-4 h-4 border-2 border-line dark:border-line-dark shrink-0 ${p.tipo === 'multiple' ? 'rounded' : 'rounded-full'}`}
+                            aria-hidden="true"
+                          />
+                          <input
+                            value={o}
+                            onChange={(e) => cambiarOpcion(p.id, i, e.target.value)}
+                            maxLength={100}
+                            placeholder={`Opción ${i + 1}`}
+                            className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-line dark:border-line-dark bg-surface dark:bg-surface-dark text-sm text-ink dark:text-ink-light focus:outline-none focus:border-brand-primary"
+                          />
+                          {p.opciones.length > 2 && (
+                            <button onClick={() => quitarOpcion(p.id, i)} className="p-1 text-ink-muted hover:text-semantic-danger" aria-label={`Quitar la opción ${i + 1}`}>
+                              <X size={15} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {opcionesLimpias(p).length !== new Set(opcionesLimpias(p)).size && (
+                      <p className="text-[11px] text-amber-700 dark:text-amber-300 font-semibold">
+                        Hay opciones repetidas: se enviará una sola vez cada una.
+                      </p>
+                    )}
+                    {p.opciones.length < MAX_OPCIONES && (
+                      <button onClick={() => agregarOpcion(p.id)} className="text-xs font-bold text-accent flex items-center gap-1">
+                        <Plus size={14} />
+                        <span>Agregar opción</span>
+                      </button>
+                    )}
+                  </>
                 )}
                 {incompleta && (
-                  <p className="text-[11px] text-semantic-danger font-semibold">Escribe la pregunta y al menos 2 opciones distintas.</p>
+                  <p className="text-[11px] text-semantic-danger font-semibold">
+                    {p.tipo === 'abierta' ? 'Escribe la pregunta.' : 'Escribe la pregunta y al menos 2 opciones distintas.'}
+                  </p>
                 )}
               </div>
             );
@@ -452,12 +500,22 @@ export default function CrearEncuesta({ user, umbralMinimo, alcanceSemanal, onEn
                     <p className="text-sm font-bold text-ink dark:text-ink-light">
                       {idx + 1}. {p.texto.trim()}
                     </p>
-                    {opcionesLimpias(p).map((o) => (
-                      <div key={o} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-line dark:border-line-dark text-xs text-ink-soft dark:text-ink-muted">
-                        <span className="w-3.5 h-3.5 rounded-full border-2 border-line dark:border-line-dark shrink-0" />
-                        <span>{o}</span>
-                      </div>
-                    ))}
+                    {p.tipo === 'abierta' ? (
+                      <div className="px-3 py-2.5 rounded-xl border border-dashed border-line dark:border-line-dark text-xs text-ink-muted">Aquí escribirán su respuesta</div>
+                    ) : (
+                      <>
+                        {p.tipo === 'multiple' && <p className="text-[11px] text-ink-muted">Se pueden elegir varias</p>}
+                        {Array.from(new Set(opcionesLimpias(p))).map((o) => (
+                          <div key={o} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-line dark:border-line-dark text-xs text-ink-soft dark:text-ink-muted">
+                            <span
+                              className={`w-3.5 h-3.5 border-2 border-line dark:border-line-dark shrink-0 ${p.tipo === 'multiple' ? 'rounded' : 'rounded-full'}`}
+                              aria-hidden="true"
+                            />
+                            <span>{o}</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
